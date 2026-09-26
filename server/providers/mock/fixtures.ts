@@ -1,0 +1,256 @@
+/**
+ * Development fixtures. Species names and GBIF keys are real so links resolve,
+ * but the scores and counts are synthetic and exist only to exercise the UI.
+ */
+import type { OccurrenceEvidence } from '../../../shared/types.js';
+import type { ResolvedTaxon } from '../types.js';
+
+export const MOCK_SCENARIOS = [
+  'high',
+  'medium',
+  'low',
+  'zero',
+  'gbif-down',
+  'inat-down',
+  'quota',
+  'network',
+  'timeout',
+] as const;
+export type MockScenario = (typeof MOCK_SCENARIOS)[number];
+
+export function isMockScenario(value: string | undefined): value is MockScenario {
+  return !!value && (MOCK_SCENARIOS as readonly string[]).includes(value);
+}
+
+export type FixtureSpecies = {
+  scientificName: string;
+  authorship: string;
+  commonNames: string[];
+  score: number;
+  gbifKey: number;
+  genusKey: number;
+  familyKey: number;
+  genus: string;
+  family: string;
+  order: string;
+  radiusCounts: [number, number, number];
+  monthCounts: number[];
+};
+
+const MAPLE = {
+  genus: 'Acer',
+  genusKey: 3189834,
+  family: 'Sapindaceae',
+  familyKey: 6657,
+  order: 'Sapindales',
+};
+const CLOVER = {
+  genus: 'Trifolium',
+  genusKey: 2973363,
+  family: 'Fabaceae',
+  familyKey: 5386,
+  order: 'Fabales',
+};
+const GOLDENROD = {
+  genus: 'Solidago',
+  genusKey: 5388868,
+  family: 'Asteraceae',
+  familyKey: 3065,
+  order: 'Asterales',
+};
+
+const TREE_SEASON = [2, 3, 8, 70, 60, 98, 71, 56, 71, 65, 12, 1];
+const SUMMER_FLOWER = [0, 0, 1, 4, 20, 60, 90, 85, 50, 12, 2, 0];
+const LATE_SUMMER = [0, 0, 0, 1, 3, 10, 40, 95, 110, 30, 3, 0];
+
+export const FIXTURES: Record<'high' | 'medium' | 'low', FixtureSpecies[]> = {
+  high: [
+    {
+      scientificName: 'Acer rubrum',
+      authorship: 'L.',
+      commonNames: ['Red maple', 'Swamp maple'],
+      score: 0.93,
+      gbifKey: 3189883,
+      ...MAPLE,
+      radiusCounts: [41, 487, 3120],
+      monthCounts: TREE_SEASON,
+    },
+    {
+      scientificName: 'Acer saccharinum',
+      authorship: 'L.',
+      commonNames: ['Silver maple'],
+      score: 0.03,
+      gbifKey: 3189837,
+      ...MAPLE,
+      radiusCounts: [2, 19, 160],
+      monthCounts: TREE_SEASON,
+    },
+    {
+      scientificName: 'Acer platanoides',
+      authorship: 'L.',
+      commonNames: ['Norway maple'],
+      score: 0.02,
+      gbifKey: 3189846,
+      ...MAPLE,
+      radiusCounts: [5, 60, 420],
+      monthCounts: TREE_SEASON,
+    },
+  ],
+  medium: [
+    {
+      scientificName: 'Trifolium pratense',
+      authorship: 'L.',
+      commonNames: ['Red clover'],
+      score: 0.69,
+      gbifKey: 8324121,
+      ...CLOVER,
+      radiusCounts: [12, 140, 900],
+      monthCounts: SUMMER_FLOWER,
+    },
+    {
+      scientificName: 'Trifolium hybridum',
+      authorship: 'L.',
+      commonNames: ['Alsike clover'],
+      score: 0.17,
+      gbifKey: 6109535,
+      ...CLOVER,
+      radiusCounts: [3, 38, 250],
+      monthCounts: SUMMER_FLOWER,
+    },
+    {
+      scientificName: 'Trifolium medium',
+      authorship: 'L.',
+      commonNames: ['Zigzag clover'],
+      score: 0.07,
+      gbifKey: 5358812,
+      ...CLOVER,
+      radiusCounts: [0, 0, 4],
+      monthCounts: SUMMER_FLOWER,
+    },
+  ],
+  low: [
+    {
+      scientificName: 'Solidago canadensis',
+      authorship: 'L.',
+      commonNames: ['Canada goldenrod'],
+      score: 0.36,
+      gbifKey: 5389029,
+      ...GOLDENROD,
+      radiusCounts: [9, 110, 700],
+      monthCounts: LATE_SUMMER,
+    },
+    {
+      scientificName: 'Solidago gigantea',
+      authorship: 'Aiton',
+      commonNames: ['Giant goldenrod'],
+      score: 0.29,
+      gbifKey: 5389017,
+      ...GOLDENROD,
+      radiusCounts: [0, 6, 80],
+      monthCounts: LATE_SUMMER,
+    },
+    {
+      scientificName: 'Solidago altissima',
+      authorship: 'L.',
+      commonNames: ['Tall goldenrod'],
+      score: 0.21,
+      gbifKey: 5389058,
+      ...GOLDENROD,
+      radiusCounts: [0, 0, 0],
+      monthCounts: new Array(12).fill(0),
+    },
+    {
+      scientificName: 'Euthamia graminifolia',
+      authorship: '(L.) Nutt.',
+      commonNames: ['Grass-leaved goldenrod'],
+      score: 0.06,
+      gbifKey: 3092782,
+      genus: 'Euthamia',
+      genusKey: 7944033,
+      family: 'Asteraceae',
+      familyKey: 3065,
+      order: 'Asterales',
+      radiusCounts: [4, 50, 380],
+      monthCounts: LATE_SUMMER,
+    },
+  ],
+};
+
+export const ALL_FIXTURE_SPECIES = [...FIXTURES.high, ...FIXTURES.medium, ...FIXTURES.low];
+
+export function findFixture(scientificName: string): FixtureSpecies | undefined {
+  return ALL_FIXTURE_SPECIES.find((s) => s.scientificName === scientificName);
+}
+
+export function fixtureTaxon(s: FixtureSpecies): ResolvedTaxon {
+  return {
+    gbifKey: s.gbifKey,
+    scientificName: `${s.scientificName} ${s.authorship}`,
+    canonicalName: s.scientificName,
+    kingdom: 'Plantae',
+    phylum: 'Tracheophyta',
+    className: 'Magnoliopsida',
+    order: s.order,
+    family: s.family,
+    genus: s.genus,
+    species: s.scientificName,
+    genusKey: s.genusKey,
+    familyKey: s.familyKey,
+  };
+}
+
+export function fixtureOccurrence(s: FixtureSpecies): OccurrenceEvidence {
+  const radii = [5, 25, 100];
+  const radiusCounts = radii.map((radiusKm, i) => ({ radiusKm, count: s.radiusCounts[i] }));
+  return {
+    source: 'GBIF',
+    radiusCounts,
+    nearestRadiusKm: radiusCounts.find((r) => r.count > 0)?.radiusKm,
+    monthCounts: s.monthCounts,
+  };
+}
+
+/** Other members of the same genus, used for "nearby species" in mock mode. */
+export const NEARBY_FIXTURES: Record<
+  string,
+  { scientificName: string; commonName: string; gbifKey: number; count: number }[]
+> = {
+  Acer: [
+    { scientificName: 'Acer saccharum', commonName: 'Sugar maple', gbifKey: 3189859, count: 212 },
+    { scientificName: 'Acer spicatum', commonName: 'Mountain maple', gbifKey: 3189848, count: 96 },
+    {
+      scientificName: 'Acer pensylvanicum',
+      commonName: 'Striped maple',
+      gbifKey: 3189836,
+      count: 74,
+    },
+  ],
+  Trifolium: [
+    {
+      scientificName: 'Trifolium repens',
+      commonName: 'White clover',
+      gbifKey: 5358748,
+      count: 188,
+    },
+    {
+      scientificName: 'Trifolium aureum',
+      commonName: 'Golden clover',
+      gbifKey: 5359060,
+      count: 21,
+    },
+  ],
+  Solidago: [
+    {
+      scientificName: 'Solidago rugosa',
+      commonName: 'Wrinkle-leaf goldenrod',
+      gbifKey: 5388967,
+      count: 133,
+    },
+    {
+      scientificName: 'Solidago sempervirens',
+      commonName: 'Seaside goldenrod',
+      gbifKey: 5388927,
+      count: 67,
+    },
+  ],
+};

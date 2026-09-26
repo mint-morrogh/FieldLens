@@ -1,0 +1,252 @@
+import { useEffect } from 'react';
+import { getFeature } from '../../../shared/categories';
+import { navigate } from '../../app/router';
+import { Icon } from '../../components/Icon';
+import { Button, Card, Notice } from '../../components/ui';
+import type { ClientError, ClientErrorCode } from '../../lib/api';
+import { useOnline } from '../../lib/useOnline';
+import { CameraCapture } from '../camera/CameraCapture';
+import { CropEditor } from '../crop/CropEditor';
+import { ResultView } from '../results/ResultView';
+import { useSession } from './SessionContext';
+
+type ErrorCopy = { title: string; body?: string; retry: boolean };
+
+export function errorCopy(error: ClientError): ErrorCopy {
+  const table: Partial<Record<ClientErrorCode, ErrorCopy>> = {
+    offline: {
+      title: 'You’re offline.',
+      body: 'Your photo is still here. Reconnect to identify it.',
+      retry: true,
+    },
+    network: {
+      title: 'We couldn’t reach FieldLens.',
+      body: 'Your photo is still here. Check your connection and try again.',
+      retry: true,
+    },
+    invalid_file: { title: 'That photo couldn’t be used.', body: error.message, retry: false },
+    image_too_large: { title: 'That photo is too large.', body: error.message, retry: false },
+    too_many_images: { title: 'Too many photos.', body: error.message, retry: false },
+    rate_limited: { title: 'Let’s take a short break.', body: error.message, retry: true },
+    provider_quota_exhausted: {
+      title: 'The identification service is at capacity.',
+      body: error.message,
+      retry: true,
+    },
+    provider_timeout: { title: 'That took too long.', body: error.message, retry: true },
+    provider_unavailable: {
+      title: 'The identification service is unavailable.',
+      body: error.message,
+      retry: true,
+    },
+    provider_auth: {
+      title: 'This site isn’t set up correctly.',
+      body: error.message,
+      retry: false,
+    },
+    not_configured: {
+      title: 'This site isn’t set up for identification yet.',
+      body: error.message,
+      retry: false,
+    },
+    unsupported_category: { title: 'Coming soon.', body: error.message, retry: false },
+  };
+  return table[error.code] ?? { title: 'Something went wrong.', body: error.message, retry: true };
+}
+
+function Progress() {
+  const { state } = useSession();
+  const { phase, fraction } = state.progress;
+  const last = state.images.at(-1);
+  const label =
+    phase === 'preparing'
+      ? 'Preparing your photo…'
+      : phase === 'uploading'
+        ? `Uploading… ${Math.round(fraction * 100)}%`
+        : 'Identifying…';
+  return (
+    <div className="space-y-4" aria-busy="true">
+      <Card as="div" className="overflow-hidden !p-0">
+        {last && (
+          <img
+            src={last.url}
+            alt="Photo being identified"
+            className="max-h-[46vh] w-full object-cover opacity-90"
+          />
+        )}
+        <div className="p-5">
+          <p
+            className="text-lg font-semibold"
+            role="status"
+            aria-live="polite"
+            data-testid="progress-label"
+          >
+            {label}
+          </p>
+          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-paper-deep">
+            <div
+              className="h-full rounded-full bg-moss transition-[width] duration-300"
+              style={{
+                width: `${phase === 'identifying' ? 100 : phase === 'uploading' ? Math.max(5, fraction * 90) : 3}%`,
+              }}
+            />
+          </div>
+          <div className="mt-5 space-y-2" aria-hidden>
+            <div className="skeleton h-7 w-2/3" />
+            <div className="skeleton h-5 w-1/2" />
+          </div>
+        </div>
+      </Card>
+      <Card as="div" aria-label="Loading details">
+        <div className="space-y-2" aria-hidden>
+          <div className="skeleton h-5 w-1/3" />
+          <div className="skeleton h-4 w-full" />
+          <div className="skeleton h-4 w-5/6" />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function ErrorState({ error }: { error: ClientError }) {
+  const session = useSession();
+  const online = useOnline();
+  const copy = errorCopy(error);
+  const last = session.state.images.at(-1);
+
+  // Auto-retry once connectivity returns; the photo was kept in memory.
+  useEffect(() => {
+    if (error.code === 'offline' && online) void session.submit();
+  }, [error.code, online, session]);
+
+  return (
+    <Card className="space-y-4" data-testid="error-state">
+      {last && (
+        <img
+          src={last.url}
+          alt="Your photo (kept on this device)"
+          className="max-h-64 w-full rounded-2xl object-cover"
+        />
+      )}
+      <div className="flex gap-3">
+        <Icon
+          name={error.code === 'offline' ? 'offline' : 'alert'}
+          className="h-7 w-7 shrink-0 text-rust"
+        />
+        <div role="alert">
+          <h1 className="text-xl font-bold">{copy.title}</h1>
+          {copy.body && <p className="mt-1 text-ink-soft">{copy.body}</p>}
+          {error.retryAfterSeconds && error.code === 'rate_limited' && (
+            <p className="mt-1 text-sm text-ink-muted">
+              Try again in about {Math.ceil(error.retryAfterSeconds / 60)} minute(s).
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        {copy.retry && session.state.images.length > 0 && (
+          <Button
+            onClick={() => void session.submit()}
+            disabled={error.code === 'offline' && !online}
+          >
+            <Icon name="refresh" className="h-5 w-5" /> Try again
+          </Button>
+        )}
+        <Button variant="secondary" onClick={() => session.startNew()}>
+          <Icon name="camera" className="h-5 w-5" /> Take a different photo
+        </Button>
+        <Button variant="ghost" onClick={() => navigate({ name: 'home' })}>
+          Back to home
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+export function IdentifyScreen() {
+  const session = useSession();
+  const { state } = session;
+
+  useEffect(() => {
+    if (state.step === 'idle') navigate({ name: 'home' }, { replace: true });
+  }, [state.step]);
+
+  if (state.step === 'capture') {
+    const feature = getFeature(state.category, state.pendingFeature);
+    return (
+      <CameraCapture
+        hint={state.pendingFeature !== 'auto' ? feature.advice : undefined}
+        onCapture={session.photoSelected}
+        onClose={() => {
+          session.cancelCapture();
+          if (!state.result && !state.error) navigate({ name: 'home' });
+        }}
+      />
+    );
+  }
+
+  if (state.step === 'crop' && state.pending) {
+    return (
+      <CropEditor
+        key={state.pending.url}
+        imageUrl={state.pending.url}
+        category={state.category}
+        initialFeature={state.pendingFeature}
+        confirmLabel={state.images.length > 0 ? 'Add photo and identify' : 'Identify selection'}
+        onCancel={() => {
+          session.cancelCapture();
+          if (!state.result && !state.error) navigate({ name: 'home' });
+        }}
+        onConfirm={(box, feature) => void session.confirmCrop(box, feature)}
+      />
+    );
+  }
+
+  if (state.step === 'submitting') return <Progress />;
+  if (state.step === 'error' && state.error) return <ErrorState error={state.error} />;
+
+  if (state.step === 'result' && state.result) {
+    const result = state.result;
+    const prevTop = state.previousResult?.candidates[0];
+    const top = result.candidates[0];
+    const mixed =
+      !!prevTop?.family &&
+      !!top?.family &&
+      prevTop.family !== top.family &&
+      result.imagesSubmitted > (state.previousResult?.imagesSubmitted ?? 0);
+    return (
+      <>
+        <ResultView
+          result={result}
+          photoUrl={state.images[0]?.url}
+          mixedOrganismWarning={mixed}
+          improve={{
+            photos: state.images.map((i) => ({ id: i.id, url: i.url, feature: i.feature })),
+            canAddMore: session.canAddMore,
+            onAddPhoto: (feature) => session.startFollowUp(feature),
+            onRemovePhoto: session.removeImage,
+            onResubmit: () => void session.submit(),
+            dirty: state.images.length !== result.imagesSubmitted,
+          }}
+        />
+        <div className="mt-6 flex flex-col gap-2">
+          <Button size="lg" onClick={() => session.startNew()}>
+            <Icon name="camera" /> Identify something else
+          </Button>
+          <Button variant="ghost" onClick={() => navigate({ name: 'history' })}>
+            <Icon name="history" className="h-5 w-5" /> View history
+          </Button>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <Notice role="status">
+      Nothing to identify yet.{' '}
+      <a className="font-semibold text-moss underline" href="#/">
+        Go home
+      </a>
+    </Notice>
+  );
+}

@@ -1,0 +1,81 @@
+/**
+ * Central tuning knobs. Everything that affects ranking, UI bands, privacy
+ * rounding, limits, or caching lives here so it can be adjusted in one place.
+ */
+
+export const APP_VERSION = '1.0.0';
+
+export const RANKING = {
+  /** Used when reliable seasonal data is available. */
+  weightsWithSeason: { visual: 0.8, geo: 0.15, season: 0.05 },
+  /** Used when seasonal data is missing or too sparse to trust. */
+  weightsWithoutSeason: { visual: 0.8, geo: 0.2, season: 0 },
+  /** Geographic support assigned when no records exist within the widest radius (absence ≠ elimination). */
+  geoSupportWhenAbsent: 0.25,
+  /** Multiplier for the smallest radius that contains records; closer evidence counts more. */
+  radiusFactors: { 5: 1, 25: 0.9, 100: 0.75 } as Record<number, number>,
+  /** Record count at which the count component saturates. */
+  geoCountSaturation: 50,
+  /** Minimum records in the widest radius before month distribution is considered reliable. */
+  seasonMinRecords: 12,
+  /** Window (± months) around the capture month that counts as "in season". */
+  seasonWindowMonths: 1,
+} as const;
+
+export const CONFIDENCE_BANDS = {
+  high: 0.8,
+  medium: 0.55,
+} as const;
+
+export const GEO = {
+  searchRadiiKm: [5, 25, 100],
+  /** Decimal places kept when coordinates leave the device (2 ≈ 1.1 km). */
+  requestPrecision: 2,
+  /** Decimal places for human-readable labels saved in local history (1 ≈ 11 km). */
+  labelPrecision: 1,
+  nearbySpeciesRadiusKm: 25,
+  communityRadiusKm: 25,
+  communityRecentDays: 90,
+} as const;
+
+export const UPLOAD = {
+  maxImages: 5,
+  maxImageBytes: 3 * 1024 * 1024,
+  /** Vercel's request body limit is 4.5 MB, so stay below it. */
+  maxRequestBytes: 4.2 * 1024 * 1024,
+  maxDimension: 4096,
+  minDimension: 64,
+  acceptedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'] as const,
+} as const;
+
+export const CLIENT_IMAGE = {
+  /** Longest edge of the image sent for identification. */
+  maxEdge: 1600,
+  quality: 0.88,
+  thumbnailEdge: 240,
+  thumbnailQuality: 0.75,
+} as const;
+
+export const CANDIDATES = {
+  /** How many candidates are requested from the visual provider and enriched with GBIF. */
+  maxCandidates: 5,
+  /** How many are shown as alternatives. */
+  minAlternativesShown: 3,
+} as const;
+
+export const CACHE_TTL_MS = {
+  taxonomy: 7 * 24 * 60 * 60 * 1000,
+  occurrence: 6 * 60 * 60 * 1000,
+  community: 45 * 60 * 1000,
+  speciesInfo: 7 * 24 * 60 * 60 * 1000,
+} as const;
+
+export const TIMEOUTS_MS = {
+  identification: 20_000,
+  supporting: 6_000,
+} as const;
+
+export const RATE_LIMIT = {
+  identifyMaxRequests: 10,
+  identifyWindowMs: 10 * 60 * 1000,
+} as const;

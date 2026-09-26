@@ -1,0 +1,390 @@
+import { randomUUID } from 'node:crypto';
+import { CATEGORIES } from '../../shared/categories.js';
+import { confidenceBand } from '../../shared/confidence.js';
+import { TIMEOUTS_MS } from '../../shared/config.js';
+import { coarseLocationLabel } from '../../shared/geo.js';
+import type {
+  Attribution,
+  CommunityObservationSummary,
+  IdentifyResponse,
+  NearbySpeciesGroup,
+  OccurrenceEvidence,
+  OrganismCandidate,
+  SourceStatus,
+  SpeciesFact,
+  SpeciesInfo,
+  TaxonIdentity,
+} from '../../shared/types.js';
+import { ApiError, UpstreamError } from '../lib/errors.js';
+import { settle } from '../lib/http.js';
+import { logger } from '../lib/logger.js';
+import { GBIF_ATTRIBUTION, GBIF_SOURCE } from '../providers/gbif/gbif.js';
+import { INAT_ATTRIBUTION } from '../providers/inaturalist/inaturalistProvider.js';
+import { taxonLinks } from '../providers/plantnet/plantnetProvider.js';
+import type {
+  IdentificationInput,
+  ProviderCandidate,
+  ProviderSet,
+  ResolvedTaxon,
+} from '../providers/types.js';
+import { WIKIPEDIA_SOURCE } from '../providers/wiki/wiki.js';
+import { DeterministicGeoReranker, type CandidateReranker } from '../ranking/reranker.js';
+import { buildEvidence, buildGuidance } from './evidence.js';
+
+/** Reject if `promise` doesn't settle within `ms`, so one slow source can't stall the response. */
+export function withDeadline<T>(promise: Promise<T>, ms: number, service: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new UpstreamError(service, 'timeout')), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
+const STAGE_MS = TIMEOUTS_MS.supporting + 1500;
+const MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+function toIdentity(
+  c: ProviderCandidate | OrganismCandidate,
+  extra?: Partial<TaxonIdentity>,
+): TaxonIdentity {
+  return {
+    scientificName: c.scientificName,
+    category: c.category,
+    gbifKey: c.taxonKeys.gbif,
+    powoId: c.taxonKeys.powo,
+    genus: c.genus,
+    family: c.family,
+    ...extra,
+  };
+}
+
+function mergeTaxonomy(c: ProviderCandidate, t: ResolvedTaxon | undefined): ProviderCandidate {
+  if (!t) return c;
+  const gbif = t.gbifKey ?? c.taxonKeys.gbif;
+  const links = c.links.filter((l) => l.label !== 'GBIF');
+  return {
+    ...c,
+    commonName: c.commonName ?? t.vernacularName,
+    kingdom: t.kingdom ?? c.kingdom,
+    phylum: t.phylum ?? c.phylum,
+    className: t.className ?? c.className,
+    order: t.order ?? c.order,
+    family: t.family ?? c.family,
+    genus: t.genus ?? c.genus,
+    taxonKeys: { ...c.taxonKeys, gbif },
+    source: { ...c.source, taxonomy: [GBIF_SOURCE] },
+    links: [...taxonLinks({ gbifKey: gbif }), ...links],
+  };
+}
+
+/** Deterministic description of the busiest months in local occurrence records. */
+export function peakMonthsFact(monthCounts: number[] | undefined): string | undefined {
+  if (!monthCounts) return undefined;
+  const total = monthCounts.reduce((a, b) => a + b, 0);
+  if (total < 12) return undefined;
+  return monthCounts
+    .map((count, month) => ({ count, month }))
+    .sort((a, b) => b.count - a.count || a.month - b.month)
+    .slice(0, 3)
+    .sort((a, b) => a.month - b.month)
+    .map((m) => MONTHS[m.month])
+    .join(', ');
+}
+
+export type PipelineDeps = {
+  providers: ProviderSet;
+  reranker?: CandidateReranker;
+};
+
+export async function runIdentification(
+  input: IdentificationInput,
+  deps: PipelineDeps,
+): Promise<IdentifyResponse> {
+  const { providers } = deps;
+  const reranker = deps.reranker ?? new DeterministicGeoReranker();
+  const category = CATEGORIES[input.category];
+  const requestId = randomUUID();
+
+  // 1. Category-aware provider selection.
+  const provider = providers.identification.find((p) => p.supports(input.category));
+  if (!provider) {
+    throw new ApiError(
+      'unsupported_category',
+      `${category.label} identification is coming soon. Plants are supported today.`,
+    );
+  }
+  if (input.images.length > provider.maxImages) {
+    throw new ApiError(
+      'too_many_images',
+      `Up to ${provider.maxImages} photos can be combined in one identification.`,
+    );
+  }
+  if (input.images.some((img) => !provider.acceptedMimeTypes.includes(img.mimeType))) {
+    throw new ApiError(
+      'invalid_file',
+      'This photo format is not supported. Please use a JPEG or PNG image.',
+    );
+  }
+
+  // 2. Visual identification (the only stage allowed to fail the request).
+  const started = Date.now();
+  const identification = await provider.identify(input);
+  logger.info('identify.visual', {
+    provider: provider.name,
+    candidates: identification.candidates.length,
+    ms: Date.now() - started,
+  });
+
+  const locationProvided = !!input.location;
+  const location = input.location
+    ? { used: true, approx: input.location, label: coarseLocationLabel(input.location) }
+    : { used: false };
+  const attribution: Attribution[] = [...identification.attribution];
+  const features = input.images.map((i) => i.feature);
+
+  if (identification.candidates.length === 0) {
+    return {
+      requestId,
+      category: input.category,
+      generatedAt: new Date().toISOString(),
+      imagesSubmitted: input.images.length,
+      location,
+      confidenceBand: 'none',
+      candidates: [],
+      evidence: { supports: [], uncertainties: [] },
+      guidance: [{ message: category.generalAdvice }],
+      attribution,
+      sourceStatus: {
+        identification: 'ok',
+        occurrence: 'skipped',
+        speciesInfo: 'skipped',
+        community: 'skipped',
+      },
+      safetyNotice: category.safetyNotice,
+      mock: providers.mock || undefined,
+    };
+  }
+
+  // 3. Taxonomy normalization (parallel, failures tolerated per candidate).
+  const taxonomyResults = await Promise.all(
+    identification.candidates.map((c) =>
+      settle(withDeadline(providers.taxonomy.resolveTaxon(toIdentity(c)), STAGE_MS, GBIF_SOURCE)),
+    ),
+  );
+  const resolved = taxonomyResults.map((r) => (r.ok ? r.value : undefined));
+  const candidates = identification.candidates.map((c, i) => mergeTaxonomy(c, resolved[i]));
+
+  // 4. Geographic evidence (parallel).
+  let occurrenceStatus: SourceStatus = 'skipped';
+  let withOccurrence: (ProviderCandidate & { occurrence?: OccurrenceEvidence })[] = candidates;
+  if (input.location) {
+    const loc = input.location;
+    const occurrence = await Promise.all(
+      candidates.map((c) =>
+        c.taxonKeys.gbif
+          ? settle(
+              withDeadline(
+                providers.occurrence.getOccurrenceEvidence(toIdentity(c), loc, input.capturedAt),
+                STAGE_MS,
+                GBIF_SOURCE,
+              ),
+            )
+          : Promise.resolve(undefined),
+      ),
+    );
+    const attempted = occurrence.filter((o) => o !== undefined);
+    occurrenceStatus = attempted.some((o) => o.ok) ? 'ok' : 'unavailable';
+    if (occurrenceStatus === 'unavailable') logger.warn('identify.occurrence_unavailable');
+    withOccurrence = candidates.map((c, i) => {
+      const o = occurrence[i];
+      return o?.ok
+        ? { ...c, occurrence: o.value, source: { ...c.source, occurrence: [GBIF_SOURCE] } }
+        : c;
+    });
+  }
+
+  // 5. Deterministic reranking.
+  const ranked = await reranker.rerank({
+    candidates: withOccurrence,
+    locationUsed: occurrenceStatus === 'ok',
+    capturedAt: input.capturedAt,
+  });
+  const top = ranked[0];
+  const topResolved = resolved[identification.candidates.findIndex((c) => c.id === top.id)];
+  const band = confidenceBand(top.finalConfidence);
+
+  // 6. Facts, community observations and nearby species — all independent and optional.
+  const topIdentity = toIdentity(top);
+  const speciesInfoTask = (async (): Promise<{
+    info?: SpeciesInfo;
+    status: SourceStatus;
+    sources: Set<string>;
+  }> => {
+    const parts = [];
+    let wikipediaTitle: string | undefined;
+    let failures = 0;
+    for (const p of providers.speciesInfo) {
+      const r = await settle(
+        withDeadline(p.getSpeciesInfo(topIdentity, { wikipediaTitle }), STAGE_MS, p.name),
+      );
+      if (!r.ok) {
+        failures++;
+        continue;
+      }
+      if ('wikipediaTitle' in r.value && r.value.wikipediaTitle)
+        wikipediaTitle = r.value.wikipediaTitle;
+      parts.push(r.value);
+    }
+    const facts: SpeciesFact[] = parts.flatMap((p) => p.facts ?? []);
+    const peak = peakMonthsFact(top.occurrence?.monthCounts);
+    if (peak) {
+      facts.push({
+        label: 'Busiest months for nearby records',
+        value: peak,
+        source: `${GBIF_SOURCE} (within 100 km)`,
+      });
+    }
+    const commonNames = [
+      ...new Set(
+        [...(top.commonNames ?? []), ...parts.flatMap((p) => p.commonNames ?? [])].map((n) =>
+          n.trim(),
+        ),
+      ),
+    ];
+    const dedupe = new Map<string, string>();
+    for (const n of commonNames) if (!dedupe.has(n.toLowerCase())) dedupe.set(n.toLowerCase(), n);
+    const sources = new Set(
+      parts
+        .filter((p) => (p.facts?.length ?? 0) > 0 || p.summary || p.commonNames?.length)
+        .map((p) => p.source),
+    );
+    const info: SpeciesInfo = {
+      scientificName: top.scientificName,
+      commonNames: [...dedupe.values()].slice(0, 8),
+      taxonomy: {
+        kingdom: top.kingdom,
+        phylum: top.phylum,
+        className: top.className,
+        order: top.order,
+        family: top.family,
+        genus: top.genus,
+        species: topResolved?.species ?? top.scientificName,
+      },
+      facts,
+      summary: parts.find((p) => p.summary)?.summary,
+      links: [
+        ...top.links,
+        ...parts
+          .flatMap((p) => p.links ?? [])
+          .filter((l) => !top.links.some((t) => t.url === l.url)),
+      ],
+      sources: [...sources],
+    };
+    const status: SourceStatus = failures === providers.speciesInfo.length ? 'unavailable' : 'ok';
+    return { info, status, sources };
+  })();
+
+  const communityTask = settle(
+    withDeadline(
+      providers.community.getNearbyObservations(topIdentity, input.location),
+      STAGE_MS * 1.5,
+      providers.community.name,
+    ),
+  );
+
+  const nearbyTask: Promise<NearbySpeciesGroup | undefined> =
+    input.location && occurrenceStatus === 'ok' && topResolved
+      ? withDeadline(
+          providers.nearbySpecies.getNearbySpecies(
+            { ...topIdentity, genusKey: topResolved.genusKey, familyKey: topResolved.familyKey },
+            input.location,
+            new Set(ranked.map((c) => c.scientificName.toLowerCase())),
+          ),
+          STAGE_MS,
+          GBIF_SOURCE,
+        ).catch(() => undefined)
+      : Promise.resolve(undefined);
+
+  const [speciesResult, communityResult, nearbySpecies] = await Promise.all([
+    speciesInfoTask,
+    communityTask,
+    nearbyTask,
+  ]);
+  const community: CommunityObservationSummary | undefined = communityResult.ok
+    ? communityResult.value
+    : undefined;
+  if (!communityResult.ok) logger.warn('identify.community_unavailable');
+
+  if (resolved.some(Boolean) || occurrenceStatus === 'ok') attribution.push(GBIF_ATTRIBUTION);
+  if (community) attribution.push(INAT_ATTRIBUTION);
+  if (speciesResult.sources.has('Wikidata')) {
+    attribution.push({
+      provider: 'Wikidata',
+      text: 'Common names from Wikidata (CC0)',
+      url: 'https://www.wikidata.org/',
+    });
+  }
+  if (speciesResult.info?.summary) {
+    attribution.push({
+      provider: WIKIPEDIA_SOURCE,
+      text: 'Summary from Wikipedia (CC BY-SA 4.0)',
+      url: speciesResult.info.summary.sourceUrl,
+    });
+  }
+
+  const evidence = buildEvidence({
+    category: input.category,
+    candidates: ranked,
+    band,
+    imageCount: input.images.length,
+    features,
+    locationProvided,
+    occurrenceStatus,
+    community,
+  });
+
+  logger.info('identify.done', {
+    band,
+    candidates: ranked.length,
+    occurrence: occurrenceStatus,
+    community: communityResult.ok,
+    ms: Date.now() - started,
+  });
+
+  return {
+    requestId,
+    category: input.category,
+    generatedAt: new Date().toISOString(),
+    imagesSubmitted: input.images.length,
+    location,
+    confidenceBand: band,
+    candidates: ranked,
+    speciesInfo: speciesResult.info,
+    community,
+    nearbySpecies,
+    evidence,
+    guidance: buildGuidance({ category: input.category, band, features }),
+    attribution,
+    sourceStatus: {
+      identification: 'ok',
+      occurrence: occurrenceStatus,
+      speciesInfo: speciesResult.status,
+      community: communityResult.ok ? 'ok' : 'unavailable',
+    },
+    safetyNotice: category.safetyNotice,
+    mock: providers.mock || undefined,
+  };
+}
