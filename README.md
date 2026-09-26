@@ -2,6 +2,10 @@
 
 **Identify the living world around you.** FieldLens is a mobile-first, installable web app (PWA) that works like an automated field guide: take a photo, box the organism, and get a ranked identification with its evidence — visual confidence, local occurrence records, sourced facts, alternatives, and a separate _From iNaturalist_ card with nearby community observations.
 
+**Live demo: https://field-lens-eight.vercel.app**
+
+> The demo currently runs in **demo mode** (`USE_MOCK_API=true`): results are fixtures, and a “Demo mode” selector on the home screen switches between scenarios. To enable real identification, add `PLANTNET_API_KEY` in Vercel → Settings → Environment Variables, remove `USE_MOCK_API` (or set it to `false`), and redeploy.
+
 v1 identifies **plants** (via Pl@ntNet). The architecture is taxonomy-neutral, so birds, insects, fungi and other groups plug into the same pipeline later.
 
 > “FieldLens” is a working name. The visible name lives in [`src/config/brand.ts`](src/config/brand.ts).
