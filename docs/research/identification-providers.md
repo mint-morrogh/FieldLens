@@ -17,6 +17,32 @@ _Research date: 2026-09-27. Pricing, access and licences change — re-verify be
 
 **Suggested order:** (1) insects + spiders → (2) fungi with the safety package → (3) BioCLIP 2 service + Auto category → (4) birds with eBird priors → (5) mammals, reptiles, amphibians → (6) bird sound.
 
+## Update: $0 options (researched the same day)
+
+The owner prefers free services with daily limits over paid APIs. Findings:
+
+- **No free recurring hosted API** exists for insects, fungi or birds. Kindwise’s 100 credits are a one-time test grant ([FAQ](https://www.kindwise.com/faq)); iNaturalist’s vision API is partner-only.
+- **BioCLIP 2 is reachable as a free web API on Hugging Face.** The model authors’ public Space `imageomics/bioclip-2-demo` runs on free CPU hardware and exposes Gradio API endpoints (`/lambda` for rank-level tree-of-life prediction using precomputed name embeddings; `/zero_shot_classification` for a caller-supplied species list). A test call from a script worked without a token: ~3 s per image warm, ~9 s on first call; a custom 150-name list took ~23 s because the names are encoded on every call. It is a third-party demo with no uptime promise (the v1 demo is currently paused).
+- **Our own free Space:** since ~July 2026, free Hugging Face accounts can’t create CPU Gradio Spaces, but can create up to 2 **ZeroGPU** Spaces (account verified and 30+ days old) with 5 GPU-minutes/day ([docs](https://huggingface.co/docs/hub/spaces-zerogpu), [overview](https://huggingface.co/docs/hub/spaces-overview)). That’s likely enough for ~100+ IDs/day (estimate) and lets us cache species-list embeddings.
+- **Free but card required:** Modal Starter ($30/month credit, hard stop at a spend limit), Oracle Always Free ARM VM (2 cores, 12 GB — enough for CPU inference, always on), Google Cloud Run (free tier, but charges can’t be strictly capped).
+- **Not recommended:** Gemini free tier (~20 vision requests/day reported; free-tier content may be used for training), Cloudflare Workers AI (no species-capable model), running BioCLIP 2 inside the phone’s browser (too large for iOS Safari).
+
+### Local sanity check of BioCLIP 2 (2026-09-27)
+
+Run on this dev machine with 2 CPU threads (≈ a free 2-vCPU host), with each photo classified against the 150 most-recorded species of its group within 100 km of Charlottetown, PE (from GBIF — the same kind of local list the app already builds):
+
+| Photo (iNaturalist, CC BY) | Truth | Top guess | Runner-up | Image time |
+| --- | --- | --- | --- | --- |
+| Monarch butterfly (Jon Sullivan) | *Danaus plexippus* | ✅ *Danaus plexippus* | *Limenitis archippus* (viceroy, its mimic) | 0.9 s |
+| Blue jay (Texas Bird Family) | *Cyanocitta cristata* | ✅ *Cyanocitta cristata* | *Megaceryle alcyon* | 1.2 s |
+| Fly agaric (Johan Adler) | *Amanita muscaria* | ✅ *Amanita muscaria* | *Amanita flavoconia* | 0.9 s |
+
+Model load took ~44 s (cold start); encoding 150 species names took ~10 s and can be cached per area. Three well-photographed examples are not an accuracy benchmark, and the raw scores (~100%) are overconfident, so FieldLens must temper BioCLIP scores before mapping them to confidence bands.
+
+### Revised free recommendation
+
+One BioCLIP 2 integration covers insects, spiders, fungi, birds, mammals, reptiles and amphibians. Start by calling the public imageomics Space from our server (free, no signup, “experimental” label, graceful fallback when it’s asleep or down); move to our own ZeroGPU Space for reliability once a Hugging Face account qualifies. Plants stay on Pl@ntNet. Our existing GBIF reranking supplies the location prior.
+
 ## What fits our architecture
 
 Every option below plugs into the existing `IdentificationProvider` interface (1–5 cropped JPEGs + optional ~1 km location + date → ranked species with scores). GBIF/iNaturalist enrichment, reranking, galleries, the analysis screen and history all work unchanged. The two structural additions are:
