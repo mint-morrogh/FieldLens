@@ -148,7 +148,7 @@ type SessionApi = {
   cancelCapture: () => void;
   confirmCrop: (box: Box, feature: FeatureId) => Promise<void>;
   removeImage: (id: string) => void;
-  submit: (images?: SessionImage[]) => Promise<void>;
+  submit: (images?: SessionImage[], options?: { category?: OrganismCategory }) => Promise<void>;
   reset: () => void;
   canAddMore: boolean;
 };
@@ -179,8 +179,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   /** `images` overrides state when called right after a dispatch that hasn't rendered yet. */
   const submit = useCallback(
-    async (images?: SessionImage[]) => {
-      const s = { ...stateRef.current, images: images ?? stateRef.current.images };
+    async (images?: SessionImage[], options?: { category?: OrganismCategory }) => {
+      const s = {
+        ...stateRef.current,
+        images: images ?? stateRef.current.images,
+        category: options?.category ?? stateRef.current.category,
+      };
+      if (options?.category) dispatch({ type: 'setCategory', category: options.category });
       if (s.images.length === 0) return;
       dispatch({ type: 'submitting', phase: 'uploading', fraction: 0, restart: true });
       try {

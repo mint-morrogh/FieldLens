@@ -190,6 +190,36 @@ test('category tiles select plants and explain upcoming groups', async ({ page }
   );
 });
 
+test('insects are identified with an experimental label', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await page
+    .getByTestId('category-picker')
+    .getByRole('radio', { name: /Insect/ })
+    .click();
+  await choosePhoto(page);
+  await identifySelection(page);
+  await expect(page.getByTestId('experimental-badge')).toBeVisible();
+  await expect(page.getByTestId('result-headline')).toContainText('Danaus plexippus');
+});
+
+test('an off-target insect photo can be re-identified as a plant', async ({ page }) => {
+  await page.goto('/?mock=wrong-category');
+  await page
+    .getByTestId('category-picker')
+    .getByRole('radio', { name: /Insect/ })
+    .click();
+  await choosePhoto(page);
+  await identifySelection(page);
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(
+    'doesn’t look like an insect',
+  );
+  await page.getByRole('button', { name: 'Identify as plant' }).click();
+  await expect(page.getByTestId('result-headline')).toContainText('Acer rubrum', {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId('experimental-badge')).toHaveCount(0);
+});
+
 test.describe('with location permission', () => {
   test.use({
     permissions: ['geolocation'],

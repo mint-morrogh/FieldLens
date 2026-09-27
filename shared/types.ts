@@ -136,6 +136,8 @@ export type CommunityObservation = {
 export type CommunityObservationSummary = {
   source: string;
   taxonName: string;
+  /** iNaturalist's preferred common name for the taxon, when known. */
+  taxonCommonName?: string;
   taxonUrl?: string;
   radiusKm?: number;
   nearbyCount?: number;
@@ -205,7 +207,20 @@ export type IdentifyResponse = {
     community: SourceStatus;
   };
   safetyNotice?: string;
+  /** Identified by a newer, less-tested provider; the UI asks people to double-check. */
+  experimental?: boolean;
+  /** Whether the photo actually looks like the chosen category, with a better guess if not. */
+  categoryCheck?: CategoryCheck;
   mock?: boolean;
+};
+
+export type CategoryCheck = {
+  matchesCategory: boolean;
+  /** 0–1: how much the image model thinks the photo shows the chosen group. */
+  likelihood: number;
+  suggestedCategory?: OrganismCategory;
+  /** e.g. "Insecta", "Plantae" — what the model thinks it is instead. */
+  suggestedGroup?: string;
 };
 
 /** Pipeline stages reported to the client while an identification runs. */

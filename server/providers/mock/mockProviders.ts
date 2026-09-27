@@ -25,6 +25,7 @@ import type {
 } from '../types.js';
 import {
   FIXTURES,
+  INSECT_FIXTURES,
   NEARBY_FIXTURES,
   findFixture,
   fixtureOccurrence,
@@ -71,7 +72,7 @@ export class MockIdentificationProvider implements IdentificationProvider {
   ) {}
 
   supports(category: OrganismCategory): boolean {
-    return category === 'plant';
+    return category === 'plant' || category === 'insect' || category === 'arachnid';
   }
 
   async identify(input: IdentificationInput): Promise<IdentificationResult> {
@@ -79,6 +80,7 @@ export class MockIdentificationProvider implements IdentificationProvider {
     if (this.scenario === 'quota') throw new UpstreamError('Pl@ntNet', 'http', 429);
     if (this.scenario === 'network') throw new UpstreamError('Pl@ntNet', 'network');
     if (this.scenario === 'timeout') throw new UpstreamError('Pl@ntNet', 'timeout');
+    if (input.category !== 'plant') return this.identifyAnimal(input);
     if (this.scenario === 'zero')
       return { provider: this.name, candidates: [], attribution: [MOCK_ATTRIBUTION] };
 
@@ -106,6 +108,46 @@ export class MockIdentificationProvider implements IdentificationProvider {
       links: taxonLinks({ gbifKey: s.gbifKey }),
     }));
     return { provider: this.name, candidates, attribution: [MOCK_ATTRIBUTION] };
+  }
+
+  /** Insects & spiders (BioCLIP in live mode): experimental, with a category check. */
+  private identifyAnimal(input: IdentificationInput): IdentificationResult {
+    if (this.scenario === 'wrong-category') {
+      return {
+        provider: 'Mock BioCLIP',
+        candidates: [],
+        attribution: [MOCK_ATTRIBUTION],
+        experimental: true,
+        categoryCheck: {
+          matchesCategory: false,
+          likelihood: 0.08,
+          suggestedCategory: 'plant',
+          suggestedGroup: 'Plantae',
+        },
+      };
+    }
+    const candidates = INSECT_FIXTURES.map((s) => ({
+      id: slugId('mock', s.scientificName),
+      category: input.category,
+      scientificName: s.scientificName,
+      scientificNameAuthorship: s.authorship,
+      commonName: s.commonNames[0],
+      commonNames: s.commonNames,
+      genus: s.genus,
+      family: s.family,
+      kingdom: s.kingdom,
+      className: s.className,
+      taxonKeys: { gbif: s.gbifKey },
+      visualConfidence: s.score,
+      source: { identification: 'Mock BioCLIP' },
+      links: taxonLinks({ gbifKey: s.gbifKey }),
+    }));
+    return {
+      provider: 'Mock BioCLIP',
+      candidates,
+      attribution: [MOCK_ATTRIBUTION],
+      experimental: true,
+    };
   }
 }
 

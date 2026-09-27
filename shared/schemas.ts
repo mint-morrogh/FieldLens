@@ -100,6 +100,7 @@ const speciesInfo = z.object({
 const community = z.object({
   source: z.string(),
   taxonName: z.string(),
+  taxonCommonName: z.string().optional(),
   taxonUrl: z.string().optional(),
   radiusKm: z.number().optional(),
   nearbyCount: z.number().optional(),
@@ -171,6 +172,15 @@ export const identifyResponseSchema = z.object({
     community: sourceStatus,
   }),
   safetyNotice: z.string().optional(),
+  experimental: z.boolean().optional(),
+  categoryCheck: z
+    .object({
+      matchesCategory: z.boolean(),
+      likelihood: score,
+      suggestedCategory: categorySchema.optional(),
+      suggestedGroup: z.string().optional(),
+    })
+    .optional(),
   mock: z.boolean().optional(),
 }) satisfies z.ZodType<IdentifyResponse>;
 

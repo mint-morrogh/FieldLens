@@ -133,6 +133,7 @@ export class INaturalistObservationProvider implements CommunityObservationProvi
     const base: CommunityObservationSummary = {
       source: INAT_SOURCE,
       taxonName: inatTaxon.name,
+      taxonCommonName: inatTaxon.preferred_common_name || undefined,
       taxonUrl,
       recentDays,
       globalCount: inatTaxon.observations_count,

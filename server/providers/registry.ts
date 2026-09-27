@@ -1,4 +1,6 @@
+import { CATEGORIES } from '../../shared/categories.js';
 import type { OrganismCategory } from '../../shared/types.js';
+import { BioclipIdentificationProvider } from './bioclip/bioclipProvider.js';
 import type { ServerEnv } from '../lib/env.js';
 import {
   GbifClient,
@@ -29,7 +31,20 @@ export function createLiveProviders(env: ServerEnv, fetchImpl: typeof fetch = fe
       new PlantNetIdentificationProvider(env.plantnetApiKey, env.plantnetProject, fetchImpl),
     );
   }
-  // Future: identification.push(new BirdIdentificationProvider(...)), InsectIdentificationProvider, ...
+  if (env.hfToken && env.bioclipSpaceUrl) {
+    // BioCLIP 2 serves every available category that declares a taxon scope (insects, spiders…).
+    const bioclipCategories = (Object.keys(CATEGORIES) as OrganismCategory[]).filter(
+      (c) => CATEGORIES[c].available && CATEGORIES[c].taxonScope,
+    );
+    identification.push(
+      new BioclipIdentificationProvider(
+        env.bioclipSpaceUrl,
+        env.hfToken,
+        bioclipCategories,
+        fetchImpl,
+      ),
+    );
+  }
 
   const inat = new INaturalistObservationProvider(undefined, fetchImpl);
   const gbif = new GbifClient(undefined, fetchImpl);

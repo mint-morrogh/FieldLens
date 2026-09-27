@@ -36,4 +36,5 @@ export const MOCK_SCENARIO_OPTIONS = [
   { id: 'quota', label: 'Quota exhausted' },
   { id: 'network', label: 'Provider down' },
   { id: 'timeout', label: 'Provider timeout' },
+  { id: 'wrong-category', label: 'Wrong category (insects)' },
 ];

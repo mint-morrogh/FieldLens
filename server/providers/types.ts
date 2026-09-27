@@ -1,6 +1,7 @@
 import type {
   ApproxLocation,
   Attribution,
+  CategoryCheck,
   CommunityObservationSummary,
   FeatureId,
   NearbySpeciesGroup,
@@ -38,6 +39,8 @@ export type IdentificationResult = {
   provider: string;
   candidates: ProviderCandidate[];
   attribution: Attribution[];
+  experimental?: boolean;
+  categoryCheck?: CategoryCheck;
   /** Provider-native response, kept only for debugging; never sent to the UI. */
   raw?: unknown;
 };

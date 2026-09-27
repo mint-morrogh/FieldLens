@@ -131,7 +131,11 @@ export function HomeScreen({ health }: { health?: HealthResponse }) {
       )}
       {health?.mock && <DemoModePanel />}
 
-      <CategoryPicker value={session.state.category} onChange={session.setCategory} />
+      <CategoryPicker
+        value={session.state.category}
+        onChange={session.setCategory}
+        supported={health?.supportedCategories}
+      />
 
       <div className="flex flex-col gap-3">
         <Button size="lg" className="min-h-16 text-xl" onClick={camera.open}>

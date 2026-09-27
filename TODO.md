@@ -11,18 +11,18 @@ Live: private Space `mintmundane/fieldlens-bioclip` (ZeroGPU), source in `hf-spa
   - [x] Endpoint: photo(s) + optional species/genus list → ranked species with scores (uses precomputed embeddings for ~867k taxa, so no per-call text encoding); also rank-level output (e.g. class) for Auto detection.
   - [ ] Keep the public `imageomics/bioclip-2-demo` Space as a fallback.
   - [x] Store a read-only `HF_TOKEN` in Vercel (server-side only) so calls use the owner's daily GPU quota (5 min/day on a free account).
-  - [ ] Temper BioCLIP 2's overconfident scores before mapping them to confidence bands.
+  - [x] Temper BioCLIP 2's scores: weighted by how much the photo looks like the chosen group, capped at 90% while experimental. Revisit with real-photo measurements.
 
 ## Next
 
 - [ ] **Edibility & safety section** (plants first, then fungi), researched sources only:
-  - [ ] Research free, reusable sources (Wikipedia/Wikidata statements, Canadian Poisonous Plants Information System, others); check licences (e.g. PFAF is non-commercial).
+  - [x] Research free, reusable sources — see [docs/research/edibility-sources.md](docs/research/edibility-sources.md) (Wikipedia sections + Wikidata P789 + bundled TPPT; Canadian/FDA databases are gone).
   - [ ] Quote sourced statements with links; never "safe to eat"; include plant part and preparation when stated.
   - [ ] Edible notes only on high-confidence results; toxic warnings and known toxic look-alikes shown at any confidence.
   - [ ] Fungi: stricter — prominent expert-confirmation warning on any edible statement; dangerous look-alike genera always flagged.
   - [ ] Permanent footer: "Never eat a wild plant or mushroom based on an app — confirm with a local expert."
 
-- [ ] `BioclipIdentificationProvider` for insects & spiders, using GBIF species recorded nearby as the candidate list.
+- [x] Insects & spiders via `BioclipIdentificationProvider` (experimental label, confidence capped at 90%, “does this look like an insect?” check with a one-tap category switch, iNaturalist common names). Geographic support comes from the existing GBIF reranker.
 - [ ] Fungi with the safety package: never show "edible", dangerous look-alike warnings (Amanita, Galerina, Lepiota, Gyromitra, Cortinarius, Inocybe, Clitocybe), prefer genus answers, stronger notice.
 - [ ] Birds (optionally eBird nearby observations as a prior), then mammals, reptiles, amphibians.
 - [ ] "Auto" category detection with BioCLIP 2 at class/kingdom level.

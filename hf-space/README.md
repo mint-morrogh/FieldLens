@@ -36,9 +36,15 @@ Source of truth: `hf-space/` in the FieldLens repository. Deploy with `npm run s
 
 - `taxa` (optional): species ("Genus species") and/or genera ("Genus"); unknown names are ignored.
 - `rank`: `species` (default) or `genus`, `family`, `order`, `class`, `phylum`, `kingdom`.
+- `within` (optional): restrict to higher taxa, e.g. `{"class": ["Insecta", "Arachnida"]}`.
+- `temperature` (optional, default 1): multiplies the logits; values below 1 soften BioCLIP's
+  overconfident probabilities.
 
 Returns `{ "results": [{ "name", "commonName", "kingdom", "phylum", "class", "order", "family",
-"genus", "species", "score" }], "rank", "restricted", "candidateCount", "unmatched" }`.
+"genus", "species", "score" }], "rank", "restricted", "candidateCount", "unmatched",
+"groupProbability" }`. `groupProbability` (only with `within` and no `taxa`) is the share of the
+model's belief that falls inside the `within` group — low values mean the photo probably doesn't
+show that kind of organism.
 
 Scores are softmax probabilities over the candidate set; they are overconfident and are tempered
 by the FieldLens server before display.

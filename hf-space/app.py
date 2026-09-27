@@ -89,6 +89,22 @@ def _candidate_indices(taxa: list[str]) -> tuple[list[int], list[str]]:
     return sorted(idx), unmatched
 
 
+def _within_indices(within: dict) -> set[int] | None:
+    """Columns whose taxonomy matches e.g. {"class": ["Insecta", "Arachnida"]}."""
+    if not within:
+        return None
+    if not isinstance(within, dict):
+        raise gr.Error("within must be an object like {\"class\": [\"Insecta\"]}.")
+    mask = None
+    for rank, values in within.items():
+        if rank not in RANKS or not isinstance(values, list):
+            raise gr.Error(f"Unsupported within rank: {rank}")
+        wanted = {str(v).strip().lower() for v in values if str(v).strip()}
+        m = labels[rank].str.lower().isin(wanted)
+        mask = m if mask is None else (mask & m)
+    return set(labels.index[mask].tolist()) if mask is not None else None
+
+
 def _run(payload: dict) -> dict:
     images = _decode(payload.get("images", []))
     rank = str(payload.get("rank") or "species").lower()
@@ -99,7 +115,16 @@ def _run(payload: dict) -> dict:
     if not isinstance(taxa, list):
         raise gr.Error("taxa must be a list of names.")
 
+    # Softer (<1) or sharper (>1) probabilities; BioCLIP's raw scores are overconfident.
+    temperature = float(payload.get("temperature") or 1.0)
+    temperature = max(0.05, min(2.0, temperature))
+
     columns, unmatched = _candidate_indices(taxa) if taxa else ([], [])
+    within = _within_indices(payload.get("within") or {})
+    if within is not None:
+        columns = sorted(within.intersection(columns)) if columns else sorted(within)
+        if not columns:
+            raise gr.Error("No taxa match the requested filters.")
     restricted = bool(columns)
 
     with torch.no_grad():
@@ -107,8 +132,17 @@ def _run(payload: dict) -> dict:
         # Several photos of one organism: average their embeddings.
         feat = feats.mean(dim=0)
         feat = (feat / feat.norm()).to(EMB.dtype).to(EMB.device)
-        emb = EMB[:, columns] if restricted else EMB
-        probs = torch.softmax(LOGIT_SCALE * (feat @ emb), dim=0).float().cpu()
+        group_probability = None
+        if within is not None and not taxa:
+            # Softmax over every taxon, then keep the requested group: the group's share of the
+            # total ("how much does this look like an insect at all?") flags off-target photos.
+            full = torch.softmax(temperature * LOGIT_SCALE * (feat @ EMB), dim=0).float().cpu()
+            sub = full[columns]
+            group_probability = float(sub.sum())
+            probs = sub / max(group_probability, 1e-12)
+        else:
+            emb = EMB[:, columns] if restricted else EMB
+            probs = torch.softmax(temperature * LOGIT_SCALE * (feat @ emb), dim=0).float().cpu()
 
     col_ids = columns if restricted else list(range(EMB.shape[1]))
     if rank == "species":
@@ -132,6 +166,7 @@ def _run(payload: dict) -> dict:
         "restricted": restricted,
         "candidateCount": len(columns) if restricted else int(EMB.shape[1]),
         "unmatched": unmatched[:50],
+        "groupProbability": None if group_probability is None else round(group_probability, 6),
     }
 
 

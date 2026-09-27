@@ -164,6 +164,7 @@ export function IdentifyScreen() {
           result={result}
           photoUrl={state.images[0]?.url}
           mixedOrganismWarning={mixed}
+          onSwitchCategory={(category) => void session.submit(undefined, { category })}
           improve={{
             photos: state.images.map((i) => ({ id: i.id, url: i.url, feature: i.feature })),
             canAddMore: session.canAddMore,

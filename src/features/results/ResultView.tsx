@@ -1,7 +1,12 @@
 import { getCategory } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
 import { CANDIDATES } from '../../../shared/config';
-import type { FeatureId, GroupSummary, IdentifyResponse } from '../../../shared/types';
+import type {
+  FeatureId,
+  GroupSummary,
+  IdentifyResponse,
+  OrganismCategory,
+} from '../../../shared/types';
 import { Icon } from '../../components/Icon';
 import { Button, Card, Notice, SectionTitle } from '../../components/ui';
 import { displayName } from '../../lib/format';
@@ -39,6 +44,12 @@ export function groupPhrase(group: GroupSummary): { short: string; full: string 
   return { short: `${article} ${common}`, full: `${article} ${common} (${group.name})` };
 }
 
+/** "an insect", "a spider", "a plant" — for sentences about categories. */
+export function categoryPhrase(id: OrganismCategory): string {
+  const label = getCategory(id).label.toLowerCase();
+  return `${/^[aeiou]/.test(label) ? 'an' : 'a'} ${label}`;
+}
+
 function Headline({
   result,
   photoUrl,
@@ -67,7 +78,27 @@ function Headline({
         />
       )}
       <div className="p-5" data-testid="result-headline" data-band={band}>
-        {band === 'none' || !top ? (
+        {result.experimental && (
+          <p
+            className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-amber-soft px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-amber"
+            data-testid="experimental-badge"
+          >
+            Experimental · double-check this result
+          </p>
+        )}
+        {result.categoryCheck && !result.categoryCheck.matchesCategory ? (
+          <>
+            <h1 className="text-2xl font-bold">
+              This doesn’t look like {categoryPhrase(result.category)}
+            </h1>
+            <p className="mt-2 text-ink-soft">
+              The image model gave it a {formatPercent(result.categoryCheck.likelihood)} chance of
+              being {categoryPhrase(result.category)}, so we didn’t guess a species.
+              {result.categoryCheck.suggestedCategory &&
+                ` It looks more like ${categoryPhrase(result.categoryCheck.suggestedCategory)}.`}
+            </p>
+          </>
+        ) : band === 'none' || !top ? (
           <>
             <h1 className="text-2xl font-bold">No match found</h1>
             <p className="mt-2 text-ink-soft">
@@ -276,12 +307,15 @@ export function ResultView({
   thumbnailUrl,
   improve,
   mixedOrganismWarning,
+  onSwitchCategory,
 }: {
   result: IdentifyResponse;
   photoUrl?: string;
   thumbnailUrl?: string;
   improve?: ImproveProps;
   mixedOrganismWarning?: boolean;
+  /** Re-run the same photos as another category (offered when the photo doesn't match). */
+  onSwitchCategory?: (category: OrganismCategory) => void;
 }) {
   const category = getCategory(result.category);
   const [top, ...rest] = result.candidates;
@@ -304,6 +338,25 @@ export function ResultView({
         </div>
       )}
       <Headline result={result} photoUrl={photoUrl} thumbnailUrl={thumbnailUrl} />
+
+      {result.categoryCheck?.suggestedCategory &&
+        getCategory(result.categoryCheck.suggestedCategory).available &&
+        onSwitchCategory && (
+          <Card data-testid="category-switch" className="border-moss/40">
+            <p className="font-semibold">
+              Identify it as {categoryPhrase(result.categoryCheck.suggestedCategory)} instead?
+            </p>
+            <p className="mt-1 text-sm text-ink-muted">
+              Uses the same photo — no need to retake it.
+            </p>
+            <Button
+              className="mt-3 w-full"
+              onClick={() => onSwitchCategory(result.categoryCheck!.suggestedCategory!)}
+            >
+              Identify as {getCategory(result.categoryCheck.suggestedCategory).label.toLowerCase()}
+            </Button>
+          </Card>
+        )}
 
       {mixedOrganismWarning && (
         <Notice tone="warn" role="alert">

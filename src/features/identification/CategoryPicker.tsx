@@ -9,6 +9,8 @@ const CATEGORY_ART: Record<string, string> = {
   bird: 'M3.5 13.5c2.2 0 4-1 5-3.2L10.3 6.6c1-2.1 4-2.2 5.1-.2l.9 1.6 3.2 1-3.2 1.2c-.2 5.3-4.1 8.6-9 8.6H5l2.8-2.8c-2 0-3.4-.9-4.3-2.5Z M15.2 7.4h.01 M9 19l-1 2.5 M12 18.6l-.5 2.9',
   insect:
     'M12 7.5a3 3 0 0 1 3 3V15a3 3 0 0 1-6 0v-4.5a3 3 0 0 1 3-3Z M12 7.5V5.5 M10.2 4.5 8.8 2.8 M13.8 4.5l1.4-1.7 M9 11H5.5l-1.5-1.5 M9 14.5H5l-1.5 1.5 M15 11h3.5l1.5-1.5 M15 14.5h4l1.5 1.5 M12 10.5V18',
+  arachnid:
+    'M12 9.5a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z M12 18.8a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6Z M10 7.5 6.5 5l-2 1.5 M14 7.5 17.5 5l2 1.5 M9.7 9.2 5.5 9.5 3.5 12 M14.3 9.2l4.2.3 2 2.5 M9.2 14 5 14.5l-1.5 3 M14.8 14l4.2.5 1.5 3 M9.8 17.2 7.5 20.5 M14.2 17.2l2.3 3.3',
   fungus:
     'M3.5 12.5C3.5 7.8 7.3 4 12 4s8.5 3.8 8.5 8.5Z M9.8 12.5v5.3a2.2 2.2 0 0 0 4.4 0v-5.3 M8.5 8.3h.01 M13.5 6.8h.01 M16 9.5h.01',
   mammal:
@@ -42,9 +44,12 @@ function CategoryArt({ id, className }: { id: string; className?: string }) {
 export function CategoryPicker({
   value,
   onChange,
+  supported,
 }: {
   value: OrganismCategory;
   onChange: (id: OrganismCategory) => void;
+  /** Categories the server can identify right now (from /api/health); falls back to the registry. */
+  supported?: OrganismCategory[];
 }) {
   const [notice, setNotice] = useState<string>();
 
@@ -62,6 +67,7 @@ export function CategoryPicker({
       <div role="radiogroup" aria-labelledby="category-title" className="grid grid-cols-3 gap-2.5">
         {CATEGORY_PICKER_ORDER.map((id) => {
           const c = CATEGORIES[id];
+          const available = supported ? supported.includes(id) : c.available;
           const selected = value === id;
           return (
             <button
@@ -69,18 +75,18 @@ export function CategoryPicker({
               type="button"
               role="radio"
               aria-checked={selected}
-              aria-disabled={!c.available}
+              aria-disabled={!available}
               aria-describedby={`category-${id}-blurb`}
               data-category={id}
               onClick={() =>
-                c.available
+                available
                   ? onChange(id)
                   : setNotice(`${c.label} identification is coming soon — plants work today.`)
               }
               className={`group relative flex min-h-[7.5rem] flex-col items-center justify-center gap-1.5 rounded-2xl border-2 px-1.5 pb-2.5 pt-3 text-center transition ${
                 selected
                   ? 'border-moss bg-moss-soft shadow-[0_2px_0_rgba(47,93,58,0.25)]'
-                  : c.available
+                  : available
                     ? 'border-line bg-card hover:border-moss/50 hover:bg-paper-deep active:scale-[0.98]'
                     : 'border-dashed border-line bg-paper-deep/40'
               }`}
@@ -103,7 +109,12 @@ export function CategoryPicker({
                   </svg>
                 </span>
               )}
-              {!c.available && (
+              {available && c.experimental && !selected && (
+                <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-soft px-1.5 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-amber">
+                  Beta
+                </span>
+              )}
+              {!available && (
                 <span className="absolute right-1.5 top-1.5 rounded-full bg-paper-deep px-1.5 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-ink-muted">
                   Soon
                 </span>
@@ -112,7 +123,7 @@ export function CategoryPicker({
                 className={`flex h-12 w-12 items-center justify-center rounded-full transition ${
                   selected
                     ? 'bg-moss text-white'
-                    : c.available
+                    : available
                       ? 'bg-moss-soft text-moss group-hover:bg-moss group-hover:text-white'
                       : 'bg-paper-deep text-ink-muted/70'
                 }`}
@@ -120,7 +131,7 @@ export function CategoryPicker({
                 <CategoryArt id={id} className="h-7 w-7" />
               </span>
               <span
-                className={`font-bold leading-tight ${c.available ? 'text-ink' : 'text-ink-muted'}`}
+                className={`font-bold leading-tight ${available ? 'text-ink' : 'text-ink-muted'}`}
               >
                 {c.label}
               </span>
@@ -128,7 +139,7 @@ export function CategoryPicker({
                 id={`category-${id}-blurb`}
                 className="text-[0.72rem] leading-tight text-ink-muted"
               >
-                {c.available ? c.blurb : 'Coming soon'}
+                {available ? c.blurb : 'Coming soon'}
               </span>
             </button>
           );

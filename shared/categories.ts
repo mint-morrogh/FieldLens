@@ -16,6 +16,10 @@ export type CategoryDefinition = {
   available: boolean;
   /** Name of the visual identification source, shown while analyzing. */
   identificationSource?: string;
+  /** Results come from a newer, less-tested provider; the UI labels them "experimental". */
+  experimental?: boolean;
+  /** Higher taxa that this category covers, used to keep open-ended models on target. */
+  taxonScope?: Partial<Record<'kingdom' | 'phylum' | 'class' | 'order', string[]>>;
   /** Short description for the category picker, e.g. "Flowers, trees, leaves". */
   blurb: string;
   /** Plural noun used in headings such as "Other maples nearby". */
@@ -208,7 +212,10 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
     id: 'insect',
     blurb: 'Butterflies, beetles, bees',
     label: 'Insect',
-    available: false,
+    available: true,
+    experimental: true,
+    identificationSource: 'BioCLIP 2',
+    taxonScope: { class: ['Insecta', 'Chilopoda', 'Diplopoda', 'Collembola'] },
     pluralNoun: 'insects',
     gbifKingdom: 'Animalia',
     inaturalistIconicTaxon: 'Insecta',
@@ -233,13 +240,35 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
     id: 'arachnid',
     blurb: 'Spiders, ticks, harvestmen',
     label: 'Spider',
-    available: false,
+    available: true,
+    experimental: true,
+    identificationSource: 'BioCLIP 2',
+    taxonScope: { class: ['Arachnida'] },
     pluralNoun: 'spiders',
     gbifKingdom: 'Animalia',
     inaturalistIconicTaxon: 'Arachnida',
     safetyNotice: WILDLIFE_NOTICE,
     generalAdvice: 'A clear photo from above showing the eye arrangement and markings would help.',
-    features: [],
+    features: [
+      {
+        id: 'dorsal',
+        label: 'From above',
+        followUpLabel: 'Add a top-down photo',
+        advice: 'A photo from directly above showing the body markings would help.',
+      },
+      {
+        id: 'face',
+        label: 'Eyes / face',
+        followUpLabel: 'Add a close-up of the eyes',
+        advice: 'A close-up of the eyes from the front would help.',
+      },
+      {
+        id: 'web',
+        label: 'Web',
+        followUpLabel: 'Add a photo of the web',
+        advice: 'A photo of the web can help narrow it down.',
+      },
+    ],
   },
   fungus: {
     id: 'fungus',
@@ -287,11 +316,11 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
 /** Categories offered in the picker, in display order. */
 export const CATEGORY_PICKER_ORDER: OrganismCategory[] = [
   'plant',
-  'bird',
   'insect',
+  'arachnid',
   'fungus',
+  'bird',
   'mammal',
-  'other',
 ];
 
 export const DEFAULT_CATEGORY: OrganismCategory = 'plant';

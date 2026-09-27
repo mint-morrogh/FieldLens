@@ -15,6 +15,7 @@ export const MOCK_SCENARIOS = [
   'quota',
   'network',
   'timeout',
+  'wrong-category',
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -23,6 +24,10 @@ export function isMockScenario(value: string | undefined): value is MockScenario
 }
 
 export type FixtureSpecies = {
+  /** Defaults to a flowering plant when omitted. */
+  kingdom?: string;
+  phylum?: string;
+  className?: string;
   scientificName: string;
   authorship: string;
   commonNames: string[];
@@ -176,7 +181,59 @@ export const FIXTURES: Record<'high' | 'medium' | 'low', FixtureSpecies[]> = {
   ],
 };
 
-export const ALL_FIXTURE_SPECIES = [...FIXTURES.high, ...FIXTURES.medium, ...FIXTURES.low];
+const MONARCH_FAMILY = { family: 'Nymphalidae', familyKey: 7017, order: 'Lepidoptera' };
+const INSECT = { kingdom: 'Animalia', phylum: 'Arthropoda', className: 'Insecta' };
+const BUTTERFLY_SEASON = [0, 0, 0, 0, 2, 20, 60, 90, 70, 10, 0, 0];
+
+/** Returned for insect/spider identifications in mock mode. */
+export const INSECT_FIXTURES: FixtureSpecies[] = [
+  {
+    scientificName: 'Danaus plexippus',
+    authorship: '(Linnaeus, 1758)',
+    commonNames: ['Monarch'],
+    score: 0.6,
+    gbifKey: 5133088,
+    genus: 'Danaus',
+    genusKey: 5133087,
+    ...MONARCH_FAMILY,
+    ...INSECT,
+    radiusCounts: [3, 40, 310],
+    monthCounts: BUTTERFLY_SEASON,
+  },
+  {
+    scientificName: 'Limenitis archippus',
+    authorship: '(Cramer, 1775)',
+    commonNames: ['Viceroy'],
+    score: 0.14,
+    gbifKey: 5132398,
+    genus: 'Limenitis',
+    genusKey: 5131972,
+    ...MONARCH_FAMILY,
+    ...INSECT,
+    radiusCounts: [0, 6, 45],
+    monthCounts: BUTTERFLY_SEASON,
+  },
+  {
+    scientificName: 'Speyeria cybele',
+    authorship: '(Fabricius, 1775)',
+    commonNames: ['Great spangled fritillary'],
+    score: 0.05,
+    gbifKey: 1905172,
+    genus: 'Speyeria',
+    genusKey: 1905150,
+    ...MONARCH_FAMILY,
+    ...INSECT,
+    radiusCounts: [2, 25, 180],
+    monthCounts: BUTTERFLY_SEASON,
+  },
+];
+
+export const ALL_FIXTURE_SPECIES = [
+  ...FIXTURES.high,
+  ...FIXTURES.medium,
+  ...FIXTURES.low,
+  ...INSECT_FIXTURES,
+];
 
 export function findFixture(scientificName: string): FixtureSpecies | undefined {
   return ALL_FIXTURE_SPECIES.find((s) => s.scientificName === scientificName);
@@ -187,9 +244,9 @@ export function fixtureTaxon(s: FixtureSpecies): ResolvedTaxon {
     gbifKey: s.gbifKey,
     scientificName: `${s.scientificName} ${s.authorship}`,
     canonicalName: s.scientificName,
-    kingdom: 'Plantae',
-    phylum: 'Tracheophyta',
-    className: 'Magnoliopsida',
+    kingdom: s.kingdom ?? 'Plantae',
+    phylum: s.phylum ?? 'Tracheophyta',
+    className: s.className ?? 'Magnoliopsida',
     order: s.order,
     family: s.family,
     genus: s.genus,

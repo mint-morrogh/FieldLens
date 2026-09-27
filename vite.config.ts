@@ -23,7 +23,14 @@ export default defineConfig(({ mode }) => {
   // Expose server-side variables (PLANTNET_API_KEY, USE_MOCK_API…) to the local API
   // middleware only. Nothing without a VITE_ prefix is ever bundled into the client.
   const env = loadEnv(mode, process.cwd(), '');
-  for (const key of ['PLANTNET_API_KEY', 'PLANTNET_PROJECT', 'USE_MOCK_API', 'APP_NAME']) {
+  for (const key of [
+    'PLANTNET_API_KEY',
+    'PLANTNET_PROJECT',
+    'USE_MOCK_API',
+    'APP_NAME',
+    'HF_TOKEN',
+    'BIOCLIP_SPACE_URL',
+  ]) {
     if (env[key] !== undefined && process.env[key] === undefined) process.env[key] = env[key];
   }
 

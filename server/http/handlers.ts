@@ -63,7 +63,7 @@ export async function handleIdentify(
         },
       );
     }
-    if (!env.useMockApi && !env.plantnetApiKey) {
+    if (!env.useMockApi && !env.plantnetApiKey && !env.hfToken) {
       throw new ApiError(
         'not_configured',
         'Plant identification isn’t configured on this server yet. The site owner needs to add a Pl@ntNet API key.',

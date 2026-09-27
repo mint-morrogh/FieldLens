@@ -148,6 +148,9 @@ export async function runIdentification(
   // 1. Category-aware provider selection.
   const provider = providers.identification.find((p) => p.supports(input.category));
   if (!provider) {
+    if (providers.identification.length === 0) {
+      throw new ApiError('not_configured', 'Identification isn’t configured on this server yet.');
+    }
     throw new ApiError(
       'unsupported_category',
       `${category.label} identification is coming soon. Plants are supported today.`,
@@ -204,7 +207,13 @@ export async function runIdentification(
       confidenceBand: 'none',
       candidates: [],
       evidence: { supports: [], uncertainties: [] },
-      guidance: [{ message: category.generalAdvice }],
+      guidance: identification.categoryCheck
+        ? [
+            {
+              message: `This photo doesn't look like ${category.pluralNoun === 'fish' ? 'a fish' : `one of the ${category.pluralNoun}`} we can identify.`,
+            },
+          ]
+        : [{ message: category.generalAdvice }],
       attribution,
       sourceStatus: {
         identification: 'ok',
@@ -213,6 +222,8 @@ export async function runIdentification(
         community: 'skipped',
       },
       safetyNotice: category.safetyNotice,
+      experimental: identification.experimental || undefined,
+      categoryCheck: identification.categoryCheck,
       mock: providers.mock || undefined,
     };
   }
@@ -385,6 +396,20 @@ export async function runIdentification(
   const community: CommunityObservationSummary | undefined = communityResult.ok
     ? communityResult.value
     : undefined;
+  // Open-ended models (BioCLIP) sometimes carry obscure common names ("Wanderer" for the
+  // monarch); prefer iNaturalist's preferred name for the top candidate when we have it.
+  if (identification.experimental && community?.taxonCommonName && ranked[0]) {
+    const preferred = community.taxonCommonName;
+    ranked[0] = { ...ranked[0], commonName: preferred };
+    if (speciesResult.info) {
+      speciesResult.info.commonNames = [
+        preferred,
+        ...speciesResult.info.commonNames.filter(
+          (n) => n.toLowerCase() !== preferred.toLowerCase(),
+        ),
+      ];
+    }
+  }
   if (!communityResult.ok) logger.warn('identify.community_unavailable');
 
   if (resolved.some(Boolean) || occurrenceStatus === 'ok') attribution.push(GBIF_ATTRIBUTION);
@@ -445,6 +470,8 @@ export async function runIdentification(
       community: communityResult.ok ? 'ok' : 'unavailable',
     },
     safetyNotice: category.safetyNotice,
+    experimental: identification.experimental || undefined,
+    categoryCheck: identification.categoryCheck,
     mock: providers.mock || undefined,
   };
 }

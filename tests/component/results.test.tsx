@@ -137,6 +137,36 @@ it('shows no demo banner for real (non-mock) results', async () => {
   expect(screen.queryByTestId('demo-banner')).not.toBeInTheDocument();
 });
 
+describe('experimental and off-target results', () => {
+  it('labels experimental results', async () => {
+    const result = { ...(await mockResult('high')), experimental: true };
+    render(<ResultView result={result} />);
+    expect(screen.getByTestId('experimental-badge')).toHaveTextContent('Experimental');
+  });
+  it('explains an off-target photo and offers the suggested category', async () => {
+    const base = await mockResult('zero');
+    const result = {
+      ...base,
+      category: 'insect' as const,
+      experimental: true,
+      categoryCheck: {
+        matchesCategory: false,
+        likelihood: 0.02,
+        suggestedCategory: 'plant' as const,
+        suggestedGroup: 'Plantae',
+      },
+    };
+    const onSwitchCategory = vi.fn();
+    render(<ResultView result={result} onSwitchCategory={onSwitchCategory} />);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'This doesn’t look like an insect',
+    );
+    expect(screen.getByTestId('result-headline')).toHaveTextContent('It looks more like a plant');
+    await userEvent.click(screen.getByRole('button', { name: 'Identify as plant' }));
+    expect(onSwitchCategory).toHaveBeenCalledWith('plant');
+  });
+});
+
 describe('INaturalistCard', () => {
   it('shows nearby counts, links and the independence disclaimer', async () => {
     const result = await mockResult('high');
