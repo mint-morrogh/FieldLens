@@ -230,10 +230,25 @@ describe('upload validation', () => {
 
 describe('identification pipeline', () => {
   it('routes by category and rejects categories without a provider', async () => {
+    const plantOnly = {
+      ...createMockProviders('high'),
+      identification: [
+        {
+          name: 'plants only',
+          acceptedMimeTypes: ['image/jpeg'],
+          maxImages: 5,
+          supports: (t: string) => t === 'plant',
+          identify: async () => ({ provider: 'x', candidates: [], attribution: [] }),
+        },
+      ],
+    };
     await expect(
-      runIdentification(input({ category: 'mammal' }), { providers: createMockProviders('high') }),
-    ).rejects.toMatchObject({ code: 'unsupported_category' });
+      runIdentification(input({ category: 'mammal' }), { providers: plantOnly }),
+    ).rejects.toMatchObject({
+      code: 'unsupported_category',
+    });
   });
+
   it('returns a ranked, enriched result', async () => {
     const result = await runIdentification(
       input({ location: { latitude: 46.24, longitude: -63.13 } }),

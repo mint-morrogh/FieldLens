@@ -11,23 +11,38 @@ import {
 } from 'react';
 import { DEFAULT_CATEGORY } from '../../../shared/categories';
 import { UPLOAD } from '../../../shared/config';
+import { toApproxLocation } from '../../../shared/geo';
 import type {
+  ApproxLocation,
   FeatureId,
   IdentifyResponse,
   IdentifyStage,
-  OrganismCategory,
+  IdentifyTarget,
   StageEvent,
 } from '../../../shared/types';
 import { ClientError, identify } from '../../lib/api';
 import { newId } from '../../lib/ids';
-import { cropAndEncode, makeThumbnail } from '../../lib/image';
+import { readPhotoMetadata } from '../../lib/exif';
+import { cropAndEncode, makeDisplayCopy, makeThumbnail } from '../../lib/image';
 import type { Box } from '../crop/cropMath';
 import { saveObservation, toRecord } from '../history/historyStore';
 import { useLocationState } from '../location/LocationContext';
 
-export type SessionImage = { id: string; blob: Blob; url: string; feature: FeatureId };
+export type SessionImage = {
+  id: string;
+  /** Cropped, resized JPEG that is uploaded. */
+  blob: Blob;
+  url: string;
+  feature: FeatureId;
+  /** The full original photo, kept in memory for the full-screen viewer (never uploaded). */
+  original?: { blob: Blob; url: string };
+};
 
 export type Step = 'idle' | 'crop' | 'submitting' | 'result' | 'error';
+
+export type PhotoSource = 'camera' | 'library';
+/** here = the device's current location; photo = the photo's own GPS; none = don't use location. */
+export type LocationChoice = 'here' | 'photo' | 'none';
 
 export type Progress = {
   phase: 'preparing' | 'uploading' | 'identifying';
@@ -41,13 +56,19 @@ const EMPTY_PROGRESS: Progress = { phase: 'preparing', fraction: 0, stages: {} }
 
 export type SessionState = {
   step: Step;
-  category: OrganismCategory;
+  category: IdentifyTarget;
   observationId: string;
   capturedAt: Date;
   images: SessionImage[];
   /** Full original photo awaiting a crop; stays on-device. */
   pending?: { blob: Blob; url: string };
   pendingFeature: FeatureId;
+  /** Where the location for this identification comes from (asked for library photos). */
+  locationChoice: LocationChoice;
+  /** Whether the first photo came from the camera or the library (the question is only asked for library photos). */
+  photoSource?: PhotoSource;
+  /** Read on-device from the first library photo's EXIF; position already rounded to ~1 km. */
+  photoMeta?: { location?: ApproxLocation; takenAt?: Date };
   progress: Progress;
   result?: IdentifyResponse;
   previousResult?: IdentifyResponse;
@@ -55,10 +76,12 @@ export type SessionState = {
 };
 
 type Action =
-  | { type: 'reset'; category: OrganismCategory }
-  | { type: 'setCategory'; category: OrganismCategory }
+  | { type: 'reset'; category: IdentifyTarget }
+  | { type: 'setCategory'; category: IdentifyTarget }
   | { type: 'setPendingFeature'; feature: FeatureId }
-  | { type: 'photo'; blob: Blob; url: string }
+  | { type: 'photo'; blob: Blob; url: string; source: PhotoSource }
+  | { type: 'photoMeta'; meta: SessionState['photoMeta']; choice: LocationChoice }
+  | { type: 'setLocationChoice'; choice: LocationChoice }
   | { type: 'cancelCapture' }
   | { type: 'addImage'; image: SessionImage }
   | { type: 'removeImage'; id: string }
@@ -67,7 +90,7 @@ type Action =
   | { type: 'result'; result: IdentifyResponse }
   | { type: 'error'; error: ClientError };
 
-function freshState(category: OrganismCategory): SessionState {
+function freshState(category: IdentifyTarget): SessionState {
   return {
     step: 'idle',
     category,
@@ -75,6 +98,7 @@ function freshState(category: OrganismCategory): SessionState {
     capturedAt: new Date(),
     images: [],
     pendingFeature: 'auto',
+    locationChoice: 'here',
     progress: EMPTY_PROGRESS,
   };
 }
@@ -87,13 +111,28 @@ export function sessionReducer(state: SessionState, action: Action): SessionStat
       return { ...state, category: action.category };
     case 'setPendingFeature':
       return { ...state, pendingFeature: action.feature };
-    case 'photo':
+    case 'photo': {
+      const first = state.images.length === 0;
       return {
         ...state,
         step: 'crop',
         pending: { blob: action.blob, url: action.url },
-        capturedAt: state.images.length === 0 ? new Date() : state.capturedAt,
+        capturedAt: first ? new Date() : state.capturedAt,
+        // The first photo decides the session's location source; follow-ups keep it.
+        photoSource: first ? action.source : state.photoSource,
+        locationChoice: first && action.source === 'camera' ? 'here' : state.locationChoice,
+        photoMeta: first ? undefined : state.photoMeta,
       };
+    }
+    case 'photoMeta':
+      return {
+        ...state,
+        photoMeta: action.meta,
+        locationChoice: action.choice,
+        capturedAt: action.meta?.takenAt ?? state.capturedAt,
+      };
+    case 'setLocationChoice':
+      return { ...state, locationChoice: action.choice };
     case 'cancelCapture':
       return {
         ...state,
@@ -139,19 +178,26 @@ export function sessionReducer(state: SessionState, action: Action): SessionStat
 
 type SessionApi = {
   state: SessionState;
-  setCategory: (category: OrganismCategory) => void;
+  setCategory: (category: IdentifyTarget) => void;
   /** Start a fresh session with a newly taken or chosen photo. */
-  startWithPhoto: (blob: Blob) => void;
+  startWithPhoto: (blob: Blob, source?: PhotoSource) => void;
   /** Remember which feature (e.g. flower) the next follow-up photo shows. */
   startFollowUp: (feature: FeatureId) => void;
-  photoSelected: (blob: Blob) => void;
+  photoSelected: (blob: Blob, source?: PhotoSource) => void;
+  setLocationChoice: (choice: LocationChoice) => void;
   cancelCapture: () => void;
   confirmCrop: (box: Box, feature: FeatureId) => Promise<void>;
   removeImage: (id: string) => void;
-  submit: (images?: SessionImage[], options?: { category?: OrganismCategory }) => Promise<void>;
+  submit: (
+    images?: SessionImage[],
+    options?: { category?: IdentifyTarget; locationChoice?: LocationChoice },
+  ) => Promise<void>;
   reset: () => void;
   canAddMore: boolean;
 };
+
+/** A library photo taken this recently is assumed to be from here. */
+const RECENT_PHOTO_MS = 3 * 60 * 60 * 1000;
 
 const RESULT_REVEAL_DELAY_MS = import.meta.env.MODE === 'test' ? 0 : 450;
 
@@ -170,32 +216,62 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const urls = useRef(new Set<string>());
   useEffect(() => {
     const live = new Set([
-      ...state.images.map((i) => i.url),
+      ...state.images.flatMap((i) => (i.original ? [i.url, i.original.url] : [i.url])),
       ...(state.pending ? [state.pending.url] : []),
     ]);
     for (const url of urls.current) if (!live.has(url)) URL.revokeObjectURL(url);
     urls.current = live;
   }, [state.images, state.pending]);
 
+  /**
+   * For library photos: read EXIF on-device, then pick a sensible default for
+   * "Where was this photo taken?" — the photo's own location if it has one,
+   * "here" if it was taken in the last few hours, otherwise "somewhere else".
+   */
+  const inspectLibraryPhoto = useCallback(async (blob: Blob) => {
+    const meta = await readPhotoMetadata(blob);
+    const location =
+      meta.latitude !== undefined && meta.longitude !== undefined
+        ? toApproxLocation(meta.latitude, meta.longitude)
+        : undefined;
+    const when = meta.takenAt?.getTime() ?? (blob instanceof File ? blob.lastModified : undefined);
+    const recent = when !== undefined && Date.now() - when < RECENT_PHOTO_MS;
+    const choice: LocationChoice = location ? 'photo' : recent ? 'here' : 'none';
+    dispatch({ type: 'photoMeta', meta: { location, takenAt: meta.takenAt }, choice });
+  }, []);
+
   /** `images` overrides state when called right after a dispatch that hasn't rendered yet. */
   const submit = useCallback(
-    async (images?: SessionImage[], options?: { category?: OrganismCategory }) => {
+    async (
+      images?: SessionImage[],
+      options?: { category?: IdentifyTarget; locationChoice?: LocationChoice },
+    ) => {
       const s = {
         ...stateRef.current,
         images: images ?? stateRef.current.images,
         category: options?.category ?? stateRef.current.category,
+        locationChoice: options?.locationChoice ?? stateRef.current.locationChoice,
       };
       if (options?.category) dispatch({ type: 'setCategory', category: options.category });
+      if (options?.locationChoice) {
+        dispatch({ type: 'setLocationChoice', choice: options.locationChoice });
+      }
       if (s.images.length === 0) return;
       dispatch({ type: 'submitting', phase: 'uploading', fraction: 0, restart: true });
       try {
-        const location = await currentLocation();
+        const location =
+          s.locationChoice === 'photo'
+            ? s.photoMeta?.location
+            : s.locationChoice === 'none'
+              ? undefined
+              : await currentLocation();
         const result = await identify(
           {
             observationId: s.observationId,
             category: s.category,
             images: s.images.map((i) => ({ blob: i.blob, feature: i.feature })),
             location,
+            locationSource: s.locationChoice === 'photo' && location ? 'photo' : undefined,
             capturedAt: s.capturedAt,
           },
           {
@@ -213,10 +289,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'result', result });
         // Save locally (thumbnail + result, never coordinates). Failure here must not affect the result.
         if (result.candidates.length > 0) {
-          void makeThumbnail(s.images[0].blob)
-            .catch(() => undefined)
-            .then((thumb) =>
-              saveObservation(toRecord(s.observationId, result, thumb, s.capturedAt)),
+          const first = s.images[0];
+          void Promise.all([
+            makeThumbnail(first.blob).catch(() => undefined),
+            // A high-quality copy for the History viewer (stays on this device).
+            makeDisplayCopy(first.original?.blob ?? first.blob).catch(() => undefined),
+          ])
+            .then(([thumb, photo]) =>
+              saveObservation(toRecord(s.observationId, result, thumb, s.capturedAt, photo)),
             )
             .catch(() => undefined);
         }
@@ -241,7 +321,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       let image: SessionImage;
       try {
         const { blob } = await cropAndEncode(pending.blob, box);
-        image = { id: newId(), blob, url: URL.createObjectURL(blob), feature };
+        // Keep the original (same object URL as the crop preview) for the full-screen viewer.
+        image = { id: newId(), blob, url: URL.createObjectURL(blob), feature, original: pending };
       } catch {
         dispatch({
           type: 'error',
@@ -262,12 +343,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     () => ({
       state,
       setCategory: (category) => dispatch({ type: 'setCategory', category }),
-      startWithPhoto: (blob) => {
+      startWithPhoto: (blob, source = 'camera') => {
         dispatch({ type: 'reset', category: stateRef.current.category });
-        dispatch({ type: 'photo', blob, url: URL.createObjectURL(blob) });
+        dispatch({ type: 'photo', blob, url: URL.createObjectURL(blob), source });
+        if (source === 'library') void inspectLibraryPhoto(blob);
       },
       startFollowUp: (feature) => dispatch({ type: 'setPendingFeature', feature }),
-      photoSelected: (blob) => dispatch({ type: 'photo', blob, url: URL.createObjectURL(blob) }),
+      photoSelected: (blob, source = 'camera') => {
+        const first = stateRef.current.images.length === 0;
+        dispatch({ type: 'photo', blob, url: URL.createObjectURL(blob), source });
+        if (first && source === 'library') void inspectLibraryPhoto(blob);
+      },
+      setLocationChoice: (choice) => dispatch({ type: 'setLocationChoice', choice }),
       cancelCapture: () => dispatch({ type: 'cancelCapture' }),
       confirmCrop,
       removeImage: (id) => dispatch({ type: 'removeImage', id }),

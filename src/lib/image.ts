@@ -62,3 +62,15 @@ export async function makeThumbnail(source: Blob): Promise<Blob> {
 export const ACCEPTED_INPUT = /^image\//;
 /** Reject absurd inputs before trying to decode them (originals stay on-device). */
 export const MAX_SOURCE_BYTES = 40 * 1024 * 1024;
+
+/** Longest edge of the copy kept in local History for the full-screen viewer. */
+export const DISPLAY_COPY_EDGE = 2048;
+
+export async function makeDisplayCopy(source: Blob): Promise<Blob> {
+  const { blob } = await cropAndEncode(
+    source,
+    { x: 0, y: 0, w: 1, h: 1 },
+    { maxEdge: DISPLAY_COPY_EDGE, quality: 0.86 },
+  );
+  return blob;
+}

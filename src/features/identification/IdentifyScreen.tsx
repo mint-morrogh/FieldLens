@@ -58,7 +58,7 @@ export function errorCopy(error: ClientError): ErrorCopy {
 function ErrorState({ error }: { error: ClientError }) {
   const session = useSession();
   const online = useOnline();
-  const retake = usePhotoPicker(session.startWithPhoto, { capture: true });
+  const retake = usePhotoPicker((f) => session.startWithPhoto(f, 'camera'), { capture: true });
   const copy = errorCopy(error);
   const last = session.state.images.at(-1);
 
@@ -116,9 +116,9 @@ export function IdentifyScreen() {
   const session = useSession();
   const { state } = session;
   // Follow-up photos: the native camera by default, the library as an alternative.
-  const camera = usePhotoPicker(session.photoSelected, { capture: true });
-  const library = usePhotoPicker(session.photoSelected);
-  const newCamera = usePhotoPicker(session.startWithPhoto, { capture: true });
+  const camera = usePhotoPicker((f) => session.photoSelected(f, 'camera'), { capture: true });
+  const library = usePhotoPicker((f) => session.photoSelected(f, 'library'));
+  const newCamera = usePhotoPicker((f) => session.startWithPhoto(f, 'camera'), { capture: true });
 
   useEffect(() => {
     if (state.step === 'idle') navigate({ name: 'home' }, { replace: true });
@@ -137,6 +137,15 @@ export function IdentifyScreen() {
           if (!state.result && !state.error) navigate({ name: 'home' });
         }}
         onConfirm={(box, feature) => void session.confirmCrop(box, feature)}
+        locationQuestion={
+          state.photoSource === 'library' && state.images.length === 0
+            ? {
+                choice: state.locationChoice,
+                hasPhotoLocation: !!state.photoMeta?.location,
+                onChange: session.setLocationChoice,
+              }
+            : undefined
+        }
       />
     );
   }
@@ -155,14 +164,33 @@ export function IdentifyScreen() {
       result.imagesSubmitted > (state.previousResult?.imagesSubmitted ?? 0);
     return (
       <>
-        {!result.location.used && result.candidates.length > 0 && (
-          <div className="mb-4">
-            <LocationFixCard onRetry={() => void session.submit()} />
-          </div>
-        )}
+        {!result.location.used &&
+          result.candidates.length > 0 &&
+          (state.locationChoice === 'none' ? (
+            <p
+              className="mb-4 rounded-2xl bg-paper-deep px-4 py-3 text-[0.95rem] text-ink-soft"
+              data-testid="location-skipped"
+            >
+              Location wasn’t used because you said this photo was taken somewhere else.{' '}
+              <button
+                type="button"
+                className="font-semibold text-moss underline underline-offset-4"
+                onClick={() => void session.submit(undefined, { locationChoice: 'here' })}
+              >
+                It was taken near here
+              </button>
+            </p>
+          ) : (
+            <div className="mb-4">
+              <LocationFixCard
+                onRetry={() => void session.submit(undefined, { locationChoice: 'here' })}
+              />
+            </div>
+          ))}
         <ResultView
           result={result}
           photoUrl={state.images[0]?.url}
+          userPhotos={state.images.map((i) => i.original?.url ?? i.url)}
           mixedOrganismWarning={mixed}
           onSwitchCategory={(category) => void session.submit(undefined, { category })}
           improve={{

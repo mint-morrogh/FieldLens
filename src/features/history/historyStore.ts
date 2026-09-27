@@ -17,6 +17,8 @@ export type ObservationRecord = {
   createdAt: string;
   category: OrganismCategory;
   thumbnail?: Blob;
+  /** Higher-quality copy (≤2048 px, EXIF-free) for the full-screen viewer. */
+  photo?: Blob;
   top?: {
     scientificName: string;
     commonName?: string;
@@ -58,7 +60,14 @@ function db() {
 }
 
 export function stripLocation(result: IdentifyResponse): IdentifyResponse {
-  return { ...result, location: { used: result.location.used, label: result.location.label } };
+  return {
+    ...result,
+    location: {
+      used: result.location.used,
+      label: result.location.label,
+      source: result.location.source,
+    },
+  };
 }
 
 export function toRecord(
@@ -66,6 +75,7 @@ export function toRecord(
   result: IdentifyResponse,
   thumbnail: Blob | undefined,
   createdAt = new Date(),
+  photo?: Blob,
 ): ObservationRecord {
   const top = result.candidates[0];
   return {
@@ -74,6 +84,7 @@ export function toRecord(
     createdAt: createdAt.toISOString(),
     category: result.category,
     thumbnail,
+    photo,
     top: top
       ? {
           scientificName: top.scientificName,

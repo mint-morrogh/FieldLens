@@ -25,8 +25,13 @@ export function PrivacyScreen() {
           </li>
           <li>{BRAND.name} does not intentionally store your location or photos on its servers.</li>
           <li>
-            Your history (a small thumbnail, the result, and a coarse ~10 km area label) stays in
-            this browser’s local storage.
+            For photos from your library, FieldLens can read the location saved in the photo — on
+            your device, only if you choose “Where the photo was taken” — and rounds it to about 1
+            km before using it.
+          </li>
+          <li>
+            Your history (a thumbnail, a larger copy of your photo, the result, and a coarse ~10 km
+            area label) stays in this browser’s local storage.
           </li>
           <li>
             External providers have their own privacy policies:{' '}

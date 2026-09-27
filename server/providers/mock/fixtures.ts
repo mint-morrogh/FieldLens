@@ -16,6 +16,8 @@ export const MOCK_SCENARIOS = [
   'network',
   'timeout',
   'wrong-category',
+  'auto-bug',
+  'auto-animal',
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -327,6 +329,55 @@ export const BIRD_FIXTURES: FixtureSpecies[] = [
   },
 ];
 
+const FROG = { kingdom: 'Animalia', phylum: 'Chordata', className: 'Amphibia', order: 'Anura' };
+const FROG_SEASON = [0, 0, 2, 40, 70, 60, 45, 40, 30, 12, 1, 0];
+
+/** Returned for animal ("Animal" group) identifications in mock mode. */
+export const AMPHIBIAN_FIXTURES: FixtureSpecies[] = [
+  {
+    scientificName: 'Lithobates sylvaticus',
+    authorship: '(LeConte, 1825)',
+    commonNames: ['Wood frog'],
+    score: 0.71,
+    gbifKey: 2427072,
+    genus: 'Lithobates',
+    genusKey: 2427046,
+    family: 'Ranidae',
+    familyKey: 6746,
+    ...FROG,
+    radiusCounts: [4, 60, 420],
+    monthCounts: FROG_SEASON,
+  },
+  {
+    scientificName: 'Lithobates clamitans',
+    authorship: '(Latreille, 1801)',
+    commonNames: ['Green frog'],
+    score: 0.12,
+    gbifKey: 2427172,
+    genus: 'Lithobates',
+    genusKey: 2427046,
+    family: 'Ranidae',
+    familyKey: 6746,
+    ...FROG,
+    radiusCounts: [6, 80, 510],
+    monthCounts: FROG_SEASON,
+  },
+  {
+    scientificName: 'Anaxyrus americanus',
+    authorship: '(Holbrook, 1836)',
+    commonNames: ['American toad'],
+    score: 0.05,
+    gbifKey: 2422872,
+    genus: 'Anaxyrus',
+    genusKey: 2422857,
+    family: 'Bufonidae',
+    familyKey: 6727,
+    ...FROG,
+    radiusCounts: [3, 40, 300],
+    monthCounts: FROG_SEASON,
+  },
+];
+
 export const ALL_FIXTURE_SPECIES = [
   ...FIXTURES.high,
   ...FIXTURES.medium,
@@ -334,6 +385,7 @@ export const ALL_FIXTURE_SPECIES = [
   ...INSECT_FIXTURES,
   ...FUNGUS_FIXTURES,
   ...BIRD_FIXTURES,
+  ...AMPHIBIAN_FIXTURES,
 ];
 
 export function findFixture(scientificName: string): FixtureSpecies | undefined {

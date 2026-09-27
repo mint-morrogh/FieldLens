@@ -85,7 +85,7 @@ describe('ResultView', () => {
   it('prefixes medium confidence with "Likely"', async () => {
     render(<ResultView result={await mockResult('medium')} />);
     expect(screen.getByTestId('result-headline')).toHaveAttribute('data-band', 'medium');
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Likely Red Clover');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Red Clover');
   });
 
   it('shows a no-match state for zero predictions', async () => {

@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { DEFAULT_CATEGORY, isValidFeature } from '../../shared/categories.js';
+import { DEFAULT_CATEGORY, isIdentifyTarget, isValidFeature } from '../../shared/categories.js';
 import { UPLOAD } from '../../shared/config.js';
 import { isValidLatLng, toApproxLocation } from '../../shared/geo.js';
-import type { OrganismCategory } from '../../shared/types.js';
+import type { IdentifyTarget } from '../../shared/types.js';
 import { ApiError } from '../lib/errors.js';
 import type { IdentificationInput, InputImage } from '../providers/types.js';
 
@@ -90,18 +90,8 @@ export function readImageDimensions(
 
 const fieldsSchema = z.object({
   category: z
-    .enum([
-      'plant',
-      'bird',
-      'mammal',
-      'reptile',
-      'amphibian',
-      'fish',
-      'insect',
-      'arachnid',
-      'fungus',
-      'other',
-    ])
+    .string()
+    .refine((v) => isIdentifyTarget(v))
     .default(DEFAULT_CATEGORY),
   observationId: z
     .string()
@@ -110,6 +100,7 @@ const fieldsSchema = z.object({
   latitude: z.coerce.number().optional(),
   longitude: z.coerce.number().optional(),
   capturedAt: z.string().max(40).optional(),
+  locationSource: z.enum(['device', 'photo']).optional(),
   mockScenario: z
     .string()
     .regex(/^[a-z0-9-]{1,32}$/)
@@ -147,10 +138,11 @@ export async function parseIdentifyForm(
     longitude: stringField(form, 'longitude'),
     capturedAt: stringField(form, 'capturedAt'),
     mockScenario: stringField(form, 'mockScenario'),
+    locationSource: stringField(form, 'locationSource'),
   });
   if (!parsed.success) throw new ApiError('invalid_request', 'Some request fields were invalid.');
   const fields = parsed.data;
-  const category = fields.category as OrganismCategory;
+  const category = fields.category as IdentifyTarget;
 
   const files = form.getAll('images').filter((v): v is File => typeof v !== 'string');
   const features = form.getAll('features').map((v) => (typeof v === 'string' ? v : 'auto'));
@@ -221,6 +213,7 @@ export async function parseIdentifyForm(
     category,
     images,
     location,
+    locationSource: location ? (fields.locationSource ?? 'device') : undefined,
     capturedAt,
     mockScenario: fields.mockScenario,
   };

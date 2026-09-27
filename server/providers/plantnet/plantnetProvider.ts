@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { CANDIDATES, TIMEOUTS_MS } from '../../../shared/config.js';
-import type { ExternalLink, LicensedImage, OrganismCategory } from '../../../shared/types.js';
+import type {
+  ExternalLink,
+  IdentifyTarget,
+  LicensedImage,
+  OrganismCategory,
+} from '../../../shared/types.js';
 import { ApiError, UpstreamError } from '../../lib/errors.js';
 import { USER_AGENT } from '../../lib/http.js';
 import { logger } from '../../lib/logger.js';
@@ -171,8 +176,8 @@ export class PlantNetIdentificationProvider implements IdentificationProvider {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  supports(category: OrganismCategory): boolean {
-    return category === 'plant';
+  supports(target: IdentifyTarget): boolean {
+    return target === 'plant';
   }
 
   async identify(input: IdentificationInput): Promise<IdentificationResult> {
@@ -241,7 +246,7 @@ export class PlantNetIdentificationProvider implements IdentificationProvider {
 
     return {
       provider: SERVICE,
-      candidates: normalizePlantNetResponse(raw, input.category),
+      candidates: normalizePlantNetResponse(raw, 'plant'),
       attribution: [PLANTNET_ATTRIBUTION],
       raw,
     };

@@ -91,3 +91,11 @@ Plants and fungi get sourced edibility/toxicity notes because people will ask ab
 ## Fungi and birds on BioCLIP 2
 
 Mushrooms (scope: kingdom Fungi) and birds (class Aves) use the same BioCLIP service as insects, marked experimental and capped at 90% confidence. Real-photo checks on 2026-09-27: fly agaric and black-capped chickadee/blue jay identified correctly; a chanterelle was right at genus level but only 19% at species level, which is why mushroom food uses stay hidden unless confidence is high and look-alike warnings are always shown.
+
+## Broad picker groups and "Not sure"
+
+People rarely know whether a newt is a reptile or an amphibian, or that a tick isn't an insect, so the picker offers Plant, Fungus, Bug, Bird, Animal and Not sure. Groups are resolved on the server: BioCLIP searches the union of the members' taxon scopes and each candidate gets its own specific category, which the result shows ("Amphibian"). "Not sure" first detects the category, then routes (plants to Pl@ntNet). Detection uses a score-weighted vote of the top 20 species rather than summing probabilities per class: on 11 real test photos the vote was right 11/11, while class sums misread a camouflaged wood frog as a fungus because very large classes accumulate many small probabilities. The same vote is used as a second opinion before declaring a photo off-target.
+
+## Photo location for library uploads
+
+A photo picked from the library may have been taken far away, so the crop screen asks where it was taken. The default is the photo's own GPS when present (read from EXIF on the device, rounded to ~1 km, never uploaded raw), "near here" for photos taken in the last three hours, otherwise "somewhere else". The photo's EXIF capture date also drives the seasonal check.

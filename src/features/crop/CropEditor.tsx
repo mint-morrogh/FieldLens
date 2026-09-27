@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { AUTO_FEATURE, getCategory } from '../../../shared/categories';
-import type { FeatureId, OrganismCategory } from '../../../shared/types';
+import { AUTO_FEATURE, getTarget } from '../../../shared/categories';
+import type { FeatureId, IdentifyTarget } from '../../../shared/types';
 import { Icon } from '../../components/Icon';
 import { Button, Chip } from '../../components/ui';
 import {
@@ -33,13 +33,20 @@ export function CropEditor({
   onCancel,
   onConfirm,
   confirmLabel = 'Identify selection',
+  locationQuestion,
 }: {
   imageUrl: string;
-  category: OrganismCategory;
+  category: IdentifyTarget;
   initialFeature?: FeatureId;
   onCancel: () => void;
   onConfirm: (box: Box, feature: FeatureId) => void;
   confirmLabel?: string;
+  /** Asked for photos from the library: where was it taken? */
+  locationQuestion?: {
+    choice: 'here' | 'photo' | 'none';
+    hasPhotoLocation: boolean;
+    onChange: (choice: 'here' | 'photo' | 'none') => void;
+  };
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -48,7 +55,7 @@ export function CropEditor({
   const [box, setBox] = useState<Box>(DEFAULT_BOX);
   const [feature, setFeature] = useState<FeatureId>(initialFeature);
   const drag = useRef<Drag | null>(null);
-  const categoryDef = getCategory(category);
+  const categoryDef = getTarget(category);
 
   useLayoutEffect(() => {
     const el = containerRef.current;
@@ -207,6 +214,42 @@ export function CropEditor({
       </div>
 
       <div className="safe-bottom space-y-3 bg-[#11140f] px-4 pt-3">
+        {locationQuestion && (
+          <fieldset data-testid="photo-location-question">
+            <legend className="mb-2 text-sm font-semibold text-white/80">
+              Where was this photo taken?
+            </legend>
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [&>button]:shrink-0 [&>button:not([aria-pressed=true])]:border-white/20 [&>button:not([aria-pressed=true])]:bg-white/10 [&>button:not([aria-pressed=true])]:text-white">
+              <Chip
+                selected={locationQuestion.choice === 'here'}
+                onClick={() => locationQuestion.onChange('here')}
+              >
+                Near here
+              </Chip>
+              {locationQuestion.hasPhotoLocation && (
+                <Chip
+                  selected={locationQuestion.choice === 'photo'}
+                  onClick={() => locationQuestion.onChange('photo')}
+                >
+                  Where the photo was taken
+                </Chip>
+              )}
+              <Chip
+                selected={locationQuestion.choice === 'none'}
+                onClick={() => locationQuestion.onChange('none')}
+              >
+                Somewhere else
+              </Chip>
+            </div>
+            <p className="mt-1 text-xs text-white/60">
+              {locationQuestion.choice === 'photo'
+                ? 'Uses the location saved in the photo (rounded to about 1 km).'
+                : locationQuestion.choice === 'here'
+                  ? 'Uses your current approximate location.'
+                  : 'Location won’t be used for this identification.'}
+            </p>
+          </fieldset>
+        )}
         {features.length > 0 && (
           <fieldset>
             <legend className="mb-2 text-sm font-semibold text-white/80">

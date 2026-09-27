@@ -1,17 +1,21 @@
-import { getCategory } from '../../../shared/categories';
+import { useState } from 'react';
+import { getCategory, getTarget } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
 import { CANDIDATES } from '../../../shared/config';
 import type {
   FeatureId,
   GroupSummary,
   IdentifyResponse,
+  IdentifyTarget,
+  LicensedImage,
   OrganismCategory,
 } from '../../../shared/types';
 import { Icon } from '../../components/Icon';
 import { Button, Card, Notice, SectionTitle } from '../../components/ui';
 import { displayName } from '../../lib/format';
 import { ConfidenceMeter } from './ConfidenceMeter';
-import { CandidateThumb, ReferenceGallery, mergeImages } from './Gallery';
+import { CandidateThumb, Lightbox, ReferenceGallery, mergeImages } from './Gallery';
+import { PronounceButton } from './Pronounce';
 import { SafetySection } from './SafetySection';
 import {
   Alternatives,
@@ -20,6 +24,7 @@ import {
   NearbySpeciesSection,
   SourceAttribution,
   SpeciesFacts,
+  WhereRecorded,
   WhyThisMatch,
 } from './sections';
 
@@ -46,8 +51,8 @@ export function groupPhrase(group: GroupSummary): { short: string; full: string 
 }
 
 /** "an insect", "a spider", "a plant" — for sentences about categories. */
-export function categoryPhrase(id: OrganismCategory): string {
-  const label = getCategory(id).label.toLowerCase();
+export function categoryPhrase(id: IdentifyTarget): string {
+  const label = (id === 'arachnid' ? 'spider' : getTarget(id).label).toLowerCase();
   return `${/^[aeiou]/.test(label) ? 'an' : 'a'} ${label}`;
 }
 
@@ -55,13 +60,19 @@ function Headline({
   result,
   photoUrl,
   thumbnailUrl,
+  userPhotos,
 }: {
   result: IdentifyResponse;
   photoUrl?: string;
   thumbnailUrl?: string;
+  userPhotos?: string[];
 }) {
   const top = result.candidates[0];
   const image = photoUrl ?? thumbnailUrl;
+  const [viewing, setViewing] = useState(false);
+  const ownPhotos: LicensedImage[] = (userPhotos?.length ? userPhotos : image ? [image] : []).map(
+    (url) => ({ url, source: 'Your photo' }),
+  );
   const band = result.confidenceBand;
   const group = result.groupSummary;
   // Other common names (e.g. "swamp maple" for red maple), shown under the scientific name.
@@ -81,13 +92,45 @@ function Headline({
   return (
     <Card className="overflow-hidden !p-0" as="div">
       {image && (
-        <img
-          src={image}
-          alt="The photo you submitted"
-          className="max-h-[46vh] w-full bg-paper-deep object-cover"
+        <button
+          type="button"
+          onClick={() => setViewing(true)}
+          className="relative block w-full"
+          aria-label="View your photo full screen"
+          data-testid="own-photo"
+        >
+          <img
+            src={image}
+            alt="The photo you submitted"
+            className="max-h-[46vh] w-full bg-paper-deep object-cover"
+          />
+          <span className="absolute bottom-2 right-2 rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-white">
+            Tap to enlarge{ownPhotos.length > 1 ? ` · ${ownPhotos.length} photos` : ''}
+          </span>
+        </button>
+      )}
+      {viewing && ownPhotos.length > 0 && (
+        <Lightbox
+          images={ownPhotos}
+          index={0}
+          title="Your photo"
+          onClose={() => setViewing(false)}
         />
       )}
       <div className="p-5" data-testid="result-headline" data-band={band}>
+        {result.categoryDetection && result.candidates.length > 0 && (
+          <p
+            className="mb-2 mr-2 inline-flex items-center gap-1.5 rounded-full bg-moss-soft px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-moss-dark"
+            data-testid="detected-category"
+          >
+            {getCategory(result.categoryDetection.detected).label}
+            {result.categoryDetection.requested === 'auto'
+              ? (result.categoryDetection.likelihood ?? 1) < 0.5
+                ? ' · detected (unsure)'
+                : ' · detected'
+              : ''}
+          </p>
+        )}
         {result.experimental && (
           <p
             className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-amber-soft px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-amber"
@@ -99,11 +142,13 @@ function Headline({
         {result.categoryCheck && !result.categoryCheck.matchesCategory ? (
           <>
             <h1 className="text-2xl font-bold">
-              This doesn’t look like {categoryPhrase(result.category)}
+              This doesn’t look like{' '}
+              {categoryPhrase(result.categoryDetection?.requested ?? result.category)}
             </h1>
             <p className="mt-2 text-ink-soft">
               The image model gave it a {formatPercent(result.categoryCheck.likelihood)} chance of
-              being {categoryPhrase(result.category)}, so we didn’t guess a species.
+              being {categoryPhrase(result.categoryDetection?.requested ?? result.category)}, so we
+              didn’t guess a species.
               {result.categoryCheck.suggestedCategory &&
                 ` It looks more like ${categoryPhrase(result.categoryCheck.suggestedCategory)}.`}
             </p>
@@ -169,15 +214,15 @@ function Headline({
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-moss">
               {band === 'high' ? 'Very likely match' : 'Likely match'}
             </p>
-            <h1 className="mt-1 font-serif text-3xl font-bold leading-tight">
-              {band === 'medium' && (
-                <span className="font-sans text-xl font-semibold text-ink-soft">Likely </span>
-              )}
+            {/* The eyebrow above already says "Likely match"; balanced wrapping keeps long
+                names like "Coastal Sweetpepperbush" from splitting awkwardly on phones. */}
+            <h1 className="mt-1 font-serif text-3xl font-bold leading-tight [overflow-wrap:anywhere] [text-wrap:balance]">
               {displayName(top)}
             </h1>
             {top.commonName && (
               <p className="sci mt-0.5 text-xl text-ink-soft">{top.scientificName}</p>
             )}
+            <PronounceButton commonName={top.commonName} scientificName={top.scientificName} />
             {otherNames.length > 0 && (
               <p className="mt-1 text-[0.95rem] text-ink-soft" data-testid="also-called">
                 Also called {otherNames.join(', ')}
@@ -208,7 +253,7 @@ function Headline({
         <p className="mt-3 flex items-center gap-1.5 text-sm text-ink-muted">
           <Icon name="pin" className="h-4 w-4" />
           {result.location.used
-            ? `Location used${result.location.label ? ` (~${result.location.label})` : ''}`
+            ? `${result.location.source === 'photo' ? 'Location from photo' : 'Location used'}${result.location.label ? ` (~${result.location.label})` : ''}`
             : 'Location not used'}
           {result.imagesSubmitted > 1 ? ` · ${result.imagesSubmitted} photos` : ''}
         </p>
@@ -320,6 +365,7 @@ export function ResultView({
   result,
   photoUrl,
   thumbnailUrl,
+  userPhotos,
   improve,
   mixedOrganismWarning,
   onSwitchCategory,
@@ -327,6 +373,8 @@ export function ResultView({
   result: IdentifyResponse;
   photoUrl?: string;
   thumbnailUrl?: string;
+  /** Full-resolution versions of the user's photos for the viewer. */
+  userPhotos?: string[];
   improve?: ImproveProps;
   mixedOrganismWarning?: boolean;
   /** Re-run the same photos as another category (offered when the photo doesn't match). */
@@ -365,7 +413,12 @@ export function ResultView({
           </p>
         </div>
       )}
-      <Headline result={result} photoUrl={photoUrl} thumbnailUrl={thumbnailUrl} />
+      <Headline
+        result={result}
+        photoUrl={photoUrl}
+        thumbnailUrl={thumbnailUrl}
+        userPhotos={userPhotos}
+      />
 
       {result.categoryCheck?.suggestedCategory &&
         getCategory(result.categoryCheck.suggestedCategory).available &&
@@ -417,6 +470,14 @@ export function ResultView({
 
       {top && band !== 'low' && (
         <SpeciesFacts info={result.speciesInfo} status={result.sourceStatus.speciesInfo} />
+      )}
+
+      {top && band !== 'low' && (
+        <WhereRecorded
+          info={result.speciesInfo}
+          userLocation={result.location.approx}
+          title={displayName(top)}
+        />
       )}
 
       {top && <GeographicEvidence candidate={top} result={result} />}

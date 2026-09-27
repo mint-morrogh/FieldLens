@@ -91,3 +91,11 @@ export function supportedCategories(env: ServerEnv): OrganismCategory[] {
     : createLiveProviders(env).identification;
   return categories.filter((c) => providers.some((p) => p.supports(c)));
 }
+
+/** Whether any configured provider can detect the category itself ("Not sure"). */
+export function canAutoDetect(env: ServerEnv): boolean {
+  const providers = env.useMockApi
+    ? createMockProviders().identification
+    : createLiveProviders(env).identification;
+  return providers.some((p) => typeof p.detectCategory === 'function');
+}

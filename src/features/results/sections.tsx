@@ -1,5 +1,7 @@
+import { Suspense, lazy } from 'react';
 import { formatPercent } from '../../../shared/confidence';
 import type {
+  ApproxLocation,
   Attribution,
   CommunityObservationSummary,
   IdentifyResponse,
@@ -502,5 +504,46 @@ export function SourceAttribution({
         ))}
       </ul>
     </section>
+  );
+}
+
+const Globe = lazy(() => import('./Globe'));
+
+/** Worldwide distribution from GBIF on a slowly spinning globe (loaded on demand). */
+export function WhereRecorded({
+  info,
+  userLocation,
+  title,
+}: {
+  info?: SpeciesInfo;
+  userLocation?: ApproxLocation;
+  title: string;
+}) {
+  const distribution = info?.distribution;
+  if (!distribution || distribution.countries.length === 0) return null;
+  return (
+    <Card aria-labelledby="where-title" data-testid="where-recorded">
+      <SectionTitle id="where-title" eyebrow="GBIF records">
+        Where it’s been recorded
+      </SectionTitle>
+      <Suspense
+        fallback={
+          <div className="skeleton mx-auto aspect-square w-full max-w-[18rem] rounded-full" />
+        }
+      >
+        <Globe distribution={distribution} userLocation={userLocation} title={title} />
+      </Suspense>
+      <p className="mt-3 text-sm text-ink-muted">
+        Countries shaded by the number of occurrence records on{' '}
+        {distribution.sourceUrl ? (
+          <ExternalLink href={distribution.sourceUrl} className="!font-normal">
+            GBIF
+          </ExternalLink>
+        ) : (
+          'GBIF'
+        )}
+        . Records reflect where people have looked as much as where it lives. Drag to spin.
+      </p>
+    </Card>
   );
 }

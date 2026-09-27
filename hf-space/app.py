@@ -13,6 +13,7 @@ import time
 from collections import defaultdict
 
 import gradio as gr
+import pandas as pd
 import torch
 from PIL import Image
 
@@ -99,7 +100,9 @@ def _within_indices(within: dict) -> set[int] | None:
     for rank, values in within.items():
         if rank not in RANKS or not isinstance(values, list):
             raise gr.Error(f"Unsupported within rank: {rank}")
-        wanted = {str(v).strip().lower() for v in values if str(v).strip()}
+        # An explicit "" matches taxa with no value at that rank (e.g. most ray-finned fish
+        # have no class in the Tree of Life labels).
+        wanted = {str(v).strip().lower() for v in values}
         m = labels[rank].str.lower().isin(wanted)
         mask = m if mask is None else (mask & m)
     return set(labels.index[mask].tolist()) if mask is not None else None
@@ -155,7 +158,13 @@ def _run(payload: dict) -> dict:
         # Sum probabilities by the requested rank (e.g. class for "Auto" category detection).
         frame = labels.iloc[col_ids][RANKS[: RANKS.index(rank) + 1]].copy()
         frame["p"] = probs.numpy()
-        frame = frame[frame[rank] != ""]
+        # Taxa with no value at this rank (e.g. most ray-finned fish have no class) are grouped
+        # under their nearest named parent, e.g. "Chordata (unranked)", instead of being dropped.
+        parents = RANKS[: RANKS.index(rank)]
+        blank = frame[rank] == ""
+        if blank.any():
+            parent_name = frame.loc[blank, parents].replace("", pd.NA).ffill(axis=1).iloc[:, -1].fillna("Unknown")
+            frame.loc[blank, rank] = parent_name + " (unranked)"
         grouped = frame.groupby(rank, sort=False).agg({"p": "sum", **{r: "first" for r in RANKS[: RANKS.index(rank)]}})
         best = grouped.sort_values("p", ascending=False).head(k)
         results = [_format({**row, rank: name}, name, row["p"], upto=rank) for name, row in best.iterrows()]

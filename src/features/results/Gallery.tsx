@@ -15,6 +15,7 @@ export function mergeImages(...lists: (LicensedImage[] | undefined)[]): Licensed
 }
 
 export function credit(image: LicensedImage): string {
+  if (image.source === 'Your photo') return 'Your photo';
   const who = image.author ? image.author.replace(/^\(c\)\s*/i, '© ') : 'Photo';
   const author = /^©|no rights|no known/i.test(who) ? who : `© ${who}`;
   return [author, image.license, image.source].filter(Boolean).join(' · ');

@@ -74,13 +74,18 @@ export function App() {
         </a>
         <div className="mx-auto flex min-h-dvh max-w-xl flex-col px-4">
           <nav className="safe-top flex items-center justify-between gap-2 pb-1" aria-label="Main">
-            <a
-              href="#/"
-              className="flex min-h-11 items-center gap-2 font-serif text-lg font-bold text-moss-dark"
-              aria-label={`${BRAND.name} home`}
-            >
-              <Icon name="leaf" className="h-6 w-6" /> {route.name === 'home' ? '' : BRAND.name}
-            </a>
+            {route.name === 'home' ? (
+              // The big title below already names the app; a lone logo here looked like a placeholder.
+              <span aria-hidden />
+            ) : (
+              <a
+                href="#/"
+                className="flex min-h-11 items-center gap-2 font-serif text-lg font-bold text-moss-dark"
+                aria-label={`${BRAND.name} home`}
+              >
+                <Icon name="leaf" className="h-6 w-6" /> {BRAND.name}
+              </a>
+            )}
             <div className="flex gap-1">
               <NavLink
                 href="#/history"

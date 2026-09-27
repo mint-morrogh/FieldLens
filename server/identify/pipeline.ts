@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { CATEGORIES } from '../../shared/categories.js';
+import { CATEGORIES, getTarget, isCategoryGroup, targetMembers } from '../../shared/categories.js';
 import { confidenceBand } from '../../shared/confidence.js';
 import { GROUPING, TIMEOUTS_MS } from '../../shared/config.js';
 import { coarseLocationLabel } from '../../shared/geo.js';
@@ -8,9 +8,11 @@ import type {
   CommunityObservationSummary,
   GroupSummary,
   IdentifyResponse,
+  IdentifyTarget,
   NearbySpeciesGroup,
   OccurrenceEvidence,
   OrganismCandidate,
+  OrganismCategory,
   SourceStatus,
   SpeciesFact,
   SafetyStatement,
@@ -144,18 +146,47 @@ export async function runIdentification(
       /* progress reporting must never break identification */
     }
   };
-  const category = CATEGORIES[input.category];
   const requestId = randomUUID();
+  const started = Date.now();
 
-  // 1. Category-aware provider selection.
-  const provider = providers.identification.find((p) => p.supports(input.category));
+  // 1. Resolve what to identify. "Not sure" asks a provider to detect the category first;
+  //    groups ("bug", "animal") go to a provider that covers all their members.
+  let target: IdentifyTarget = input.category;
+  let detection: IdentifyResponse['categoryDetection'];
+  if (target === 'auto') {
+    const detector = providers.identification.find((p) => p.detectCategory);
+    if (!detector?.detectCategory) {
+      target = 'plant'; // Without a detector, plants are the only thing we can identify.
+    } else {
+      stage({ stage: 'detect', status: 'active' });
+      const found = await detector.detectCategory(input);
+      stage({ stage: 'detect', status: 'done' });
+      detection = { requested: 'auto', detected: found.category, likelihood: found.likelihood };
+      logger.info('identify.detect', {
+        category: found.category,
+        likelihood: Math.round(found.likelihood * 100) / 100,
+      });
+      if (found.category === 'other') {
+        throw new ApiError(
+          'unsupported_category',
+          'We couldn’t tell what kind of organism this is, or it’s a group FieldLens doesn’t cover yet. Try choosing a category.',
+        );
+      }
+      target = found.category;
+    }
+  }
+
+  const provider = providers.identification.find((p) => p.supports(target));
   if (!provider) {
     if (providers.identification.length === 0) {
       throw new ApiError('not_configured', 'Identification isn’t configured on this server yet.');
     }
+    const label = getTarget(target).label;
     throw new ApiError(
       'unsupported_category',
-      `${category.label} identification is coming soon. Plants are supported today.`,
+      detection
+        ? `This looks like ${/^[aeiou]/i.test(label) ? 'an' : 'a'} ${label.toLowerCase()}, which FieldLens can’t identify yet.`
+        : `${label} identification is coming soon.`,
     );
   }
   if (input.images.length > provider.maxImages) {
@@ -172,9 +203,8 @@ export async function runIdentification(
   }
 
   // 2. Visual identification (the only stage allowed to fail the request).
-  const started = Date.now();
   stage({ stage: 'identify', status: 'active' });
-  const identification = await provider.identify(input);
+  const identification = await provider.identify({ ...input, category: target });
   const topVisual = identification.candidates[0]?.visualConfidence;
   logger.info('identify.visual', {
     provider: provider.name,
@@ -192,9 +222,25 @@ export async function runIdentification(
     })),
   });
 
+  // From here on everything works with the specific category (e.g. "amphibian" for "animal").
+  const categoryId: OrganismCategory =
+    identification.detectedCategory ??
+    (isCategoryGroup(target) ? targetMembers(target)[0] : target);
+  if (!detection && isCategoryGroup(input.category)) {
+    detection = { requested: input.category, detected: categoryId };
+  }
+  if (detection) detection = { ...detection, detected: categoryId };
+  const category = CATEGORIES[categoryId];
+  const requested = getTarget(categoryId);
+
   const locationProvided = !!input.location;
   const location = input.location
-    ? { used: true, approx: input.location, label: coarseLocationLabel(input.location) }
+    ? {
+        used: true,
+        approx: input.location,
+        label: coarseLocationLabel(input.location),
+        source: input.locationSource ?? 'device',
+      }
     : { used: false };
   const attribution: Attribution[] = [...identification.attribution];
   const features = input.images.map((i) => i.feature);
@@ -202,7 +248,7 @@ export async function runIdentification(
   if (identification.candidates.length === 0) {
     return {
       requestId,
-      category: input.category,
+      category: categoryId,
       generatedAt: new Date().toISOString(),
       imagesSubmitted: input.images.length,
       location,
@@ -212,7 +258,7 @@ export async function runIdentification(
       guidance: identification.categoryCheck
         ? [
             {
-              message: `This photo doesn't look like ${category.pluralNoun === 'fish' ? 'a fish' : `one of the ${category.pluralNoun}`} we can identify.`,
+              message: `This photo doesn't look like ${requested.pluralNoun === 'fish' ? 'a fish' : `one of the ${requested.pluralNoun}`} we can identify.`,
             },
           ]
         : [{ message: category.generalAdvice }],
@@ -226,6 +272,7 @@ export async function runIdentification(
       safetyNotice: category.safetyNotice,
       experimental: identification.experimental || undefined,
       categoryCheck: identification.categoryCheck,
+      categoryDetection: detection,
       mock: providers.mock || undefined,
     };
   }
@@ -348,6 +395,7 @@ export async function runIdentification(
       facts,
       summary: parts.find((p) => p.summary)?.summary,
       images: parts.flatMap((p) => p.images ?? []),
+      distribution: parts.find((p) => p.distribution)?.distribution,
       links: [
         ...top.links,
         ...parts
@@ -388,7 +436,7 @@ export async function runIdentification(
       : Promise.resolve(undefined);
 
   const safetyTextTask: Promise<SafetyStatement[]> =
-    SAFETY_CATEGORIES.includes(input.category) && providers.safety
+    SAFETY_CATEGORIES.includes(categoryId) && providers.safety
       ? withDeadline(
           providers.safety.getSafetyStatements(topIdentity),
           STAGE_MS,
@@ -437,7 +485,7 @@ export async function runIdentification(
     });
   }
   const safety = buildSafety({
-    category: input.category,
+    category: categoryId,
     band,
     candidates: ranked,
     wikipedia: safetyText,
@@ -464,7 +512,7 @@ export async function runIdentification(
   }
 
   const evidence = buildEvidence({
-    category: input.category,
+    category: categoryId,
     candidates: ranked,
     band,
     imageCount: input.images.length,
@@ -484,7 +532,7 @@ export async function runIdentification(
 
   return {
     requestId,
-    category: input.category,
+    category: categoryId,
     generatedAt: new Date().toISOString(),
     imagesSubmitted: input.images.length,
     location,
@@ -496,7 +544,7 @@ export async function runIdentification(
     community,
     nearbySpecies,
     evidence,
-    guidance: buildGuidance({ category: input.category, band, features }),
+    guidance: buildGuidance({ category: categoryId, band, features }),
     attribution,
     sourceStatus: {
       identification: 'ok',
@@ -507,6 +555,7 @@ export async function runIdentification(
     safetyNotice: category.safetyNotice,
     experimental: identification.experimental || undefined,
     categoryCheck: identification.categoryCheck,
+    categoryDetection: detection,
     mock: providers.mock || undefined,
   };
 }

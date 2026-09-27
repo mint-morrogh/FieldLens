@@ -210,7 +210,10 @@ export class GbifSpeciesInfoProvider implements SpeciesInfoProvider {
           CACHE_TTL_MS.speciesInfo,
         )
         .catch(() => undefined),
-      this.client.occurrenceCount({ taxonKey: key }).catch(() => undefined),
+      // One request gives the worldwide total and the per-country breakdown for the globe.
+      this.client
+        .occurrenceCount({ taxonKey: key, facet: 'country', facetLimit: 250 })
+        .catch(() => undefined),
     ]);
     const gbifUrl = `https://www.gbif.org/species/${key}`;
     const facts: SpeciesFact[] = [];
@@ -230,7 +233,24 @@ export class GbifSpeciesInfoProvider implements SpeciesInfoProvider {
         sourceUrl: `https://www.gbif.org/occurrence/search?taxon_key=${key}`,
       });
     }
-    return { source: GBIF_SOURCE, facts, links: [{ label: 'GBIF', url: gbifUrl }] };
+    const countryFacet = global?.facets?.find((f) => f.field === 'COUNTRY')?.counts ?? [];
+    const countries = countryFacet
+      .filter((c) => /^[A-Z]{2}$/.test(c.name) && c.name !== 'ZZ' && c.count > 0)
+      .map((c) => ({ code: c.name, count: c.count }));
+    return {
+      source: GBIF_SOURCE,
+      facts,
+      links: [{ label: 'GBIF', url: gbifUrl }],
+      distribution:
+        global && countries.length
+          ? {
+              source: GBIF_SOURCE,
+              sourceUrl: `https://www.gbif.org/species/${key}`,
+              total: global.count,
+              countries,
+            }
+          : undefined,
+    };
   }
 }
 

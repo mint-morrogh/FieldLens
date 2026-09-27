@@ -1,4 +1,4 @@
-import type { FeatureId, OrganismCategory } from './types.js';
+import type { CategoryGroupId, FeatureId, IdentifyTarget, OrganismCategory } from './types.js';
 
 export type FeatureDefinition = {
   id: FeatureId;
@@ -10,7 +10,9 @@ export type FeatureDefinition = {
 };
 
 export type CategoryDefinition = {
-  id: OrganismCategory;
+  id: IdentifyTarget;
+  /** For groups: the specific categories they cover. */
+  members?: OrganismCategory[];
   label: string;
   /** Whether an identification provider exists for this category yet. */
   available: boolean;
@@ -142,7 +144,10 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
     id: 'mammal',
     blurb: 'Wildlife, tracks, signs',
     label: 'Mammal',
-    available: false,
+    available: true,
+    experimental: true,
+    identificationSource: 'BioCLIP 2',
+    taxonScope: { class: ['Mammalia'] },
     pluralNoun: 'mammals',
     gbifKingdom: 'Animalia',
     inaturalistIconicTaxon: 'Mammalia',
@@ -179,37 +184,98 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
     id: 'reptile',
     blurb: 'Snakes, turtles, lizards',
     label: 'Reptile',
-    available: false,
+    available: true,
+    experimental: true,
+    identificationSource: 'BioCLIP 2',
+    taxonScope: { class: ['Squamata', 'Testudines', 'Crocodylia', 'Sphenodontia'] },
     pluralNoun: 'reptiles',
     gbifKingdom: 'Animalia',
     inaturalistIconicTaxon: 'Reptilia',
     safetyNotice: WILDLIFE_NOTICE,
     generalAdvice: 'A clear photo of the head and body pattern would help.',
-    features: [],
+    features: [
+      {
+        id: 'whole',
+        label: 'Whole animal',
+        followUpLabel: 'Add a whole-body photo',
+        advice: 'A photo showing the whole body would help.',
+      },
+      {
+        id: 'head',
+        label: 'Head',
+        followUpLabel: 'Add a head photo',
+        advice: 'A close photo of the head from the side would help.',
+      },
+      {
+        id: 'pattern',
+        label: 'Markings',
+        followUpLabel: 'Add a markings photo',
+        advice: 'A close photo of the scales or shell pattern would help.',
+      },
+    ],
   },
   amphibian: {
     id: 'amphibian',
     blurb: 'Frogs, toads, salamanders',
     label: 'Amphibian',
-    available: false,
+    available: true,
+    experimental: true,
+    identificationSource: 'BioCLIP 2',
+    taxonScope: { class: ['Amphibia'] },
     pluralNoun: 'amphibians',
     gbifKingdom: 'Animalia',
     inaturalistIconicTaxon: 'Amphibia',
     safetyNotice: WILDLIFE_NOTICE,
     generalAdvice: 'A clear photo from above and from the side would help.',
-    features: [],
+    features: [
+      {
+        id: 'dorsal',
+        label: 'From above',
+        followUpLabel: 'Add a top-down photo',
+        advice: 'A photo from directly above would help.',
+      },
+      {
+        id: 'lateral',
+        label: 'Side',
+        followUpLabel: 'Add a side photo',
+        advice: 'A side view showing the skin pattern would help.',
+      },
+    ],
   },
   fish: {
     id: 'fish',
     blurb: 'Freshwater and marine fish',
     label: 'Fish',
-    available: false,
+    available: true,
+    experimental: true,
+    identificationSource: 'BioCLIP 2',
+    taxonScope: {
+      phylum: ['Chordata'],
+      class: [
+        '',
+        'Actinopterygii',
+        'Elasmobranchii',
+        'Holocephali',
+        'Chondrichthyes',
+        'Petromyzonti',
+        'Myxini',
+        'Coelacanthi',
+        'Dipneusti',
+      ],
+    },
     pluralNoun: 'fish',
     gbifKingdom: 'Animalia',
     inaturalistIconicTaxon: 'Actinopterygii',
     safetyNotice: WILDLIFE_NOTICE,
     generalAdvice: 'A side-on photo showing the fins would help.',
-    features: [],
+    features: [
+      {
+        id: 'lateral',
+        label: 'Side',
+        followUpLabel: 'Add a side-on photo',
+        advice: 'A side-on photo showing all the fins would help.',
+      },
+    ],
   },
   insect: {
     id: 'insect',
@@ -326,17 +392,94 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
 };
 
-/** Categories offered in the picker, in display order. */
-export const CATEGORY_PICKER_ORDER: OrganismCategory[] = [
+/**
+ * Broader picker choices, because people often don't know whether a newt is a
+ * reptile or an amphibian, or that a tick isn't an insect. The server narrows a
+ * group to the specific category and the result says what it found.
+ */
+export const GROUPS: Record<CategoryGroupId, CategoryDefinition> = {
+  bug: {
+    id: 'bug',
+    label: 'Bug',
+    blurb: 'Insects, spiders, ticks & more',
+    available: true,
+    experimental: true,
+    identificationSource: 'BioCLIP 2',
+    members: ['insect', 'arachnid'],
+    taxonScope: { class: ['Insecta', 'Chilopoda', 'Diplopoda', 'Collembola', 'Arachnida'] },
+    pluralNoun: 'bugs',
+    gbifKingdom: 'Animalia',
+    safetyNotice: WILDLIFE_NOTICE,
+    generalAdvice: 'A clear photo from above showing the body and markings would help.',
+    features: [],
+  },
+  animal: {
+    id: 'animal',
+    label: 'Animal',
+    blurb: 'Mammals, reptiles, frogs, fish',
+    available: true,
+    experimental: true,
+    identificationSource: 'BioCLIP 2',
+    members: ['mammal', 'reptile', 'amphibian', 'fish'],
+    taxonScope: {
+      phylum: ['Chordata'],
+      class: [
+        'Mammalia',
+        ...['Squamata', 'Testudines', 'Crocodylia', 'Sphenodontia'],
+        'Amphibia',
+        ...[
+          '',
+          'Actinopterygii',
+          'Elasmobranchii',
+          'Holocephali',
+          'Chondrichthyes',
+          'Petromyzonti',
+          'Myxini',
+          'Coelacanthi',
+          'Dipneusti',
+        ],
+      ],
+    },
+    pluralNoun: 'animals',
+    gbifKingdom: 'Animalia',
+    safetyNotice: WILDLIFE_NOTICE,
+    generalAdvice: 'A clear photo of the whole animal from the side would help.',
+    features: [],
+  },
+  auto: {
+    id: 'auto',
+    label: 'Not sure',
+    blurb: 'FieldLens works it out',
+    available: true,
+    identificationSource: 'Pl@ntNet or BioCLIP 2',
+    members: [
+      'plant',
+      'fungus',
+      'insect',
+      'arachnid',
+      'bird',
+      'mammal',
+      'reptile',
+      'amphibian',
+      'fish',
+    ],
+    pluralNoun: 'organisms',
+    generalAdvice: 'A closer, well-lit photo of just the organism would help.',
+    features: [],
+  },
+};
+
+/** Choices offered in the picker, in display order. */
+export const CATEGORY_PICKER_ORDER: IdentifyTarget[] = [
   'plant',
-  'insect',
-  'arachnid',
   'fungus',
+  'bug',
   'bird',
-  'mammal',
+  'animal',
+  'auto',
 ];
 
-export const DEFAULT_CATEGORY: OrganismCategory = 'plant';
+export const DEFAULT_CATEGORY: IdentifyTarget = 'plant';
 
 export function isOrganismCategory(value: unknown): value is OrganismCategory {
   return typeof value === 'string' && value in CATEGORIES;
@@ -346,14 +489,32 @@ export function getCategory(id: OrganismCategory): CategoryDefinition {
   return CATEGORIES[id];
 }
 
+export function isCategoryGroup(value: unknown): value is CategoryGroupId {
+  return typeof value === 'string' && value in GROUPS;
+}
+
+export function isIdentifyTarget(value: unknown): value is IdentifyTarget {
+  return isOrganismCategory(value) || isCategoryGroup(value);
+}
+
+/** Definition for a specific category or a group. */
+export function getTarget(id: IdentifyTarget): CategoryDefinition {
+  return isCategoryGroup(id) ? GROUPS[id] : CATEGORIES[id];
+}
+
+/** Specific categories a target covers (a category covers itself). */
+export function targetMembers(id: IdentifyTarget): OrganismCategory[] {
+  return isCategoryGroup(id) ? (GROUPS[id].members ?? []) : [id];
+}
+
 export function getFeature(
-  category: OrganismCategory,
+  category: IdentifyTarget,
   feature: FeatureId | undefined,
 ): FeatureDefinition {
   if (!feature || feature === 'auto') return AUTO_FEATURE;
-  return CATEGORIES[category].features.find((f) => f.id === feature) ?? AUTO_FEATURE;
+  return getTarget(category).features.find((f) => f.id === feature) ?? AUTO_FEATURE;
 }
 
-export function isValidFeature(category: OrganismCategory, feature: string): boolean {
-  return feature === 'auto' || CATEGORIES[category].features.some((f) => f.id === feature);
+export function isValidFeature(category: IdentifyTarget, feature: string): boolean {
+  return feature === 'auto' || getTarget(category).features.some((f) => f.id === feature);
 }

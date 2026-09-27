@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { CATEGORIES, CATEGORY_PICKER_ORDER } from '../../../shared/categories';
-import type { OrganismCategory } from '../../../shared/types';
+import { CATEGORY_PICKER_ORDER, getTarget, targetMembers } from '../../../shared/categories';
+import type { IdentifyTarget, OrganismCategory } from '../../../shared/types';
 
 /** Line illustrations for each organism group (24×24, stroked). */
 const CATEGORY_ART: Record<string, string> = {
@@ -19,6 +19,8 @@ const CATEGORY_ART: Record<string, string> = {
     'M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9Z M18.5 16l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7Z',
 };
 
+const ART_ALIASES: Record<string, string> = { bug: 'insect', animal: 'mammal', auto: 'other' };
+
 function CategoryArt({ id, className }: { id: string; className?: string }) {
   return (
     <svg
@@ -31,7 +33,7 @@ function CategoryArt({ id, className }: { id: string; className?: string }) {
       className={className}
       aria-hidden
     >
-      <path d={CATEGORY_ART[id] ?? CATEGORY_ART.other} />
+      <path d={CATEGORY_ART[ART_ALIASES[id] ?? id] ?? CATEGORY_ART.other} />
     </svg>
   );
 }
@@ -45,11 +47,14 @@ export function CategoryPicker({
   value,
   onChange,
   supported,
+  autoDetect,
 }: {
-  value: OrganismCategory;
-  onChange: (id: OrganismCategory) => void;
+  value: IdentifyTarget;
+  onChange: (id: IdentifyTarget) => void;
   /** Categories the server can identify right now (from /api/health); falls back to the registry. */
   supported?: OrganismCategory[];
+  /** Whether the server can work out the category itself ("Not sure"). */
+  autoDetect?: boolean;
 }) {
   const [notice, setNotice] = useState<string>();
 
@@ -66,8 +71,14 @@ export function CategoryPicker({
       </h2>
       <div role="radiogroup" aria-labelledby="category-title" className="grid grid-cols-3 gap-2.5">
         {CATEGORY_PICKER_ORDER.map((id) => {
-          const c = CATEGORIES[id];
-          const available = supported ? supported.includes(id) : c.available;
+          const c = getTarget(id);
+          // A group is available when any of its members is; "Not sure" needs server-side detection.
+          const available =
+            id === 'auto'
+              ? (autoDetect ?? !supported)
+              : supported
+                ? targetMembers(id).some((m) => supported.includes(m))
+                : c.available;
           const selected = value === id;
           return (
             <button
@@ -79,9 +90,7 @@ export function CategoryPicker({
               aria-describedby={`category-${id}-blurb`}
               data-category={id}
               onClick={() =>
-                available
-                  ? onChange(id)
-                  : setNotice(`${c.label} identification is coming soon — plants work today.`)
+                available ? onChange(id) : setNotice(`${c.label} identification is coming soon.`)
               }
               className={`group relative flex min-h-[7.5rem] flex-col items-center justify-center gap-1.5 rounded-2xl border-2 px-1.5 pb-2.5 pt-3 text-center transition ${
                 selected

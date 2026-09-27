@@ -130,13 +130,33 @@ describe('BioCLIP provider', () => {
       fetchImpl,
     );
     const result = await provider.identify(input());
-    expect(payloads[1]).toMatchObject({ rank: 'class' });
+    expect(payloads[1]).toMatchObject({ k: 20 }); // second opinion: top-species vote
     expect(result.candidates).toEqual([]);
     expect(result.categoryCheck).toMatchObject({
       matchesCategory: false,
       suggestedCategory: 'plant',
-      suggestedGroup: 'Plantae',
+      suggestedGroup: 'plant',
     });
+  });
+
+  it('trusts the species vote when it agrees with the chosen group (camouflaged subjects)', async () => {
+    const lowGroup = { ...monarch, groupProbability: 0.3 };
+    const vote = {
+      results: [{ name: 'Danaus plexippus', score: 0.5, kingdom: 'Animalia', class: 'Insecta' }],
+      rank: 'species',
+      restricted: false,
+      candidateCount: 1,
+    };
+    const { fetchImpl } = fakeSpace([lowGroup, vote]);
+    const provider = new BioclipIdentificationProvider(
+      'https://space',
+      'tok',
+      ['insect'],
+      fetchImpl,
+    );
+    const result = await provider.identify(input());
+    expect(result.categoryCheck).toBeUndefined();
+    expect(result.candidates[0].scientificName).toBe('Danaus plexippus');
   });
 
   it('maps a rejected token to a configuration error', async () => {
@@ -179,5 +199,129 @@ describe('pipeline with experimental providers', () => {
     await expect(runIdentification(input('plant'), { providers })).rejects.toMatchObject({
       code: 'not_configured',
     });
+  });
+});
+
+describe('groups and category detection', () => {
+  it('maps vertebrate classes, including classless fish', () => {
+    expect(categoryForTaxon('Animalia', 'Squamata', 'Chordata')).toBe('reptile');
+    expect(categoryForTaxon('Animalia', 'Testudines', 'Chordata')).toBe('reptile');
+    expect(categoryForTaxon('Animalia', '', 'Chordata')).toBe('fish');
+    expect(categoryForTaxon('Animalia', 'Chordata (unranked)', 'Chordata')).toBe('fish');
+    expect(categoryForTaxon('Animalia', 'Elasmobranchii', 'Chordata')).toBe('fish');
+    expect(categoryForTaxon('Animalia', 'Amphibia', 'Chordata')).toBe('amphibian');
+  });
+
+  it('supports groups whose members it covers and gives each candidate its own category', async () => {
+    const response = {
+      results: [
+        {
+          name: 'Dermacentor variabilis',
+          score: 0.5,
+          kingdom: 'Animalia',
+          class: 'Arachnida',
+          species: 'Dermacentor variabilis',
+        },
+        {
+          name: 'Ixodes scapularis',
+          score: 0.2,
+          kingdom: 'Animalia',
+          class: 'Arachnida',
+          species: 'Ixodes scapularis',
+        },
+        {
+          name: 'Cimex lectularius',
+          score: 0.1,
+          kingdom: 'Animalia',
+          class: 'Insecta',
+          species: 'Cimex lectularius',
+        },
+      ],
+      rank: 'species',
+      restricted: true,
+      candidateCount: 300000,
+      groupProbability: 0.95,
+    };
+    const { fetchImpl, payloads } = fakeSpace([response]);
+    const provider = new BioclipIdentificationProvider(
+      'https://s',
+      't',
+      ['insect', 'arachnid'],
+      fetchImpl,
+    );
+    expect(provider.supports('bug')).toBe(true);
+    expect(provider.supports('animal')).toBe(false);
+    expect(provider.supports('auto')).toBe(false);
+    const result = await provider.identify(input('bug'));
+    expect((payloads[0] as { within: { class: string[] } }).within.class).toEqual(
+      expect.arrayContaining(['Insecta', 'Arachnida']),
+    );
+    expect(result.detectedCategory).toBe('arachnid');
+    expect(result.candidates.map((c) => c.category)).toEqual(['arachnid', 'arachnid', 'insect']);
+  });
+
+  it('detects a category by letting the top species vote', async () => {
+    const response = {
+      results: [
+        {
+          name: 'Paralepistopsis acromelalga',
+          score: 0.04,
+          kingdom: 'Fungi',
+          class: 'Agaricomycetes',
+        },
+        {
+          name: 'Lithobates sylvaticus',
+          score: 0.03,
+          kingdom: 'Animalia',
+          phylum: 'Chordata',
+          class: 'Amphibia',
+        },
+        {
+          name: 'Lithobates clamitans',
+          score: 0.03,
+          kingdom: 'Animalia',
+          phylum: 'Chordata',
+          class: 'Amphibia',
+        },
+        {
+          name: 'Pseudacris crucifer',
+          score: 0.02,
+          kingdom: 'Animalia',
+          phylum: 'Chordata',
+          class: 'Amphibia',
+        },
+      ],
+      rank: 'species',
+      restricted: false,
+      candidateCount: 867455,
+    };
+    const { fetchImpl } = fakeSpace([response]);
+    const provider = new BioclipIdentificationProvider('https://s', 't', ['amphibian'], fetchImpl);
+    const found = await provider.detectCategory(input('auto'));
+    expect(found.category).toBe('amphibian');
+    expect(found.likelihood).toBeCloseTo(0.08 / 0.12, 2);
+  });
+});
+
+describe('pipeline with groups', () => {
+  it('reports the specific category found for a group', async () => {
+    const result = await runIdentification(input('animal'), {
+      providers: createMockProviders('high'),
+    });
+    expect(result.category).toBe('amphibian');
+    expect(result.categoryDetection).toMatchObject({ requested: 'animal', detected: 'amphibian' });
+  });
+  it('"Not sure" detects first, then routes (plants go to the plant provider)', async () => {
+    const plant = await runIdentification(input('auto'), {
+      providers: createMockProviders('high'),
+    });
+    expect(plant.category).toBe('plant');
+    expect(plant.categoryDetection).toMatchObject({ requested: 'auto', detected: 'plant' });
+    expect(plant.experimental).toBeUndefined();
+    const bug = await runIdentification(input('auto'), {
+      providers: createMockProviders('auto-bug'),
+    });
+    expect(bug.category).toBe('insect');
+    expect(bug.experimental).toBe(true);
   });
 });

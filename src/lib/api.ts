@@ -9,7 +9,7 @@ import type {
   FeatureId,
   HealthResponse,
   IdentifyResponse,
-  OrganismCategory,
+  IdentifyTarget,
   StageEvent,
 } from '../../shared/types';
 import { getMockScenario } from './mockScenario';
@@ -29,9 +29,11 @@ export class ClientError extends Error {
 
 export type IdentifyRequest = {
   observationId: string;
-  category: OrganismCategory;
+  category: IdentifyTarget;
   images: { blob: Blob; feature: FeatureId }[];
   location?: ApproxLocation;
+  /** "photo" when the position came from the photo's own GPS rather than the device. */
+  locationSource?: 'photo';
   capturedAt: Date;
 };
 
@@ -57,6 +59,7 @@ export function buildIdentifyForm(
   if (req.location) {
     form.append('latitude', String(req.location.latitude));
     form.append('longitude', String(req.location.longitude));
+    if (req.locationSource) form.append('locationSource', req.locationSource);
   }
   if (mockScenario) form.append('mockScenario', mockScenario);
   return form;

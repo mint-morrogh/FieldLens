@@ -1,4 +1,4 @@
-import { getCategory } from '../../../shared/categories';
+import { getTarget } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
 import type { IdentifyStage, StageEvent } from '../../../shared/types';
 import { Icon } from '../../components/Icon';
@@ -21,10 +21,21 @@ function stageState(progress: Progress, stage: IdentifyStage, previous: RowState
 }
 
 /** Builds the checklist from real, server-reported stages (nothing here is simulated). */
-export function buildRows(progress: Progress, source: string, locationKnown: boolean): Row[] {
+export function buildRows(
+  progress: Progress,
+  source: string,
+  locationKnown: boolean,
+  autoDetect = false,
+): Row[] {
   const uploading: RowState =
     progress.phase === 'preparing' || progress.phase === 'uploading' ? 'active' : 'done';
-  const identify = uploading === 'done' ? stageState(progress, 'identify', 'done') : 'pending';
+  const detect = uploading === 'done' ? stageState(progress, 'detect', 'done') : 'pending';
+  const identify =
+    uploading !== 'done'
+      ? 'pending'
+      : autoDetect
+        ? stageState(progress, 'identify', detect)
+        : stageState(progress, 'identify', 'done');
   const taxonomy = stageState(progress, 'taxonomy', identify);
   const occurrence = stageState(progress, 'occurrence', taxonomy);
   const rank = stageState(progress, 'rank', occurrence);
@@ -39,6 +50,9 @@ export function buildRows(progress: Progress, source: string, locationKnown: boo
           : undefined,
       state: uploading,
     },
+    ...(autoDetect
+      ? [{ key: 'detect', label: 'Working out what it is', source: 'BioCLIP 2', state: detect }]
+      : []),
     { key: 'identify', label: 'Identifying the species', source, state: identify },
     { key: 'taxonomy', label: 'Matching official names', source: 'GBIF', state: taxonomy },
     {
@@ -96,11 +110,12 @@ export function AnalysisProgress() {
   const { status: locationStatus } = useLocationState();
   const { progress } = state;
   const last = state.images.at(-1);
-  const category = getCategory(state.category);
+  const category = getTarget(state.category);
   const rows = buildRows(
     progress,
     category.identificationSource ?? 'identification service',
     locationStatus === 'granted' || locationStatus === 'requesting' || locationStatus === 'unknown',
+    state.category === 'auto',
   );
   const allDone = rows.every((r) => r.state === 'done' || r.state === 'skipped');
   const active = rows.find((r) => r.state === 'active');

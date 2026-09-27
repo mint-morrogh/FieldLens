@@ -189,6 +189,7 @@ export function ObservationScreen({ id }: { id: string }) {
       .catch(() => setRecord(null));
   }, [id]);
   const thumb = useObjectUrl(record?.thumbnail ?? undefined);
+  const photo = useObjectUrl(record?.photo ?? undefined);
 
   if (record === undefined) return <div className="skeleton mt-4 h-64" aria-label="Loading" />;
   if (record === null) {
@@ -204,7 +205,12 @@ export function ObservationScreen({ id }: { id: string }) {
   return (
     <div className="space-y-4">
       <p className="pt-2 text-sm text-ink-muted">Saved {formatDateTime(record.createdAt)}</p>
-      <ResultView result={record.result} thumbnailUrl={thumb} />
+      <ResultView
+        result={record.result}
+        photoUrl={photo}
+        thumbnailUrl={thumb}
+        userPhotos={photo ? [photo] : undefined}
+      />
       <Button
         variant="danger"
         className="w-full"

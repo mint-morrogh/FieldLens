@@ -4,3 +4,7 @@
 leaf-like shape on a plain background). It contains no third-party content and
 is released with the project under the same license. Its visual content is
 irrelevant: E2E tests run against the mock API.
+
+`gps.jpg` is a synthetic 320×240 solid-colour JPEG generated with Pillow for this project. Its
+EXIF block carries a made-up capture date (2026-07-14 10:30) and GPS position near
+Charlottetown, PEI (46.2382 N, 63.1311 W) to test on-device metadata reading.

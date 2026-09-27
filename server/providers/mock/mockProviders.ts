@@ -4,6 +4,7 @@ import type {
   LicensedImage,
   NearbySpeciesGroup,
   OccurrenceEvidence,
+  IdentifyTarget,
   OrganismCategory,
   TaxonIdentity,
 } from '../../../shared/types.js';
@@ -11,6 +12,7 @@ import { UpstreamError } from '../../lib/errors.js';
 import { GBIF_SOURCE } from '../gbif/gbif.js';
 import { slugId, taxonLinks } from '../plantnet/plantnetProvider.js';
 import type {
+  CategoryDetectionResult,
   CommunityObservationProvider,
   IdentificationInput,
   IdentificationProvider,
@@ -25,6 +27,7 @@ import type {
 } from '../types.js';
 import {
   FIXTURES,
+  AMPHIBIAN_FIXTURES,
   BIRD_FIXTURES,
   FUNGUS_FIXTURES,
   INSECT_FIXTURES,
@@ -73,8 +76,15 @@ export class MockIdentificationProvider implements IdentificationProvider {
     private readonly latencyMs = 350,
   ) {}
 
-  supports(category: OrganismCategory): boolean {
-    return ['plant', 'insect', 'arachnid', 'fungus', 'bird'].includes(category);
+  supports(target: IdentifyTarget): boolean {
+    return target !== 'auto';
+  }
+
+  /** "Not sure": plants by default; the auto-bug / auto-animal scenarios detect other groups. */
+  async detectCategory(): Promise<CategoryDetectionResult> {
+    if (this.scenario === 'auto-bug') return { category: 'insect', likelihood: 0.68 };
+    if (this.scenario === 'auto-animal') return { category: 'amphibian', likelihood: 0.41 };
+    return { category: 'plant', likelihood: 0.91 };
   }
 
   async identify(input: IdentificationInput): Promise<IdentificationResult> {
@@ -96,7 +106,7 @@ export class MockIdentificationProvider implements IdentificationProvider {
     const boost = Math.min(0.12, (input.images.length - 1) * 0.06);
     const candidates = set.map((s, i) => ({
       id: slugId('mock', s.scientificName),
-      category: input.category,
+      category: 'plant' as const,
       scientificName: s.scientificName,
       scientificNameAuthorship: s.authorship,
       commonName: s.commonNames[0],
@@ -112,7 +122,7 @@ export class MockIdentificationProvider implements IdentificationProvider {
     return { provider: this.name, candidates, attribution: [MOCK_ATTRIBUTION] };
   }
 
-  /** Insects, spiders, fungi, birds (BioCLIP in live mode): experimental, with a category check. */
+  /** Everything except plants (BioCLIP in live mode): experimental, with a category check. */
   private identifyAnimal(input: IdentificationInput): IdentificationResult {
     if (this.scenario === 'wrong-category') {
       return {
@@ -128,15 +138,20 @@ export class MockIdentificationProvider implements IdentificationProvider {
         },
       };
     }
-    const fixtures =
-      input.category === 'fungus'
-        ? FUNGUS_FIXTURES
-        : input.category === 'bird'
-          ? BIRD_FIXTURES
-          : INSECT_FIXTURES;
+    const t = input.category;
+    const [fixtures, category]: [typeof INSECT_FIXTURES, OrganismCategory] =
+      t === 'fungus'
+        ? [FUNGUS_FIXTURES, 'fungus']
+        : t === 'bird'
+          ? [BIRD_FIXTURES, 'bird']
+          : t === 'arachnid'
+            ? [INSECT_FIXTURES, 'arachnid']
+            : t === 'bug' || t === 'insect'
+              ? [INSECT_FIXTURES, 'insect']
+              : [AMPHIBIAN_FIXTURES, t === 'animal' || t === 'auto' ? 'amphibian' : t];
     const candidates = fixtures.map((s) => ({
       id: slugId('mock', s.scientificName),
-      category: input.category,
+      category,
       scientificName: s.scientificName,
       scientificNameAuthorship: s.authorship,
       commonName: s.commonNames[0],
@@ -155,6 +170,7 @@ export class MockIdentificationProvider implements IdentificationProvider {
       candidates,
       attribution: [MOCK_ATTRIBUTION],
       experimental: true,
+      detectedCategory: category,
     };
   }
 }
@@ -223,6 +239,15 @@ class MockSpeciesInfoProvider implements SpeciesInfoProvider {
         license: 'Demo text',
       },
       images: DEMO_GALLERY[f.scientificName],
+      distribution: {
+        source: 'GBIF (demo)',
+        total: f.radiusCounts[2] * 97,
+        countries: [
+          { code: 'US', count: f.radiusCounts[2] * 80 },
+          { code: 'CA', count: f.radiusCounts[2] * 12 },
+          { code: 'MX', count: f.radiusCounts[2] },
+        ],
+      },
       links: [
         {
           label: 'Wikipedia',

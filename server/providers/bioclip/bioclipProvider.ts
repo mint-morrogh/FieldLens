@@ -1,11 +1,12 @@
-import { CATEGORIES } from '../../../shared/categories.js';
+import { getTarget, targetMembers } from '../../../shared/categories.js';
 import { CANDIDATES } from '../../../shared/config.js';
-import type { CategoryCheck, OrganismCategory } from '../../../shared/types.js';
+import type { CategoryCheck, IdentifyTarget, OrganismCategory } from '../../../shared/types.js';
 import { ApiError, UpstreamError } from '../../lib/errors.js';
 import { USER_AGENT } from '../../lib/http.js';
 import { logger } from '../../lib/logger.js';
 import { slugId } from '../plantnet/plantnetProvider.js';
 import type {
+  CategoryDetectionResult,
   IdentificationInput,
   IdentificationProvider,
   IdentificationResult,
@@ -55,36 +56,45 @@ type BioclipPayload = {
   within?: Partial<Record<string, string[]>>;
 };
 
-/** Map a BioCLIP kingdom/class to the FieldLens category that covers it. */
-export function categoryForTaxon(kingdom?: string, className?: string): OrganismCategory {
+const FISH_CLASSES = new Set([
+  'Actinopterygii',
+  'Elasmobranchii',
+  'Holocephali',
+  'Chondrichthyes',
+  'Petromyzonti',
+  'Myxini',
+  'Coelacanthi',
+  'Dipneusti',
+]);
+const REPTILE_CLASSES = new Set([
+  'Reptilia',
+  'Squamata',
+  'Testudines',
+  'Crocodylia',
+  'Sphenodontia',
+]);
+const BUG_CLASSES = new Set(['Insecta', 'Chilopoda', 'Diplopoda', 'Collembola']);
+
+/** Map a BioCLIP kingdom/phylum/class to the FieldLens category that covers it. */
+export function categoryForTaxon(
+  kingdom?: string,
+  className?: string,
+  phylum?: string,
+): OrganismCategory {
   if (kingdom === 'Plantae') return 'plant';
   if (kingdom === 'Fungi') return 'fungus';
-  switch (className) {
-    case 'Aves':
-      return 'bird';
-    case 'Mammalia':
-      return 'mammal';
-    case 'Amphibia':
-      return 'amphibian';
-    case 'Reptilia':
-    case 'Squamata':
-    case 'Testudines':
-    case 'Crocodylia':
-      return 'reptile';
-    case 'Actinopterygii':
-    case 'Chondrichthyes':
-    case 'Elasmobranchii':
-      return 'fish';
-    case 'Arachnida':
-      return 'arachnid';
-    case 'Insecta':
-    case 'Chilopoda':
-    case 'Diplopoda':
-    case 'Collembola':
-      return 'insect';
-    default:
-      return 'other';
+  const cls = className ?? '';
+  if (cls === 'Aves') return 'bird';
+  if (cls === 'Mammalia') return 'mammal';
+  if (cls === 'Amphibia') return 'amphibian';
+  if (REPTILE_CLASSES.has(cls)) return 'reptile';
+  if (cls === 'Arachnida') return 'arachnid';
+  if (BUG_CLASSES.has(cls)) return 'insect';
+  // Tree of Life labels leave most ray-finned fish without a class.
+  if (FISH_CLASSES.has(cls) || (phylum === 'Chordata' && (!cls || cls.endsWith('(unranked)')))) {
+    return 'fish';
   }
+  return 'other';
 }
 
 /** Parse Gradio's server-sent events and return the `complete` payload (or throw on `error`). */
@@ -102,8 +112,9 @@ export function parseGradioEvents(text: string): unknown {
 
 export function toCandidates(
   response: BioclipResponse,
-  category: OrganismCategory,
+  target: IdentifyTarget,
 ): ProviderCandidate[] {
+  const members = targetMembers(target);
   // Fold "does this look like the chosen group at all?" into the visual score, then cap it.
   const groupFactor =
     response.groupProbability === undefined || response.groupProbability === null
@@ -114,6 +125,9 @@ export function toCandidates(
     .slice(0, CANDIDATES.maxCandidates)
     .map((r) => {
       const scientificName = (r.species || r.name).trim();
+      // Groups ("bug", "animal"): each candidate gets its own specific category.
+      const detected = categoryForTaxon(r.kingdom, r.class, r.phylum);
+      const category = members.includes(detected) ? detected : members[0];
       return {
         id: slugId('bioclip', scientificName),
         category,
@@ -150,8 +164,10 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  supports(category: OrganismCategory): boolean {
-    return this.categories.includes(category) && !!CATEGORIES[category].taxonScope;
+  supports(target: IdentifyTarget): boolean {
+    if (target === 'auto') return false; // handled by detectCategory() in the pipeline
+    const members = targetMembers(target);
+    return !!getTarget(target).taxonScope && members.every((m) => this.categories.includes(m));
   }
 
   private async call(payload: BioclipPayload): Promise<BioclipResponse> {
@@ -197,7 +213,7 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
   }
 
   async identify(input: IdentificationInput): Promise<IdentificationResult> {
-    const scope = CATEGORIES[input.category].taxonScope;
+    const scope = getTarget(input.category).taxonScope;
     const images = input.images.map((img) => Buffer.from(img.data).toString('base64'));
     const started = Date.now();
     const response = await this.call({
@@ -208,17 +224,22 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
     const likelihood = response.groupProbability ?? 1;
     let categoryCheck: CategoryCheck | undefined;
     if (likelihood < GROUP_MISMATCH_THRESHOLD) {
-      // Off-target photo: ask what it looks like instead so the UI can suggest a category.
-      const overview = await this.call({ images, rank: 'class', k: 1 }).catch(() => undefined);
-      const best = overview?.results[0];
-      const suggested = best ? categoryForTaxon(best.kingdom, best.class) : undefined;
-      categoryCheck = {
-        matchesCategory: false,
-        likelihood,
-        suggestedCategory: suggested && suggested !== input.category ? suggested : undefined,
-        suggestedGroup:
-          best?.kingdom === 'Plantae' || best?.kingdom === 'Fungi' ? best.kingdom : best?.class,
-      };
+      // Looks off-target. Get a second opinion from the top-species vote, which handles
+      // camouflaged subjects better (e.g. a frog in leaf litter). If the vote agrees with
+      // the chosen group, carry on; otherwise suggest the category it points to.
+      const vote = await this.detectCategory(input).catch(() => undefined);
+      const members = targetMembers(input.category);
+      if (!vote || !members.includes(vote.category)) {
+        categoryCheck = {
+          matchesCategory: false,
+          likelihood,
+          suggestedCategory:
+            vote && vote.category !== 'other' && !members.includes(vote.category)
+              ? vote.category
+              : undefined,
+          suggestedGroup: vote?.category,
+        };
+      }
     }
     logger.info('bioclip.identify', {
       category: input.category,
@@ -227,12 +248,32 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
       topScore: Math.round((response.results[0]?.score ?? 0) * 100) / 100,
       ms: Date.now() - started,
     });
+    const candidates = categoryCheck ? [] : toCandidates(response, input.category);
     return {
       provider: SERVICE,
-      candidates: categoryCheck ? [] : toCandidates(response, input.category),
+      candidates,
       attribution: [BIOCLIP_ATTRIBUTION],
       experimental: true,
       categoryCheck,
+      detectedCategory: candidates[0]?.category,
     };
+  }
+
+  /**
+   * "Not sure": let the top 20 species vote for a category, weighted by score.
+   * On test photos this beat summing whole classes, which favours huge classes
+   * (e.g. a camouflaged frog came out as "fungus" by class sums).
+   */
+  async detectCategory(input: IdentificationInput): Promise<CategoryDetectionResult> {
+    const images = input.images.map((img) => Buffer.from(img.data).toString('base64'));
+    const response = await this.call({ images, k: 20 });
+    const votes = new Map<OrganismCategory, number>();
+    for (const r of response.results) {
+      const c = categoryForTaxon(r.kingdom, r.class, r.phylum);
+      votes.set(c, (votes.get(c) ?? 0) + r.score);
+    }
+    const total = [...votes.values()].reduce((a, b) => a + b, 0) || 1;
+    const [category, weight] = [...votes.entries()].sort((a, b) => b[1] - a[1])[0] ?? ['other', 0];
+    return { category, likelihood: Math.min(1, weight / total) };
   }
 }

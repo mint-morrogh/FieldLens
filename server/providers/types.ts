@@ -4,6 +4,7 @@ import type {
   CategoryCheck,
   CommunityObservationSummary,
   FeatureId,
+  IdentifyTarget,
   NearbySpeciesGroup,
   OccurrenceEvidence,
   OrganismCandidate,
@@ -22,9 +23,12 @@ export type InputImage = {
 
 export type IdentificationInput = {
   observationId: string;
-  category: OrganismCategory;
+  /** A specific category, a group ("bug", "animal") or "auto"; see the pipeline. */
+  category: IdentifyTarget;
   images: InputImage[];
   location?: ApproxLocation;
+  /** Where the position came from: the device now, or the photo's own GPS. */
+  locationSource?: 'device' | 'photo';
   capturedAt: Date;
   /** Only honoured by mock providers. */
   mockScenario?: string;
@@ -42,16 +46,23 @@ export type IdentificationResult = {
   attribution: Attribution[];
   experimental?: boolean;
   categoryCheck?: CategoryCheck;
+  /** For groups: the specific category of the top candidate (e.g. "amphibian" for "animal"). */
+  detectedCategory?: OrganismCategory;
   /** Provider-native response, kept only for debugging; never sent to the UI. */
   raw?: unknown;
 };
+
+export type CategoryDetectionResult = { category: OrganismCategory; likelihood: number };
 
 export interface IdentificationProvider {
   readonly name: string;
   readonly acceptedMimeTypes: readonly string[];
   readonly maxImages: number;
-  supports(category: OrganismCategory): boolean;
+  /** Whether this provider can identify a specific category or group. */
+  supports(target: IdentifyTarget): boolean;
   identify(input: IdentificationInput): Promise<IdentificationResult>;
+  /** Optional: work out which category a photo belongs to ("Not sure"). */
+  detectCategory?(input: IdentificationInput): Promise<CategoryDetectionResult>;
 }
 
 export type ResolvedTaxon = TaxonomyRanks & {

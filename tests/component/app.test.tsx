@@ -76,20 +76,43 @@ describe('location permission', () => {
 });
 
 describe('category picker', () => {
-  it('renders every group with a description, selecting only available ones', async () => {
+  it('offers broad groups and explains the ones the server cannot handle yet', async () => {
     const { CategoryPicker } = await import('../../src/features/identification/CategoryPicker');
+    const { default: userEvent } = await import('@testing-library/user-event');
     const onChange = vi.fn();
-    render(<CategoryPicker value="plant" onChange={onChange} />);
-    const radios = screen.getAllByRole('radio');
-    expect(radios).toHaveLength(6);
+    render(
+      <CategoryPicker value="plant" onChange={onChange} supported={['plant']} autoDetect={false} />,
+    );
+    const names = screen.getAllByRole('radio').map((r) => r.textContent);
+    expect(names.join('|')).toMatch(/Plant.*Fungus.*Bug.*Bird.*Animal.*Not sure/);
     expect(screen.getByRole('radio', { name: /Plant/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText('Flowers, trees, leaves')).toBeInTheDocument();
-    const { default: userEvent } = await import('@testing-library/user-event');
-    await userEvent.click(screen.getByRole('radio', { name: /Mammal/ }));
+    await userEvent.click(screen.getByRole('radio', { name: /Animal/ }));
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole('status')).toHaveTextContent('Mammal identification is coming soon');
+    expect(screen.getByRole('status')).toHaveTextContent('Animal identification is coming soon');
     await userEvent.click(screen.getByRole('radio', { name: /Plant/ }));
     expect(onChange).toHaveBeenCalledWith('plant');
+  });
+
+  it('enables groups when any member is supported and "Not sure" when detection is available', async () => {
+    const { CategoryPicker } = await import('../../src/features/identification/CategoryPicker');
+    render(
+      <CategoryPicker
+        value="plant"
+        onChange={vi.fn()}
+        supported={['plant', 'amphibian']}
+        autoDetect
+      />,
+    );
+    expect(screen.getByRole('radio', { name: /Animal/ })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('radio', { name: /Not sure/ })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('radio', { name: /Bug/ })).toHaveAttribute('aria-disabled', 'true');
   });
 });
 

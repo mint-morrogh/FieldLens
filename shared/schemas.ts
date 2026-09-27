@@ -93,6 +93,14 @@ const speciesInfo = z.object({
     .optional(),
   image: licensedImage.optional(),
   images: z.array(licensedImage).optional(),
+  distribution: z
+    .object({
+      source: z.string(),
+      sourceUrl: z.string().optional(),
+      total: z.number(),
+      countries: z.array(z.object({ code: z.string(), count: z.number() })),
+    })
+    .optional(),
   links: z.array(link),
   sources: z.array(z.string()),
 });
@@ -133,6 +141,7 @@ export const identifyResponseSchema = z.object({
     used: z.boolean(),
     approx: approxLocation.optional(),
     label: z.string().optional(),
+    source: z.enum(['device', 'photo']).optional(),
   }),
   confidenceBand: z.enum(['high', 'medium', 'low', 'none']),
   candidates: z.array(organismCandidateSchema),
@@ -181,6 +190,27 @@ export const identifyResponseSchema = z.object({
       suggestedGroup: z.string().optional(),
     })
     .optional(),
+  categoryDetection: z
+    .object({
+      requested: z.enum([
+        'plant',
+        'bird',
+        'mammal',
+        'reptile',
+        'amphibian',
+        'fish',
+        'insect',
+        'arachnid',
+        'fungus',
+        'other',
+        'bug',
+        'animal',
+        'auto',
+      ]),
+      detected: categorySchema,
+      likelihood: score.optional(),
+    })
+    .optional(),
   safety: z
     .object({
       statements: z.array(
@@ -218,4 +248,5 @@ export const healthResponseSchema = z.object({
   plantIdentificationConfigured: z.boolean(),
   mock: z.boolean(),
   supportedCategories: z.array(categorySchema),
+  autoDetect: z.boolean().optional(),
 }) satisfies z.ZodType<HealthResponse>;

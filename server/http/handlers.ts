@@ -5,7 +5,7 @@ import { readEnv, type ServerEnv } from '../lib/env.js';
 import { ApiError, toApiError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 import { RateLimiter, clientIdFromRequest } from '../lib/rateLimit.js';
-import { getProviders, supportedCategories } from '../providers/registry.js';
+import { canAutoDetect, getProviders, supportedCategories } from '../providers/registry.js';
 import type { IdentificationInput, ProviderSet } from '../providers/types.js';
 import { assertContentLength, parseIdentifyForm } from '../validation/upload.js';
 
@@ -164,6 +164,7 @@ export function handleHealth(options: { env?: ServerEnv } = {}): Response {
     plantIdentificationConfigured: env.useMockApi || !!env.plantnetApiKey,
     mock: env.useMockApi,
     supportedCategories: supportedCategories(env),
+    autoDetect: canAutoDetect(env),
   };
   return json(body);
 }

@@ -15,6 +15,12 @@ export type OrganismCategory =
   | 'fungus'
   | 'other';
 
+/** Broader picker choices that the server narrows to a specific category. */
+export type CategoryGroupId = 'bug' | 'animal' | 'auto';
+
+/** What the user asked to identify: a specific category or a broader group. */
+export type IdentifyTarget = OrganismCategory | CategoryGroupId;
+
 /** A category-specific body part / organ / feature, e.g. "flower" for plants or "wing" for birds. */
 export type FeatureId = string;
 
@@ -111,6 +117,14 @@ export type SpeciesFact = {
   sourceUrl?: string;
 };
 
+export type SpeciesDistribution = {
+  source: string;
+  sourceUrl?: string;
+  total: number;
+  /** ISO 3166-1 alpha-2 codes with record counts, most first. */
+  countries: { code: string; count: number }[];
+};
+
 export type SpeciesInfo = {
   scientificName: string;
   commonNames: string[];
@@ -120,6 +134,8 @@ export type SpeciesInfo = {
   image?: LicensedImage;
   /** Openly licensed reference photos of this taxon (e.g. from iNaturalist). */
   images?: LicensedImage[];
+  /** Where the species has been recorded worldwide (GBIF records per country). */
+  distribution?: SpeciesDistribution;
   links: ExternalLink[];
   sources: string[];
 };
@@ -190,7 +206,7 @@ export type IdentifyResponse = {
   category: OrganismCategory;
   generatedAt: string;
   imagesSubmitted: number;
-  location: { used: boolean; approx?: ApproxLocation; label?: string };
+  location: { used: boolean; approx?: ApproxLocation; label?: string; source?: 'device' | 'photo' };
   confidenceBand: ConfidenceBand;
   candidates: OrganismCandidate[];
   speciesInfo?: SpeciesInfo;
@@ -211,6 +227,12 @@ export type IdentifyResponse = {
   experimental?: boolean;
   /** Whether the photo actually looks like the chosen category, with a better guess if not. */
   categoryCheck?: CategoryCheck;
+  /** Present when a group or "Not sure" was chosen: what was asked and what was found. */
+  categoryDetection?: {
+    requested: IdentifyTarget;
+    detected: OrganismCategory;
+    likelihood?: number;
+  };
   safety?: SafetyInfo;
   mock?: boolean;
 };
@@ -249,7 +271,7 @@ export type CategoryCheck = {
 };
 
 /** Pipeline stages reported to the client while an identification runs. */
-export type IdentifyStage = 'identify' | 'taxonomy' | 'occurrence' | 'rank' | 'enrich';
+export type IdentifyStage = 'detect' | 'identify' | 'taxonomy' | 'occurrence' | 'rank' | 'enrich';
 
 export type StageEvent = {
   stage: IdentifyStage;
@@ -290,4 +312,6 @@ export type HealthResponse = {
   plantIdentificationConfigured: boolean;
   mock: boolean;
   supportedCategories: OrganismCategory[];
+  /** Whether "Not sure" (automatic category detection) is available. */
+  autoDetect?: boolean;
 };

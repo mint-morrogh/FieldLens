@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/ui';
+import { detectPlatform, locationUnblockSteps } from '../../lib/platform';
 import { useLocationState } from './LocationContext';
 
 /**
@@ -12,6 +13,7 @@ export function LocationFixCard({ onRetry }: { onRetry: () => void }) {
   const { status, request } = useLocationState();
   const [failed, setFailed] = useState(false);
   const blocked = status === 'denied' || failed;
+  const help = locationUnblockSteps(detectPlatform());
 
   const requestAndRetry = async () => {
     const location = await request();
@@ -35,25 +37,20 @@ export function LocationFixCard({ onRetry }: { onRetry: () => void }) {
             <>
               <p className="mt-1 text-ink-soft">
                 Location is blocked for this site, so nearby records and the iNaturalist card
-                couldn’t be checked. To allow it on iPhone:
+                couldn’t be checked. To allow it:
               </p>
-              <ol className="mt-2 list-decimal space-y-1 pl-5 text-[0.95rem] text-ink-soft">
-                <li>
-                  <strong>Settings → Privacy &amp; Security → Location Services</strong>: turn it
-                  on, then set <strong>Safari Websites</strong> to{' '}
-                  <strong>While Using the App</strong>.
-                </li>
-                <li>
-                  In Safari, tap <strong>aA</strong> (or the page menu) →{' '}
-                  <strong>Website Settings</strong> → <strong>Location</strong> →{' '}
-                  <strong>Allow</strong>.
-                </li>
+              <p className="mt-2 text-sm font-bold text-ink" data-testid="unblock-title">
+                {help.title}
+              </p>
+              <ol
+                className="mt-1 list-decimal space-y-1 pl-5 text-[0.95rem] text-ink-soft"
+                data-testid="unblock-steps"
+              >
+                {help.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
                 <li>Come back here and tap Try again.</li>
               </ol>
-              <p className="mt-2 text-sm text-ink-muted">
-                On Android Chrome: tap the icon left of the address → Permissions → Location →
-                Allow.
-              </p>
             </>
           ) : (
             <p className="mt-1 text-ink-soft">

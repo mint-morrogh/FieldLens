@@ -25,9 +25,17 @@ Live: private Space `mintmundane/fieldlens-bioclip` (ZeroGPU), source in `hf-spa
 - [x] Insects & spiders via `BioclipIdentificationProvider` (experimental label, confidence capped at 90%, “does this look like an insect?” check with a one-tap category switch, iNaturalist common names). Geographic support comes from the existing GBIF reranker.
 - [x] Fungi via BioCLIP (experimental) with the safety package: top-of-result mushroom warning, dangerous genera and look-alikes always checked (even when confident), food uses never shown for species reported toxic, stem-base photo prompt.
 - [x] Birds via BioCLIP (experimental).
-- [ ] Mammals, reptiles, amphibians (same service; add taxon scopes and fixtures).
+- [x] Mammals, reptiles, amphibians and fish (BioCLIP scopes; reptiles span Squamata/Testudines/Crocodylia/Sphenodontia, most fish have no class in the Tree of Life labels).
+- [x] Broad picker groups — Plant, Fungus, Bug, Bird, Animal, Not sure — with the specific category shown on the result.
+- [x] “Not sure”: detect the category by top-20 species vote (beat class sums on real photos), then route (plants → Pl@ntNet).
+- [x] Tap your own photo for a full-screen view (original in-session; ≤2048 px copy saved in History).
+- [x] “Hear pronunciation” via on-device speech.
+- [x] Location unblock steps tailored to device/browser.
+- [x] “Where was this photo taken?” for library photos, with on-device EXIF GPS/date reading.
+- [x] Spinning globe of worldwide GBIF records per country.
+- [x] Balanced headline wrapping; no inline “Likely” prefix.
 - [ ] Optional: eBird nearby observations as an extra bird prior (needs an eBird key).
-- [ ] "Auto" category detection with BioCLIP 2 at class/kingdom level.
+- [x] "Auto" category detection (“Not sure”).
 - [ ] Measure accuracy on real phone photos for each group before removing the "experimental" label.
 
 ## Later

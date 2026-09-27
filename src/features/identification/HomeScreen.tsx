@@ -108,12 +108,12 @@ function DemoModePanel() {
 
 export function HomeScreen({ health }: { health?: HealthResponse }) {
   const session = useSession();
-  const start = (file: File) => {
-    session.startWithPhoto(file);
+  const start = (file: File, source: 'camera' | 'library') => {
+    session.startWithPhoto(file, source);
     navigate({ name: 'identify' });
   };
-  const camera = usePhotoPicker(start, { capture: true });
-  const picker = usePhotoPicker(start);
+  const camera = usePhotoPicker((f) => start(f, 'camera'), { capture: true });
+  const picker = usePhotoPicker((f) => start(f, 'library'));
 
   return (
     <div className="space-y-7">
@@ -135,6 +135,7 @@ export function HomeScreen({ health }: { health?: HealthResponse }) {
         value={session.state.category}
         onChange={session.setCategory}
         supported={health?.supportedCategories}
+        autoDetect={health?.autoDetect}
       />
 
       <div className="flex flex-col gap-3">

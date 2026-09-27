@@ -10,6 +10,11 @@ async function choosePhoto(page: Page) {
   await expect(page.getByTestId('crop-box')).toBeVisible();
 }
 
+/** Library photos ask where they were taken; pick an answer when a test needs a specific one. */
+async function wherePhotoTaken(page: Page, answer: 'Near here' | 'Somewhere else') {
+  await page.getByTestId('photo-location-question').getByRole('button', { name: answer }).click();
+}
+
 async function identifySelection(page: Page) {
   await page.getByRole('button', { name: /Identify selection|Add photo and identify/ }).click();
   await expect(page.getByTestId('result-view')).toBeVisible({ timeout: 15_000 });
@@ -66,7 +71,7 @@ test.describe('identification flow (mock API)', () => {
     await choosePhoto(page);
     await identifySelection(page);
     await expect(page.getByTestId('result-headline')).toHaveAttribute('data-band', 'medium');
-    await expect(page.getByTestId('result-headline')).toContainText('Likely');
+    await expect(page.getByTestId('result-headline')).toContainText('Likely match');
     await expect(page.getByTestId('improve')).toBeVisible();
     await expect(page.getByTestId('alternatives')).toBeVisible();
   });
@@ -96,6 +101,7 @@ test.describe('identification flow (mock API)', () => {
     await page.goto('/?mock=high');
     await expect(page.getByTestId('location-status')).toContainText('Location not used');
     await choosePhoto(page);
+    await wherePhotoTaken(page, 'Near here');
     await identifySelection(page);
     await expect(page.getByTestId('result-headline')).toContainText('Location not used');
     await expect(page.getByTestId('geo-evidence')).toContainText('Location not used');
@@ -128,10 +134,15 @@ test.describe('identification flow (mock API)', () => {
     await page.goto('/?mock=high');
     await choosePhoto(page);
     await identifySelection(page);
-    await page.goto('/#/history');
-    await page.reload();
+    // Saving (thumbnail + high-quality copy) happens in the background after the result.
+    await expect(async () => {
+      await page.goto('/#/history');
+      await page.reload();
+      await expect(page.getByTestId('history-item').first()).toContainText('Red Maple', {
+        timeout: 1000,
+      });
+    }).toPass({ timeout: 15_000 });
     const item = page.getByTestId('history-item').first();
-    await expect(item).toContainText('Red Maple');
     await item.getByRole('link').click();
     await expect(page.getByTestId('result-headline')).toContainText('Acer rubrum');
     await page.getByRole('button', { name: 'Delete observation' }).click();
@@ -163,6 +174,7 @@ test('shows the live analysis checklist and a reference gallery', async ({ page 
 test('granting location later re-checks the result with location', async ({ page, context }) => {
   await page.goto('/?mock=high');
   await choosePhoto(page);
+  await wherePhotoTaken(page, 'Near here');
   await identifySelection(page);
   await expect(page.getByTestId('result-headline')).toContainText('Location not used');
 
@@ -175,17 +187,18 @@ test('granting location later re-checks the result with location', async ({ page
   await expect(page.getByTestId('location-fix')).toHaveCount(0);
 });
 
-test('category tiles select plants and explain upcoming groups', async ({ page }) => {
+test('category tiles offer broad groups', async ({ page }) => {
   await page.goto('/?mock=high');
   const picker = page.getByTestId('category-picker');
   await expect(picker.getByRole('radio', { name: /Plant/ })).toHaveAttribute(
     'aria-checked',
     'true',
   );
-  // Upcoming groups are aria-disabled (announced as unavailable) but still explain themselves on tap.
-  await picker.getByRole('radio', { name: /Mammal/ }).click({ force: true });
-  await expect(picker).toContainText('Mammal identification is coming soon');
-  await expect(picker.getByRole('radio', { name: /Plant/ })).toHaveAttribute(
+  for (const name of [/Fungus/, /Bug/, /Bird/, /Animal/, /Not sure/]) {
+    await expect(picker.getByRole('radio', { name })).toBeVisible();
+  }
+  await picker.getByRole('radio', { name: /Animal/ }).click();
+  await expect(picker.getByRole('radio', { name: /Animal/ })).toHaveAttribute(
     'aria-checked',
     'true',
   );
@@ -193,10 +206,7 @@ test('category tiles select plants and explain upcoming groups', async ({ page }
 
 test('insects are identified with an experimental label', async ({ page }) => {
   await page.goto('/?mock=high');
-  await page
-    .getByTestId('category-picker')
-    .getByRole('radio', { name: /Insect/ })
-    .click();
+  await page.getByTestId('category-picker').getByRole('radio', { name: /Bug/ }).click();
   await choosePhoto(page);
   await identifySelection(page);
   await expect(page.getByTestId('experimental-badge')).toBeVisible();
@@ -205,15 +215,10 @@ test('insects are identified with an experimental label', async ({ page }) => {
 
 test('an off-target insect photo can be re-identified as a plant', async ({ page }) => {
   await page.goto('/?mock=wrong-category');
-  await page
-    .getByTestId('category-picker')
-    .getByRole('radio', { name: /Insect/ })
-    .click();
+  await page.getByTestId('category-picker').getByRole('radio', { name: /Bug/ }).click();
   await choosePhoto(page);
   await identifySelection(page);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText(
-    'doesn’t look like an insect',
-  );
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('doesn’t look like a bug');
   await page.getByRole('button', { name: 'Identify as plant' }).click();
   await expect(page.getByTestId('result-headline')).toContainText('Acer rubrum', {
     timeout: 15_000,
@@ -261,6 +266,75 @@ test('gallery thumbnails keep their size and scroll sideways', async ({ page }) 
   expect(Math.round(box.width)).toBeGreaterThanOrEqual(100);
 });
 
+test('"Animal" narrows to the specific group and says so', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await page
+    .getByTestId('category-picker')
+    .getByRole('radio', { name: /Animal/ })
+    .click();
+  await choosePhoto(page);
+  await identifySelection(page);
+  await expect(page.getByTestId('detected-category')).toHaveText('Amphibian');
+  await expect(page.getByTestId('result-headline')).toContainText('Wood Frog');
+});
+
+test('"Not sure" detects the category first', async ({ page }) => {
+  await page.goto('/?mock=auto-bug');
+  await page
+    .getByTestId('category-picker')
+    .getByRole('radio', { name: /Not sure/ })
+    .click();
+  await choosePhoto(page);
+  await identifySelection(page);
+  await expect(page.getByTestId('detected-category')).toHaveText('Insect · detected');
+  await expect(page.getByTestId('result-headline')).toContainText('Danaus plexippus');
+});
+
+test('"Not sure" routes plants to Pl@ntNet', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await page
+    .getByTestId('category-picker')
+    .getByRole('radio', { name: /Not sure/ })
+    .click();
+  await choosePhoto(page);
+  await identifySelection(page);
+  await expect(page.getByTestId('detected-category')).toHaveText('Plant · detected');
+  await expect(page.getByTestId('result-headline')).toContainText('Acer rubrum');
+  await expect(page.getByTestId('experimental-badge')).toHaveCount(0);
+});
+
+test('library photos ask where they were taken and can use the photo’s own location', async ({
+  page,
+}) => {
+  await page.goto('/?mock=high');
+  await page
+    .getByTestId('photo-file-input')
+    .setInputFiles(path.join(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/gps.jpg'));
+  const question = page.getByTestId('photo-location-question');
+  await expect(question).toBeVisible();
+  await expect(question.getByRole('button', { name: 'Where the photo was taken' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await identifySelection(page);
+  await expect(page.getByTestId('result-headline')).toContainText(
+    'Location from photo (~46.2°N, 63.1°W)',
+  );
+  // Tapping your photo opens it full screen.
+  await page.getByTestId('own-photo').click();
+  await expect(page.getByTestId('lightbox')).toContainText('Your photo');
+});
+
+test('photos without location data default to "Somewhere else" when old', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await choosePhoto(page); // leaf.png: no EXIF; its file date is from when the repo was checked out
+  const question = page.getByTestId('photo-location-question');
+  await expect(question.getByRole('button', { name: 'Where the photo was taken' })).toHaveCount(0);
+  await question.getByRole('button', { name: 'Somewhere else' }).click();
+  await identifySelection(page);
+  await expect(page.getByTestId('result-headline')).toContainText('Location not used');
+});
+
 test.describe('with location permission', () => {
   test.use({
     permissions: ['geolocation'],
@@ -271,6 +345,7 @@ test.describe('with location permission', () => {
     await page.goto('/?mock=high');
     await expect(page.getByTestId('location-status')).toContainText('Location: Ready');
     await choosePhoto(page);
+    await wherePhotoTaken(page, 'Near here');
     await identifySelection(page);
 
     await expect(page.getByTestId('result-headline')).toContainText(
