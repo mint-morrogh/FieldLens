@@ -15,6 +15,13 @@ Live: private Space `mintmundane/fieldlens-bioclip` (ZeroGPU), source in `hf-spa
 
 ## Next
 
+- [ ] **Edibility & safety section** (plants first, then fungi), researched sources only:
+  - [ ] Research free, reusable sources (Wikipedia/Wikidata statements, Canadian Poisonous Plants Information System, others); check licences (e.g. PFAF is non-commercial).
+  - [ ] Quote sourced statements with links; never "safe to eat"; include plant part and preparation when stated.
+  - [ ] Edible notes only on high-confidence results; toxic warnings and known toxic look-alikes shown at any confidence.
+  - [ ] Fungi: stricter — prominent expert-confirmation warning on any edible statement; dangerous look-alike genera always flagged.
+  - [ ] Permanent footer: "Never eat a wild plant or mushroom based on an app — confirm with a local expert."
+
 - [ ] `BioclipIdentificationProvider` for insects & spiders, using GBIF species recorded nearby as the candidate list.
 - [ ] Fungi with the safety package: never show "edible", dangerous look-alike warnings (Amanita, Galerina, Lepiota, Gyromitra, Cortinarius, Inocybe, Clitocybe), prefer genus answers, stronger notice.
 - [ ] Birds (optionally eBird nearby observations as a prior), then mammals, reptiles, amphibians.
