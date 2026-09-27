@@ -1,5 +1,4 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { errorCopy } from '../../src/features/identification/IdentifyScreen';
 import { LocationPanel } from '../../src/features/identification/HomeScreen';
@@ -32,49 +31,46 @@ function mockGeolocation(result: 'granted' | 'denied') {
 describe('location permission', () => {
   beforeEach(() => localStorage.clear());
 
-  it('asks politely and shows a denied state without nagging', async () => {
-    mockGeolocation('denied');
+  const renderPanel = () =>
     render(
       <LocationProvider>
         <LocationPanel />
       </LocationProvider>,
     );
-    expect(screen.getByText(/Location helps rule out species/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Allow Location' }));
-    await waitFor(() =>
-      expect(screen.getByTestId('location-status')).toHaveTextContent('Location not used'),
-    );
-    expect(screen.queryByRole('button', { name: 'Allow Location' })).not.toBeInTheDocument();
-  });
 
-  it('shows ready when granted', async () => {
-    mockGeolocation('granted');
-    render(
-      <LocationProvider>
-        <LocationPanel />
-      </LocationProvider>,
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Allow Location' }));
+  it('asks for location automatically on first open', async () => {
+    const get = mockGeolocation('granted');
+    renderPanel();
     await waitFor(() =>
       expect(screen.getByTestId('location-status')).toHaveTextContent('Location: Ready'),
     );
+    expect(get).toHaveBeenCalledTimes(1);
   });
 
-  it('remembers "Not Now"', async () => {
-    mockGeolocation('granted');
-    const { unmount } = render(
-      <LocationProvider>
-        <LocationPanel />
-      </LocationProvider>,
+  it('shows a denied state and never re-prompts after a denial', async () => {
+    const get = mockGeolocation('denied');
+    const { unmount } = renderPanel();
+    await waitFor(() =>
+      expect(screen.getByTestId('location-status')).toHaveTextContent('Location not used'),
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Not Now' }));
     unmount();
-    render(
-      <LocationProvider>
-        <LocationPanel />
-      </LocationProvider>,
-    );
-    expect(screen.queryByTestId('location-prompt')).not.toBeInTheDocument();
+    renderPanel();
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Allow Location' })).not.toBeInTheDocument();
+  });
+
+  it('re-asks on later visits if previously granted (Safari resets permission)', async () => {
+    localStorage.setItem('fieldlens.locationChoice', 'granted');
+    const get = mockGeolocation('granted');
+    renderPanel();
+    await waitFor(() => expect(get).toHaveBeenCalled());
+  });
+
+  it('respects an explicit "Not Now" from an earlier visit', () => {
+    localStorage.setItem('fieldlens.locationChoice', 'declined');
+    const get = mockGeolocation('granted');
+    renderPanel();
+    expect(get).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Use location' })).toBeInTheDocument();
   });
 });

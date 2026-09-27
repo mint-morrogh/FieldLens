@@ -90,15 +90,15 @@ test.describe('identification flow (mock API)', () => {
     expect(Math.round(full.width)).toBe(Math.round(stage.width));
   });
 
-  test('declining location still identifies and says location was not used', async ({ page }) => {
+  test('denied location still identifies and says location was not used', async ({ page }) => {
+    // No geolocation permission is granted in this context, so the automatic prompt is denied.
     await page.goto('/?mock=high');
-    await page.getByRole('button', { name: 'Not Now' }).click();
     await expect(page.getByTestId('location-status')).toContainText('Location not used');
     await choosePhoto(page);
     await identifySelection(page);
     await expect(page.getByTestId('result-headline')).toContainText('Location not used');
     await expect(page.getByTestId('geo-evidence')).toContainText('Location not used');
-    // Don't nag: the prompt stays dismissed after reload.
+    // Don't nag: no prompt card after reload.
     await page.goto('/');
     await expect(page.getByTestId('location-prompt')).toHaveCount(0);
   });

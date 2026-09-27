@@ -59,7 +59,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const supported = typeof navigator !== 'undefined' && 'geolocation' in navigator;
   const [status, setStatus] = useState<LocationStatus>(() => {
     if (!supported) return 'unavailable';
-    return readChoice() === 'declined' ? 'declined' : 'unknown';
+    const choice = readChoice();
+    return choice === 'declined' ? 'declined' : choice === 'denied' ? 'denied' : 'unknown';
   });
   const [location, setLocation] = useState<ApproxLocation>();
   const fetchedAt = useRef(0);
@@ -84,20 +85,29 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     }
   }, [supported]);
 
-  // If permission is already granted, pick up a location silently. Never prompt on load.
+  // On open: use location if already granted, and ask once on first launch.
+  // After a denial or "Not Now" we never prompt again automatically.
   useEffect(() => {
-    if (!supported || readChoice() === 'declined') return;
+    if (!supported) return;
+    const choice = readChoice();
+    if (choice === 'declined') return;
     let cancelled = false;
     const perms = navigator.permissions;
-    if (!perms?.query) return;
-    perms
-      .query({ name: 'geolocation' as PermissionName })
-      .then((result) => {
-        if (cancelled) return;
-        if (result.state === 'granted') void fetchLocation();
-        else if (result.state === 'denied') setStatus('denied');
-      })
-      .catch(() => undefined);
+    const decide = (state?: PermissionState) => {
+      if (cancelled) return;
+      if (state === 'denied') setStatus('denied');
+      // Ask unless the user previously denied it (Safari may reset "granted" between visits).
+      else if (state === 'granted' || choice !== 'denied') void fetchLocation();
+    };
+    if (perms?.query) {
+      perms
+        .query({ name: 'geolocation' as PermissionName })
+        .then((result) => decide(result.state))
+        .catch(() => decide());
+    } else {
+      // e.g. older iOS Safari without the Permissions API
+      decide();
+    }
     return () => {
       cancelled = true;
     };

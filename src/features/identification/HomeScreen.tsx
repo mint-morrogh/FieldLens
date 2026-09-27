@@ -41,13 +41,13 @@ export function LocationPanel() {
         <span className="flex items-center gap-2">
           <Icon name="pin" className="h-5 w-5" /> Location not used
         </span>
-        {status === 'declined' && (
+        {(status === 'declined' || status === 'denied') && (
           <button
             type="button"
             className="min-h-11 font-semibold text-moss underline underline-offset-4"
             onClick={() => void request()}
           >
-            Use location
+            {status === 'denied' ? 'Try again' : 'Use location'}
           </button>
         )}
         {status === 'denied' && (
