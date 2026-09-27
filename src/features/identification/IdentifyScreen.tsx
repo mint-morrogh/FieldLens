@@ -1,4 +1,7 @@
+import { CATEGORY_PICKER_ORDER, getTarget } from '../../../shared/categories';
+import type { IdentifyTarget } from '../../../shared/types';
 import { useEffect } from 'react';
+import { isTargetAvailable, useHealth } from '../../app/health';
 import { navigate } from '../../app/router';
 import { Icon } from '../../components/Icon';
 import { Button, Card, Notice } from '../../components/ui';
@@ -114,6 +117,7 @@ function ErrorState({ error }: { error: ClientError }) {
 
 export function IdentifyScreen() {
   const session = useSession();
+  const health = useHealth();
   const { state } = session;
   // Follow-up photos: the native camera by default, the library as an alternative.
   const camera = usePhotoPicker((f) => session.photoSelected(f, 'camera'), { capture: true });
@@ -135,12 +139,25 @@ export function IdentifyScreen() {
             : state.category
         }
         initialFeature={state.pendingFeature}
-        confirmLabel={state.images.length > 0 ? 'Add photo and identify' : 'Identify selection'}
+        confirmLabel={state.images.length > 0 ? 'Add photo and identify' : 'Identify'}
         onCancel={() => {
           session.cancelCapture();
           if (!state.result && !state.error) navigate({ name: 'home' });
         }}
         onConfirm={(box, feature) => void session.confirmCrop(box, feature)}
+        categoryChoice={
+          state.images.length === 0
+            ? {
+                value: state.category,
+                onChange: session.setCategory,
+                options: (['auto', ...CATEGORY_PICKER_ORDER] as IdentifyTarget[]).map((id) => ({
+                  id,
+                  label: id === 'auto' ? 'Auto' : getTarget(id).label,
+                  available: isTargetAvailable(id, health),
+                })),
+              }
+            : undefined
+        }
         locationQuestion={
           state.photoSource === 'library' && state.images.length === 0
             ? {

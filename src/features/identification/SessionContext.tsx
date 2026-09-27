@@ -356,7 +356,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       state,
       setCategory: (category) => dispatch({ type: 'setCategory', category }),
       startWithPhoto: (blob, source = 'camera') => {
-        dispatch({ type: 'reset', category: stateRef.current.category });
+        // Each new photo starts on Auto; "What is it?" is chosen on the crop screen.
+        dispatch({ type: 'reset', category: CLIENT_DEFAULT_TARGET });
         dispatch({ type: 'photo', blob, url: URL.createObjectURL(blob), source });
         if (source === 'library') void inspectLibraryPhoto(blob);
       },

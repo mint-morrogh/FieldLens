@@ -15,8 +15,13 @@ async function wherePhotoTaken(page: Page, answer: 'Near here' | 'Somewhere else
   await page.getByTestId('photo-location-question').getByRole('button', { name: answer }).click();
 }
 
+/** "What is it?" on the crop screen (optional; Auto is the default). */
+async function pickCategory(page: Page, name: string) {
+  await page.getByTestId('crop-category').getByRole('button', { name, exact: true }).click();
+}
+
 async function identifySelection(page: Page) {
-  await page.getByRole('button', { name: /Identify selection|Add photo and identify/ }).click();
+  await page.getByRole('button', { name: /^(Identify|Add photo and identify)$/ }).click();
   await expect(page.getByTestId('result-view')).toBeVisible({ timeout: 15_000 });
 }
 
@@ -90,7 +95,7 @@ test.describe('identification flow (mock API)', () => {
     expect(after.width).toBeLessThan(before.width - 30);
     expect(after.height).toBeLessThan(before.height - 20);
 
-    await page.getByRole('button', { name: 'Use entire image' }).click();
+    await page.getByRole('button', { name: 'Whole photo' }).click();
     const full = (await box.boundingBox())!;
     const stage = (await page.getByTestId('crop-stage').boundingBox())!;
     expect(Math.round(full.width)).toBe(Math.round(stage.width));
@@ -114,7 +119,7 @@ test.describe('identification flow (mock API)', () => {
   test('provider quota exhausted shows a friendly error and keeps the photo', async ({ page }) => {
     await page.goto('/?mock=quota');
     await choosePhoto(page);
-    await page.getByRole('button', { name: 'Identify selection' }).click();
+    await page.getByRole('button', { name: 'Identify', exact: true }).click();
     const error = page.getByTestId('error-state');
     await expect(error).toBeVisible();
     await expect(error).toContainText('at capacity');
@@ -158,7 +163,7 @@ test('shows the live analysis checklist and a reference gallery', async ({ page 
   });
   await page.goto('/?mock=high');
   await choosePhoto(page);
-  await page.getByRole('button', { name: 'Identify selection' }).click();
+  await page.getByRole('button', { name: 'Identify', exact: true }).click();
   const steps = page.getByTestId('analysis-steps');
   await expect(steps).toBeVisible();
   await expect(steps.locator('[data-step="identify"]')).toBeVisible();
@@ -187,33 +192,67 @@ test('granting location later re-checks the result with location', async ({ page
   await expect(page.getByTestId('location-fix')).toHaveCount(0);
 });
 
-test('photo first: nothing is selected by default and tiles are optional', async ({ page }) => {
+test('photo first: "What is it?" is optional on the crop screen and starts on Auto', async ({
+  page,
+}) => {
   await page.goto('/?mock=high');
-  const picker = page.getByTestId('category-picker');
-  await expect(picker).toContainText('FieldLens will work out what it is');
-  for (const name of [/Plant/, /Fungus/, /Bug/, /Bird/, /Mammal/, /Reptile & amphibian/, /Fish/]) {
-    await expect(picker.getByRole('radio', { name })).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByTestId('identifies')).toContainText('FieldLens works out what it is');
+  await choosePhoto(page);
+  const row = page.getByTestId('crop-category');
+  await expect(row.getByRole('button', { name: 'Auto', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  for (const name of ['Plant', 'Fungus', 'Bug', 'Bird', 'Mammal', 'Reptile & amphibian', 'Fish']) {
+    await expect(row.getByRole('button', { name, exact: true })).toBeVisible();
   }
-  await picker.getByRole('radio', { name: /Fish/ }).click();
-  await expect(picker.getByRole('radio', { name: /Fish/ })).toHaveAttribute('aria-checked', 'true');
-  await expect(picker).toContainText('Identifying as a fish');
-  // Tapping again clears it.
-  await picker.getByRole('radio', { name: /Fish/ }).click();
-  await expect(picker).toContainText('FieldLens will work out what it is');
+  // Picking a plant shows plant parts; Auto hides them again.
+  await pickCategory(page, 'Plant');
+  await expect(page.getByRole('button', { name: 'Flower', exact: true })).toBeVisible();
+  await pickCategory(page, 'Auto');
+  await expect(page.getByRole('button', { name: 'Flower', exact: true })).toHaveCount(0);
+  // Every chip is reachable on a phone-width screen (the row scrolls).
+  await pickCategory(page, 'Fish');
+  await expect(row.getByRole('button', { name: 'Fish', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+});
+
+test('recent identifications can be deleted from the home screen and restored', async ({
+  page,
+}) => {
+  await page.goto('/?mock=high');
+  await choosePhoto(page);
+  await identifySelection(page);
+  await expect(async () => {
+    await page.goto('/');
+    await expect(page.getByTestId('recent-card').first()).toContainText('Red Maple', {
+      timeout: 1000,
+    });
+  }).toPass({ timeout: 30_000 });
+  await page
+    .getByTestId('recent-card')
+    .first()
+    .getByRole('button', { name: /Delete/ })
+    .click();
+  await expect(page.getByTestId('recent-card')).toHaveCount(0);
+  await page.getByTestId('undo-delete').getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByTestId('recent-card')).toHaveCount(1);
 });
 
 test('insects are identified with an experimental label', async ({ page }) => {
   await page.goto('/?mock=high');
-  await page.getByTestId('category-picker').getByRole('radio', { name: /Bug/ }).click();
   await choosePhoto(page);
+  await pickCategory(page, 'Bug');
   await identifySelection(page);
   await expect(page.getByTestId('result-headline')).toContainText('Danaus plexippus');
 });
 
 test('an off-target insect photo can be re-identified as a plant', async ({ page }) => {
   await page.goto('/?mock=wrong-category');
-  await page.getByTestId('category-picker').getByRole('radio', { name: /Bug/ }).click();
   await choosePhoto(page);
+  await pickCategory(page, 'Bug');
   await identifySelection(page);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('doesn’t look like a bug');
   await page.getByRole('button', { name: 'Identify as plant' }).click();
@@ -224,11 +263,8 @@ test('an off-target insect photo can be re-identified as a plant', async ({ page
 
 test('mushrooms get the safety package', async ({ page }) => {
   await page.goto('/?mock=high');
-  await page
-    .getByTestId('category-picker')
-    .getByRole('radio', { name: /Fungus/ })
-    .click();
   await choosePhoto(page);
+  await pickCategory(page, 'Fungus');
   await identifySelection(page);
   await expect(page.getByTestId('fungus-warning')).toContainText(
     'Mushroom identification is difficult',
@@ -245,8 +281,8 @@ test('birds are identified with an experimental label and no edibility section',
   page,
 }) => {
   await page.goto('/?mock=high');
-  await page.getByTestId('category-picker').getByRole('radio', { name: /Bird/ }).click();
   await choosePhoto(page);
+  await pickCategory(page, 'Bird');
   await identifySelection(page);
   await expect(page.getByTestId('result-headline')).toContainText('Blue Jay');
   await expect(page.getByTestId('safety')).toHaveCount(0);
@@ -263,11 +299,8 @@ test('gallery thumbnails keep their size and scroll sideways', async ({ page }) 
 
 test('reptiles and amphibians share a tile and the result says which', async ({ page }) => {
   await page.goto('/?mock=high');
-  await page
-    .getByTestId('category-picker')
-    .getByRole('radio', { name: /Reptile & amphibian/ })
-    .click();
   await choosePhoto(page);
+  await pickCategory(page, 'Reptile & amphibian');
   await identifySelection(page);
   await expect(page.getByTestId('result-headline')).toContainText('Wood Frog');
   await expect(page.getByTestId('detected-category')).toHaveText('Amphibian');
@@ -377,7 +410,7 @@ test('offline: app shell loads from the service worker and photos are kept', asy
   await expect(page.getByTestId('offline-banner')).toBeVisible();
 
   await choosePhoto(page);
-  await page.getByRole('button', { name: 'Identify selection' }).click();
+  await page.getByRole('button', { name: 'Identify', exact: true }).click();
   const error = page.getByTestId('error-state');
   await expect(error).toContainText('You’re offline.');
   await expect(error).toContainText('Your photo is still here.');

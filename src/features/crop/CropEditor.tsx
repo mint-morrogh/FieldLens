@@ -1,8 +1,16 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react';
 import { AUTO_FEATURE, getTarget } from '../../../shared/categories';
 import type { FeatureId, IdentifyTarget } from '../../../shared/types';
 import { Icon } from '../../components/Icon';
-import { Button, Chip } from '../../components/ui';
+import { CategoryIcon } from '../../components/CategoryIcon';
+import { Button } from '../../components/ui';
 import {
   DEFAULT_BOX,
   FULL_BOX,
@@ -26,17 +34,85 @@ const CORNER_POS: Record<Corner, string> = {
   se: 'right-0 bottom-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize',
 };
 
+export type CategoryOption = { id: IdentifyTarget; label: string; available: boolean };
+
+/** A pill on the dark sheet; optional leading icon. */
+function SheetChip({
+  selected,
+  disabled,
+  onClick,
+  children,
+  icon,
+}: {
+  selected: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  icon?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[0.95rem] font-semibold transition ${
+        selected
+          ? 'border-[#9fd08a] bg-[#9fd08a] text-[#11140f]'
+          : disabled
+            ? 'border-dashed border-white/15 text-white/35'
+            : 'border-white/15 bg-white/[0.07] text-white hover:bg-white/15'
+      }`}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function SheetRow({
+  title,
+  hint,
+  children,
+  testId,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+  testId?: string;
+}) {
+  return (
+    // min-w-0: fieldsets default to min-content width, which stops the row from scrolling.
+    <fieldset data-testid={testId} className="min-w-0">
+      <legend className="mb-2 flex w-full items-baseline justify-between gap-2 text-sm">
+        <span className="font-semibold text-white/85">{title}</span>
+        {hint && <span className="text-xs text-white/50">{hint}</span>}
+      </legend>
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+        {children}
+      </div>
+    </fieldset>
+  );
+}
+
 export function CropEditor({
   imageUrl,
   category,
+  categoryChoice,
   initialFeature = 'auto',
   onCancel,
   onConfirm,
-  confirmLabel = 'Identify selection',
+  confirmLabel = 'Identify',
   locationQuestion,
 }: {
   imageUrl: string;
   category: IdentifyTarget;
+  /** "What is it?" — offered for the first photo; Auto lets FieldLens work it out. */
+  categoryChoice?: {
+    value: IdentifyTarget;
+    options: CategoryOption[];
+    onChange: (id: IdentifyTarget) => void;
+  };
   initialFeature?: FeatureId;
   onCancel: () => void;
   onConfirm: (box: Box, feature: FeatureId) => void;
@@ -55,7 +131,7 @@ export function CropEditor({
   const [box, setBox] = useState<Box>(DEFAULT_BOX);
   const [feature, setFeature] = useState<FeatureId>(initialFeature);
   const drag = useRef<Drag | null>(null);
-  const categoryDef = getTarget(category);
+  const categoryDef = getTarget(categoryChoice?.value ?? category);
 
   useLayoutEffect(() => {
     const el = containerRef.current;
@@ -116,6 +192,7 @@ export function CropEditor({
   };
 
   const features = categoryDef.features.length ? [AUTO_FEATURE, ...categoryDef.features] : [];
+  const [notice, setNotice] = useState<string>();
 
   return (
     <div
@@ -128,14 +205,17 @@ export function CropEditor({
         <button
           type="button"
           onClick={onCancel}
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/10"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10"
           aria-label="Cancel and discard photo"
         >
           <Icon name="close" />
         </button>
-        <h1 id="crop-title" className="text-lg font-semibold">
-          Box what you want identified.
-        </h1>
+        <div className="min-w-0">
+          <h1 id="crop-title" className="text-lg font-semibold leading-tight">
+            Box what you want identified.
+          </h1>
+          <p className="text-xs text-white/55">Drag the corners, or draw a new box.</p>
+        </div>
       </div>
 
       <div
@@ -213,75 +293,99 @@ export function CropEditor({
         </div>
       </div>
 
-      <div className="safe-bottom space-y-3 bg-[#11140f] px-4 pt-3">
-        {locationQuestion && (
-          <fieldset data-testid="photo-location-question">
-            <legend className="mb-2 text-sm font-semibold text-white/80">
-              Where was this photo taken?
-            </legend>
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [&>button]:shrink-0 [&>button:not([aria-pressed=true])]:border-white/20 [&>button:not([aria-pressed=true])]:bg-white/10 [&>button:not([aria-pressed=true])]:text-white">
-              <Chip
-                selected={locationQuestion.choice === 'here'}
-                onClick={() => locationQuestion.onChange('here')}
+      <div className="flex justify-center gap-2 pb-3">
+        <button
+          type="button"
+          onClick={() => setBox(DEFAULT_BOX)}
+          className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-white/10 px-3.5 text-sm font-semibold text-white"
+        >
+          <Icon name="refresh" className="h-4 w-4" /> Reset
+        </button>
+        <button
+          type="button"
+          onClick={() => setBox(FULL_BOX)}
+          className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-white/10 px-3.5 text-sm font-semibold text-white"
+        >
+          <Icon name="image" className="h-4 w-4" /> Whole photo
+        </button>
+      </div>
+
+      <div className="safe-bottom space-y-4 rounded-t-3xl border-t border-white/10 bg-[#1a1e17] px-4 pt-4 shadow-[0_-12px_30px_rgba(0,0,0,0.35)]">
+        {categoryChoice && (
+          <SheetRow
+            title="What is it?"
+            hint={categoryChoice.value === 'auto' ? 'Auto works it out' : 'Optional'}
+            testId="crop-category"
+          >
+            {categoryChoice.options.map((o) => (
+              <SheetChip
+                key={o.id}
+                selected={categoryChoice.value === o.id}
+                disabled={!o.available}
+                onClick={() => {
+                  if (!o.available) {
+                    setNotice(`${o.label} identification is coming soon.`);
+                    return;
+                  }
+                  setNotice(undefined);
+                  setFeature('auto');
+                  categoryChoice.onChange(o.id);
+                }}
+                icon={<CategoryIcon id={o.id} className="h-4.5 w-4.5" />}
               >
-                Near here
-              </Chip>
-              {locationQuestion.hasPhotoLocation && (
-                <Chip
-                  selected={locationQuestion.choice === 'photo'}
-                  onClick={() => locationQuestion.onChange('photo')}
-                >
-                  Where the photo was taken
-                </Chip>
-              )}
-              <Chip
-                selected={locationQuestion.choice === 'none'}
-                onClick={() => locationQuestion.onChange('none')}
-              >
-                Somewhere else
-              </Chip>
-            </div>
-            <p className="mt-1 text-xs text-white/60">
-              {locationQuestion.choice === 'photo'
-                ? 'Uses the location saved in the photo (rounded to about 1 km).'
-                : locationQuestion.choice === 'here'
-                  ? 'Uses your current approximate location.'
-                  : 'Location won’t be used for this identification.'}
-            </p>
-          </fieldset>
+                {o.label}
+              </SheetChip>
+            ))}
+          </SheetRow>
+        )}
+        {notice && (
+          <p className="-mt-2 text-xs text-white/60" role="status">
+            {notice}
+          </p>
         )}
         {features.length > 0 && (
-          <fieldset>
-            <legend className="mb-2 text-sm font-semibold text-white/80">
-              What are we looking at? <span className="font-normal">(optional)</span>
-            </legend>
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [&>button]:shrink-0 [&>button:not([aria-pressed=true])]:border-white/20 [&>button:not([aria-pressed=true])]:bg-white/10 [&>button:not([aria-pressed=true])]:text-white">
-              {features.map((f) => (
-                <Chip key={f.id} selected={feature === f.id} onClick={() => setFeature(f.id)}>
-                  {f.label}
-                </Chip>
-              ))}
-            </div>
-          </fieldset>
+          <SheetRow title="Which part?" hint="Optional">
+            {features.map((f) => (
+              <SheetChip key={f.id} selected={feature === f.id} onClick={() => setFeature(f.id)}>
+                {f.label}
+              </SheetChip>
+            ))}
+          </SheetRow>
         )}
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="md"
-            className="flex-1 !border-white/20 !bg-white/10 !text-white"
-            onClick={() => setBox(DEFAULT_BOX)}
+        {locationQuestion && (
+          <SheetRow
+            title="Where was it taken?"
+            hint={
+              locationQuestion.choice === 'photo'
+                ? 'From the photo, ~1 km'
+                : locationQuestion.choice === 'here'
+                  ? 'Your location'
+                  : 'Location not used'
+            }
+            testId="photo-location-question"
           >
-            Reset
-          </Button>
-          <Button
-            variant="secondary"
-            size="md"
-            className="flex-1 !border-white/20 !bg-white/10 !text-white"
-            onClick={() => setBox(FULL_BOX)}
-          >
-            Use entire image
-          </Button>
-        </div>
+            <SheetChip
+              selected={locationQuestion.choice === 'here'}
+              onClick={() => locationQuestion.onChange('here')}
+            >
+              Near here
+            </SheetChip>
+            {locationQuestion.hasPhotoLocation && (
+              <SheetChip
+                selected={locationQuestion.choice === 'photo'}
+                onClick={() => locationQuestion.onChange('photo')}
+              >
+                Where the photo was taken
+              </SheetChip>
+            )}
+            <SheetChip
+              selected={locationQuestion.choice === 'none'}
+              onClick={() => locationQuestion.onChange('none')}
+            >
+              Somewhere else
+            </SheetChip>
+          </SheetRow>
+        )}
         <Button
           size="lg"
           className="w-full"

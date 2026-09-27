@@ -75,57 +75,6 @@ describe('location permission', () => {
   });
 });
 
-describe('category picker', () => {
-  it('is optional: nothing selected means automatic, and tiles toggle', async () => {
-    const { CategoryPicker } = await import('../../src/features/identification/CategoryPicker');
-    const { default: userEvent } = await import('@testing-library/user-event');
-    const onChange = vi.fn();
-    const { rerender } = render(<CategoryPicker value="auto" onChange={onChange} autoDetect />);
-    const names = screen.getAllByRole('radio').map((r) => r.textContent ?? '');
-    expect(names).toEqual([
-      'Plant',
-      'Fungus',
-      'Bug',
-      'Bird',
-      'Mammal',
-      'Reptile & amphibian',
-      'Fish',
-    ]);
-    expect(screen.getByRole('status')).toHaveTextContent('FieldLens will work out what it is');
-    await userEvent.click(screen.getByRole('radio', { name: /Bird/ }));
-    expect(onChange).toHaveBeenLastCalledWith('bird');
-    rerender(<CategoryPicker value="bird" onChange={onChange} autoDetect />);
-    expect(screen.getByRole('status')).toHaveTextContent('Identifying as a bird');
-    await userEvent.click(screen.getByRole('radio', { name: /Bird/ }));
-    expect(onChange).toHaveBeenLastCalledWith('auto');
-    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    expect(onChange).toHaveBeenLastCalledWith('auto');
-  });
-
-  it('explains groups the server cannot handle yet', async () => {
-    const { CategoryPicker } = await import('../../src/features/identification/CategoryPicker');
-    const { default: userEvent } = await import('@testing-library/user-event');
-    const onChange = vi.fn();
-    render(
-      <CategoryPicker
-        value="auto"
-        onChange={onChange}
-        supported={['plant', 'amphibian']}
-        autoDetect={false}
-      />,
-    );
-    expect(screen.getByRole('status')).toHaveTextContent('Identifying plants');
-    expect(screen.getByRole('radio', { name: /Reptile & amphibian/ })).not.toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    expect(screen.getByRole('radio', { name: /Fish/ })).toHaveAttribute('aria-disabled', 'true');
-    await userEvent.click(screen.getByRole('radio', { name: /Fish/ }));
-    expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole('status')).toHaveTextContent('Fish identification is coming soon');
-  });
-});
-
 describe('session loading state', () => {
   it('moves through submitting to a result', async () => {
     const result = await mockResult('high');

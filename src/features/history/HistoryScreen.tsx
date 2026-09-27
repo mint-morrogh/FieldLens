@@ -10,6 +10,7 @@ import {
   deleteObservation,
   getObservation,
   listObservations,
+  saveObservation,
   type ObservationRecord,
 } from './historyStore';
 
@@ -90,12 +91,77 @@ function useObservations(limit?: number) {
   return { records, failed, reload };
 }
 
+/** Swipeable recent-identification card with its own delete button. */
+function RecentCard({ record, onDelete }: { record: ObservationRecord; onDelete: () => void }) {
+  const thumb = useObjectUrl(record.thumbnail ?? record.photo);
+  const top = record.top;
+  const name = top ? displayName(top) : 'No match';
+  return (
+    <li className="relative w-36 shrink-0 snap-start" data-testid="recent-card">
+      <a
+        href={routeHref({ name: 'observation', id: record.id })}
+        className="block overflow-hidden rounded-2xl border border-line bg-card shadow-[0_1px_0_rgba(0,0,0,0.04)]"
+      >
+        {thumb ? (
+          <img src={thumb} alt="" className="h-28 w-full object-cover" />
+        ) : (
+          <span
+            className="flex h-28 w-full items-center justify-center bg-moss-soft text-moss"
+            aria-hidden
+          >
+            <Icon name="leaf" className="h-8 w-8" />
+          </span>
+        )}
+        <span className="block px-2.5 pb-2.5 pt-2">
+          <span className="block truncate text-[0.95rem] font-bold leading-tight">{name}</span>
+          <span className="mt-0.5 block truncate text-xs text-ink-muted">
+            {new Date(record.createdAt).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            })}
+            {top ? ` · ${formatPercent(top.finalConfidence)}` : ''}
+          </span>
+        </span>
+      </a>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="absolute right-1.5 top-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-rust"
+        aria-label={`Delete ${name}`}
+      >
+        <Icon name="trash" className="h-4 w-4" />
+      </button>
+    </li>
+  );
+}
+
 export function RecentObservations() {
-  const { records } = useObservations(3);
+  const { records, reload } = useObservations(8);
+  const [undo, setUndo] = useState<ObservationRecord>();
+
+  useEffect(() => {
+    if (!undo) return;
+    const t = setTimeout(() => setUndo(undefined), 6000);
+    return () => clearTimeout(t);
+  }, [undo]);
+
   if (!records) return null;
+  const remove = (record: ObservationRecord) => {
+    void deleteObservation(record.id).then(() => {
+      setUndo(record);
+      reload();
+    });
+  };
+  const restore = () => {
+    if (!undo) return;
+    const record = undo;
+    setUndo(undefined);
+    void saveObservation(record).then(reload);
+  };
+
   return (
     <section aria-labelledby="recent-title">
-      <div className="mb-1 flex items-baseline justify-between">
+      <div className="mb-2 flex items-baseline justify-between">
         <h2 id="recent-title" className="text-lg font-bold">
           Recent Identifications
         </h2>
@@ -106,15 +172,33 @@ export function RecentObservations() {
         )}
       </div>
       {records.length === 0 ? (
-        <p className="text-ink-muted">
+        <p className="rounded-2xl border border-dashed border-line px-4 py-5 text-center text-ink-muted">
           Your identifications will appear here. They’re stored only on this device.
         </p>
       ) : (
-        <ul className="divide-y divide-line">
+        <ul className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none]">
           {records.map((r) => (
-            <ObservationRow key={r.id} record={r} />
+            <RecentCard key={r.id} record={r} onDelete={() => remove(r)} />
           ))}
         </ul>
+      )}
+      {undo && (
+        <div
+          role="status"
+          className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-2.5 text-white"
+          data-testid="undo-delete"
+        >
+          <span className="truncate">
+            Deleted {undo.top ? displayName(undo.top) : 'identification'}
+          </span>
+          <button
+            type="button"
+            onClick={restore}
+            className="min-h-10 shrink-0 font-bold text-[#9fd08a]"
+          >
+            Undo
+          </button>
+        </div>
       )}
     </section>
   );
