@@ -1,22 +1,40 @@
+import { useEffect } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { useRoute } from '../app/router';
+import { useSession } from '../features/identification/SessionContext';
 import { Button } from './ui';
 
 /**
- * Service-worker update flow: a new version waits until the user chooses to
- * reload. Sits below full-screen dialogs (camera/crop) so it never covers them.
+ * Service-worker updates. A waiting new version is applied automatically when
+ * it's safe — on the home, history or about screens with no identification in
+ * progress — so installed copies never get stuck on an old build. During an
+ * identification it waits and offers a Reload button instead of losing the photo.
  */
 export function UpdatePrompt() {
+  const route = useRoute();
+  const { state } = useSession();
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_url, registration) {
-      // Check for updates hourly while the app stays open.
-      if (registration) setInterval(() => void registration.update(), 60 * 60 * 1000);
+      if (!registration) return;
+      // Check on launch and whenever the app comes back to the foreground, plus hourly.
+      const check = () => void registration.update().catch(() => undefined);
+      check();
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') check();
+      });
+      setInterval(check, 60 * 60 * 1000);
     },
   });
 
-  if (!needRefresh) return null;
+  const safeToReload = route.name !== 'identify' && state.images.length === 0 && !state.pending;
+  useEffect(() => {
+    if (needRefresh && safeToReload) void updateServiceWorker(true);
+  }, [needRefresh, safeToReload, updateServiceWorker]);
+
+  if (!needRefresh || safeToReload) return null;
   return (
     <div
       role="status"

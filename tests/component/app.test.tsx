@@ -75,6 +75,24 @@ describe('location permission', () => {
   });
 });
 
+describe('category picker', () => {
+  it('renders every group with a description, selecting only available ones', async () => {
+    const { CategoryPicker } = await import('../../src/features/identification/CategoryPicker');
+    const onChange = vi.fn();
+    render(<CategoryPicker value="plant" onChange={onChange} />);
+    const radios = screen.getAllByRole('radio');
+    expect(radios).toHaveLength(6);
+    expect(screen.getByRole('radio', { name: /Plant/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('Flowers, trees, leaves')).toBeInTheDocument();
+    const { default: userEvent } = await import('@testing-library/user-event');
+    await userEvent.click(screen.getByRole('radio', { name: /Fungus/ }));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent('Fungus identification is coming soon');
+    await userEvent.click(screen.getByRole('radio', { name: /Plant/ }));
+    expect(onChange).toHaveBeenCalledWith('plant');
+  });
+});
+
 describe('session loading state', () => {
   it('moves through submitting to a result', async () => {
     const result = await mockResult('high');

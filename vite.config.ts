@@ -27,7 +27,10 @@ export default defineConfig(({ mode }) => {
     if (env[key] !== undefined && process.env[key] === undefined) process.env[key] = env[key];
   }
 
+  const buildId = (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7) || 'dev';
+
   return {
+    define: { __BUILD_ID__: JSON.stringify(buildId) },
     plugins: [
       react(),
       tailwindcss(),

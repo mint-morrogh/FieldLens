@@ -64,6 +64,12 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   });
   const [location, setLocation] = useState<ApproxLocation>();
   const fetchedAt = useRef(0);
+  // Mirrors of state for `current`, so callers holding an older reference still see
+  // the latest permission (e.g. a retry right after the user grants location).
+  const latest = useRef({ status, location });
+  useEffect(() => {
+    latest.current = { status, location };
+  }, [status, location]);
 
   const fetchLocation = useCallback(async (): Promise<ApproxLocation | undefined> => {
     if (!supported) return undefined;
@@ -72,6 +78,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       const pos = await getPosition();
       const approx = toApproxLocation(pos.coords.latitude, pos.coords.longitude);
       fetchedAt.current = Date.now();
+      latest.current = { status: 'granted', location: approx };
       setLocation(approx);
       setStatus('granted');
       writeChoice('granted');
@@ -120,13 +127,13 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const current = useCallback(async () => {
-    if (status === 'denied' || status === 'declined' || status === 'unavailable') return undefined;
-    if (status === 'granted' && location && Date.now() - fetchedAt.current < MAX_AGE_MS) {
-      return location;
-    }
-    // Granted but stale, or not decided yet (e.g. the startup prompt is still open): ask now.
+    const { status: s, location: loc } = latest.current;
+    if (s === 'declined' || s === 'unavailable') return undefined;
+    if (s === 'granted' && loc && Date.now() - fetchedAt.current < MAX_AGE_MS) return loc;
+    // Stale, undecided (startup prompt still open), or previously denied: ask the browser.
+    // A denial answers instantly without a prompt, so this never nags.
     return fetchLocation();
-  }, [status, location, fetchLocation]);
+  }, [fetchLocation]);
 
   const value = useMemo(
     () => ({ status, location, request: fetchLocation, decline, current }),

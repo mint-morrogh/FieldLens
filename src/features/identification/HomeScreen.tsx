@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
-import { CATEGORIES, CATEGORY_PICKER_ORDER } from '../../../shared/categories';
+import { useState } from 'react';
 import type { HealthResponse } from '../../../shared/types';
 import { navigate } from '../../app/router';
 import { Icon } from '../../components/Icon';
-import { Button, Chip, Notice } from '../../components/ui';
+import { Button, Notice } from '../../components/ui';
 import { BRAND } from '../../config/brand';
 import { MOCK_SCENARIO_OPTIONS, getMockScenario, setMockScenario } from '../../lib/mockScenario';
 import { usePhotoPicker } from '../camera/usePhotoPicker';
 import { RecentObservations } from '../history/HistoryScreen';
 import { useLocationState } from '../location/LocationContext';
+import { CategoryPicker } from './CategoryPicker';
 import { useSession } from './SessionContext';
 
 export function LocationPanel() {
@@ -114,13 +114,6 @@ export function HomeScreen({ health }: { health?: HealthResponse }) {
   };
   const camera = usePhotoPicker(start, { capture: true });
   const picker = usePhotoPicker(start);
-  const [comingSoon, setComingSoon] = useState<string>();
-
-  useEffect(() => {
-    if (!comingSoon) return;
-    const t = setTimeout(() => setComingSoon(undefined), 3500);
-    return () => clearTimeout(t);
-  }, [comingSoon]);
 
   return (
     <div className="space-y-7">
@@ -138,6 +131,8 @@ export function HomeScreen({ health }: { health?: HealthResponse }) {
       )}
       {health?.mock && <DemoModePanel />}
 
+      <CategoryPicker value={session.state.category} onChange={session.setCategory} />
+
       <div className="flex flex-col gap-3">
         <Button size="lg" className="min-h-16 text-xl" onClick={camera.open}>
           <Icon name="camera" className="h-7 w-7" /> Take a Photo
@@ -153,32 +148,6 @@ export function HomeScreen({ health }: { health?: HealthResponse }) {
           </Notice>
         )}
       </div>
-
-      <fieldset>
-        <legend className="mb-2 font-semibold">What are you identifying?</legend>
-        <div className="flex flex-wrap gap-2">
-          {CATEGORY_PICKER_ORDER.map((id) => {
-            const c = CATEGORIES[id];
-            return (
-              <Chip
-                key={id}
-                selected={session.state.category === id}
-                note={c.available ? undefined : 'Soon'}
-                onClick={() =>
-                  c.available
-                    ? session.setCategory(id)
-                    : setComingSoon(`${c.label} identification is coming soon.`)
-                }
-              >
-                {c.label}
-              </Chip>
-            );
-          })}
-        </div>
-        <p className="mt-2 min-h-6 text-sm text-ink-muted" role="status" aria-live="polite">
-          {comingSoon}
-        </p>
-      </fieldset>
 
       <LocationPanel />
 

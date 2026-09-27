@@ -98,7 +98,9 @@ export function PrivacyScreen() {
             — reference links
           </li>
         </ul>
-        <p className="mt-3 text-sm text-ink-muted">Version {APP_VERSION}</p>
+        <p className="mt-3 text-sm text-ink-muted">
+          Version {APP_VERSION} · build {__BUILD_ID__}
+        </p>
       </Card>
     </div>
   );

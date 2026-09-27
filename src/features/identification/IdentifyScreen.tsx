@@ -7,6 +7,7 @@ import { useOnline } from '../../lib/useOnline';
 import { usePhotoPicker } from '../camera/usePhotoPicker';
 import { CropEditor } from '../crop/CropEditor';
 import { ResultView } from '../results/ResultView';
+import { LocationFixCard } from '../location/LocationFixCard';
 import { AnalysisProgress } from './AnalysisProgress';
 import { useSession } from './SessionContext';
 
@@ -154,6 +155,11 @@ export function IdentifyScreen() {
       result.imagesSubmitted > (state.previousResult?.imagesSubmitted ?? 0);
     return (
       <>
+        {!result.location.used && result.candidates.length > 0 && (
+          <div className="mb-4">
+            <LocationFixCard onRetry={() => void session.submit()} />
+          </div>
+        )}
         <ResultView
           result={result}
           photoUrl={state.images[0]?.url}

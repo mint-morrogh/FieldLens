@@ -16,6 +16,8 @@ export type CategoryDefinition = {
   available: boolean;
   /** Name of the visual identification source, shown while analyzing. */
   identificationSource?: string;
+  /** Short description for the category picker, e.g. "Flowers, trees, leaves". */
+  blurb: string;
   /** Plural noun used in headings such as "Other maples nearby". */
   pluralNoun: string;
   /** Category-specific features (organs/body parts). "auto" is always implied first. */
@@ -44,6 +46,7 @@ const WILDLIFE_NOTICE =
 export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   plant: {
     id: 'plant',
+    blurb: 'Flowers, trees, leaves',
     label: 'Plant',
     available: true,
     identificationSource: 'Pl@ntNet',
@@ -93,6 +96,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   bird: {
     id: 'bird',
+    blurb: 'Songbirds, raptors, waterfowl',
     label: 'Bird',
     available: false,
     pluralNoun: 'birds',
@@ -129,6 +133,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   mammal: {
     id: 'mammal',
+    blurb: 'Wildlife, tracks, signs',
     label: 'Mammal',
     available: false,
     pluralNoun: 'mammals',
@@ -165,6 +170,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   reptile: {
     id: 'reptile',
+    blurb: 'Snakes, turtles, lizards',
     label: 'Reptile',
     available: false,
     pluralNoun: 'reptiles',
@@ -176,6 +182,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   amphibian: {
     id: 'amphibian',
+    blurb: 'Frogs, toads, salamanders',
     label: 'Amphibian',
     available: false,
     pluralNoun: 'amphibians',
@@ -187,6 +194,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   fish: {
     id: 'fish',
+    blurb: 'Freshwater and marine fish',
     label: 'Fish',
     available: false,
     pluralNoun: 'fish',
@@ -198,6 +206,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   insect: {
     id: 'insect',
+    blurb: 'Butterflies, beetles, bees',
     label: 'Insect',
     available: false,
     pluralNoun: 'insects',
@@ -222,6 +231,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   arachnid: {
     id: 'arachnid',
+    blurb: 'Spiders, ticks, harvestmen',
     label: 'Spider',
     available: false,
     pluralNoun: 'spiders',
@@ -233,6 +243,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   fungus: {
     id: 'fungus',
+    blurb: 'Mushrooms, brackets, molds',
     label: 'Fungus',
     available: false,
     pluralNoun: 'fungi',
@@ -264,6 +275,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   other: {
     id: 'other',
+    blurb: 'Anything else alive',
     label: 'Other',
     available: false,
     pluralNoun: 'organisms',

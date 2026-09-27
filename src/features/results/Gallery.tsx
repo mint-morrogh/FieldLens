@@ -146,7 +146,9 @@ export function ReferenceGallery({ images, title }: { images: LicensedImage[]; t
     <section aria-label={`Reference photos of ${title}`} data-testid="reference-gallery">
       <div className="mb-2 flex items-baseline justify-between">
         <p className="text-sm font-semibold text-ink-soft">What {title} looks like</p>
-        <p className="text-xs text-ink-muted">{images.length} photos · tap to enlarge</p>
+        <p className="text-xs text-ink-muted">
+          {images.length} photo{images.length === 1 ? '' : 's'} · tap to enlarge
+        </p>
       </div>
       <ul className="-mx-5 flex snap-x snap-mandatory gap-2 overflow-x-auto px-5 pb-1">
         {images.map((img, idx) => (

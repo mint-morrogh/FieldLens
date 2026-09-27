@@ -98,6 +98,7 @@ test.describe('identification flow (mock API)', () => {
     await identifySelection(page);
     await expect(page.getByTestId('result-headline')).toContainText('Location not used');
     await expect(page.getByTestId('geo-evidence')).toContainText('Location not used');
+    await expect(page.getByTestId('location-fix')).toContainText('Location wasn’t used');
     // Don't nag: no prompt card after reload.
     await page.goto('/');
     await expect(page.getByTestId('location-prompt')).toHaveCount(0);
@@ -156,6 +157,37 @@ test('shows the live analysis checklist and a reference gallery', async ({ page 
   await expect(page.getByTestId('lightbox')).toContainText('CC0');
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('lightbox')).toHaveCount(0);
+});
+
+test('granting location later re-checks the result with location', async ({ page, context }) => {
+  await page.goto('/?mock=high');
+  await choosePhoto(page);
+  await identifySelection(page);
+  await expect(page.getByTestId('result-headline')).toContainText('Location not used');
+
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 46.2382, longitude: -63.1311 });
+  await page.getByRole('button', { name: /Use my location|Try again/ }).click();
+  await expect(page.getByTestId('result-headline')).toContainText('Location used', {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId('location-fix')).toHaveCount(0);
+});
+
+test('category tiles select plants and explain upcoming groups', async ({ page }) => {
+  await page.goto('/?mock=high');
+  const picker = page.getByTestId('category-picker');
+  await expect(picker.getByRole('radio', { name: /Plant/ })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  // Upcoming groups are aria-disabled (announced as unavailable) but still explain themselves on tap.
+  await picker.getByRole('radio', { name: /Bird/ }).click({ force: true });
+  await expect(picker).toContainText('Bird identification is coming soon');
+  await expect(picker.getByRole('radio', { name: /Plant/ })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
 });
 
 test.describe('with location permission', () => {
