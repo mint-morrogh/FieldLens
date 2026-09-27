@@ -109,12 +109,14 @@ Open the printed URL. On a phone on the same Wi-Fi, use the network URL — note
 
 ### Environment variables
 
-| Variable           | Where       | Purpose                                                                                                            |
-| ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------ |
-| `PLANTNET_API_KEY` | server only | Live plant identification. Free key at [my.plantnet.org](https://my.plantnet.org/). **Never** prefix with `VITE_`. |
-| `USE_MOCK_API`     | server      | `true` serves fixtures for every provider (dev, CI, demos).                                                        |
-| `APP_NAME`         | server      | Name reported by `/api/health`.                                                                                    |
-| `PLANTNET_PROJECT` | server      | Optional Pl@ntNet flora (default `all`).                                                                           |
+| Variable            | Where       | Purpose                                                                                                            |
+| ------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| `PLANTNET_API_KEY`  | server only | Live plant identification. Free key at [my.plantnet.org](https://my.plantnet.org/). **Never** prefix with `VITE_`. |
+| `USE_MOCK_API`      | server      | `true` serves fixtures for every provider (dev, CI, demos).                                                        |
+| `APP_NAME`          | server      | Name reported by `/api/health`.                                                                                    |
+| `PLANTNET_PROJECT`  | server      | Optional Pl@ntNet flora (default `all`).                                                                           |
+| `HF_TOKEN`          | server only | Read-only Hugging Face token for the private BioCLIP Space (insects & spiders).                                    |
+| `BIOCLIP_SPACE_URL` | server      | The Space's URL, e.g. `https://mintmundane-fieldlens-bioclip.hf.space`.                                            |
 
 GBIF, iNaturalist, Wikidata and Wikipedia need no keys.
 
