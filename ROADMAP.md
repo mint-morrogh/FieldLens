@@ -6,6 +6,8 @@ Nothing below is built yet. Each item should reuse the existing provider interfa
 
 ## More organisms
 
+Provider research (options, pricing, licences, recommended order): [docs/research/identification-providers.md](docs/research/identification-providers.md). Recommended order: insects & spiders (Kindwise insect.id) → fungi (Kindwise mushroom.id + safety package) → a self-hosted BioCLIP 2 service for Auto detection, birds (with eBird priors), mammals, reptiles and amphibians → bird sound (BirdNET).
+
 - **Birds** — research photo-ID providers; bird-specific features (whole bird, head, wing, feather) already exist in the registry.
 - **Insects and spiders** — top-down / side-view guidance is already written.
 - **Fungi** — cap, underside and stem features exist; safety messaging is critical here.
