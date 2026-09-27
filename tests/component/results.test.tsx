@@ -26,6 +26,7 @@ describe('ResultView', () => {
     expect(headline).toHaveTextContent(/9\d% identification confidence · Very likely match/);
     expect(screen.getByRole('meter', { name: /identification confidence/ })).toBeInTheDocument();
     expect(screen.getByTestId('attribution')).toHaveTextContent('Demo mode');
+    expect(screen.getByTestId('demo-banner')).toHaveTextContent('not a real identification');
     expect(screen.getByText(/safe to eat/)).toBeInTheDocument();
   });
 
@@ -102,6 +103,12 @@ describe('ResultView', () => {
     await userEvent.click(screen.getByRole('button', { name: /Identify again/ }));
     expect(onResubmit).toHaveBeenCalled();
   });
+});
+
+it('shows no demo banner for real (non-mock) results', async () => {
+  const result = { ...(await mockResult('high')), mock: undefined };
+  render(<ResultView result={result} />);
+  expect(screen.queryByTestId('demo-banner')).not.toBeInTheDocument();
 });
 
 describe('INaturalistCard', () => {

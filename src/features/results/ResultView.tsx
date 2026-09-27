@@ -224,6 +224,18 @@ export function ResultView({
 
   return (
     <div className="space-y-4" data-testid="result-view">
+      {result.mock && (
+        <div
+          role="alert"
+          data-testid="demo-banner"
+          className="rounded-2xl border-2 border-amber bg-amber-soft px-4 py-3 text-amber"
+        >
+          <p className="font-bold">Demo mode — this is not a real identification.</p>
+          <p className="mt-0.5 text-[0.95rem] text-ink-soft">
+            Your photo was not analyzed. This is sample data used to preview the app.
+          </p>
+        </div>
+      )}
       <Headline result={result} photoUrl={photoUrl} thumbnailUrl={thumbnailUrl} />
 
       {mixedOrganismWarning && (

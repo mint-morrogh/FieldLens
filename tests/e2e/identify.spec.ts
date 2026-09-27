@@ -29,6 +29,7 @@ test.describe('identification flow (mock API)', () => {
     await expect(page.getByTestId('alternatives').getByTestId('candidate')).toHaveCount(2);
     await expect(page.getByTestId('why-this-match')).toContainText('Strong image-model match');
     await expect(page.getByTestId('attribution')).toContainText('Demo mode');
+    await expect(page.getByTestId('demo-banner')).toBeVisible();
     await expect(page.getByText('Do not use this identification alone')).toBeVisible();
   });
 

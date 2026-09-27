@@ -86,7 +86,7 @@ function DemoModePanel() {
     >
       <label className="flex flex-wrap items-center gap-2">
         <span className="font-semibold text-amber">Demo mode</span>
-        <span className="text-ink-soft">— fixture result:</span>
+        <span className="text-ink-soft">— photos are not analyzed. Sample result:</span>
         <select
           className="min-h-10 rounded-xl border border-line bg-card px-2"
           value={scenario}
