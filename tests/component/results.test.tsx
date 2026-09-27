@@ -43,17 +43,43 @@ describe('ResultView', () => {
   it('renders low confidence as a shortlist with guidance and follow-up buttons', async () => {
     const onAddPhoto = vi.fn();
     render(<ResultView result={await mockResult('low')} improve={improve({ onAddPhoto })} />);
-    expect(
-      screen.getByRole('heading', { name: 'We’re not confident enough yet.' }),
-    ).toBeInTheDocument();
+    // The three goldenrods add up to a confident genus-level answer.
+    expect(screen.getByTestId('group-headline')).toHaveTextContent('A goldenrod (Solidago)');
+    expect(screen.getByText(/combined across 3 Solidago species/)).toBeInTheDocument();
     const list = screen.getByTestId('low-confidence-list');
     expect(within(list).getAllByRole('listitem')).toHaveLength(3);
-    expect(list).toHaveTextContent(/3\d%\s*Canada Goldenrod/);
+    expect(list).toHaveTextContent(/Canada Goldenrod.*3\d%/);
     expect(screen.getByText('A photo of the flower would help.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Add a flower photo/ }));
     expect(onAddPhoto).toHaveBeenCalledWith('flower');
     // Low confidence does not show a species fact sheet for an uncertain top pick.
     expect(screen.queryByTestId('species-facts')).not.toBeInTheDocument();
+  });
+
+  it('says "not confident" when candidates do not share a genus', async () => {
+    const result = await mockResult('low');
+    render(<ResultView result={{ ...result, groupSummary: undefined }} />);
+    expect(
+      screen.getByRole('heading', { name: 'We’re not confident enough yet.' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a reference gallery that opens a credited full-screen viewer', async () => {
+    render(<ResultView result={await mockResult('high')} />);
+    const gallery = screen.getByTestId('reference-gallery');
+    await userEvent.click(within(gallery).getByRole('button', { name: /Open reference photo 1/ }));
+    const viewer = screen.getByTestId('lightbox');
+    expect(viewer).toHaveTextContent('CC0');
+    expect(viewer).toHaveTextContent('iNaturalist');
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByTestId('lightbox')).not.toBeInTheDocument();
+  });
+
+  it('offers the photo library for follow-ups', async () => {
+    const onAddFromLibrary = vi.fn();
+    render(<ResultView result={await mockResult('low')} improve={improve({ onAddFromLibrary })} />);
+    await userEvent.click(screen.getByRole('button', { name: /photo library/ }));
+    expect(onAddFromLibrary).toHaveBeenCalledWith('flower');
   });
 
   it('prefixes medium confidence with "Likely"', async () => {

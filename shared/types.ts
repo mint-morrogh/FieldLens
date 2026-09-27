@@ -118,6 +118,8 @@ export type SpeciesInfo = {
   facts: SpeciesFact[];
   summary?: { text: string; source: string; sourceUrl: string; license: string };
   image?: LicensedImage;
+  /** Openly licensed reference photos of this taxon (e.g. from iNaturalist). */
+  images?: LicensedImage[];
   links: ExternalLink[];
   sources: string[];
 };
@@ -168,6 +170,19 @@ export type Guidance = { feature?: FeatureId; message: string };
 
 export type Attribution = { provider: string; text: string; url: string };
 
+/**
+ * Higher-rank summary when the species is uncertain but the top candidates
+ * agree on a group, e.g. three Solidago species → "probably a goldenrod".
+ */
+export type GroupSummary = {
+  rank: 'genus';
+  name: string;
+  commonName?: string;
+  /** Sum of finalConfidence over the candidates in this group. */
+  confidence: number;
+  memberCount: number;
+};
+
 export type IdentifyResponse = {
   requestId: string;
   category: OrganismCategory;
@@ -177,6 +192,7 @@ export type IdentifyResponse = {
   confidenceBand: ConfidenceBand;
   candidates: OrganismCandidate[];
   speciesInfo?: SpeciesInfo;
+  groupSummary?: GroupSummary;
   community?: CommunityObservationSummary;
   nearbySpecies?: NearbySpeciesGroup;
   evidence: { supports: EvidenceItem[]; uncertainties: EvidenceItem[] };
@@ -191,6 +207,22 @@ export type IdentifyResponse = {
   safetyNotice?: string;
   mock?: boolean;
 };
+
+/** Pipeline stages reported to the client while an identification runs. */
+export type IdentifyStage = 'identify' | 'taxonomy' | 'occurrence' | 'rank' | 'enrich';
+
+export type StageEvent = {
+  stage: IdentifyStage;
+  status: 'active' | 'done' | 'skipped';
+  /** After the visual step: the provider's first guesses, before any reranking. */
+  preview?: { scientificName: string; commonName?: string; visualConfidence: number }[];
+};
+
+/** One line of the streamed (NDJSON) /api/identify response. */
+export type IdentifyStreamLine =
+  | ({ type: 'stage' } & StageEvent)
+  | { type: 'result'; result: IdentifyResponse }
+  | { type: 'error'; error: ApiErrorBody['error']; status: number };
 
 export type ApiErrorCode =
   | 'invalid_request'

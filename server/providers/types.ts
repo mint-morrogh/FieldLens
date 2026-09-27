@@ -62,6 +62,8 @@ export type ResolvedTaxon = TaxonomyRanks & {
 export interface TaxonomyProvider {
   readonly name: string;
   resolveTaxon(taxon: TaxonIdentity): Promise<ResolvedTaxon | undefined>;
+  /** Common name for a taxon key (e.g. a genus: 3189834 → "maple"), if known. */
+  commonNameForKey?(key: number): Promise<string | undefined>;
 }
 
 export interface OccurrenceProvider {

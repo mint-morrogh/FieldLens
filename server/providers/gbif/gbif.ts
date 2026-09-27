@@ -100,6 +100,11 @@ export class GbifTaxonomyProvider implements TaxonomyProvider {
   readonly name = GBIF_SOURCE;
   constructor(private readonly client: GbifClient = new GbifClient()) {}
 
+  async commonNameForKey(key: number): Promise<string | undefined> {
+    const s = await this.client.species(key);
+    return s.vernacularName?.trim() || undefined;
+  }
+
   async resolveTaxon(taxon: TaxonIdentity): Promise<ResolvedTaxon | undefined> {
     const kingdom = CATEGORIES[taxon.category].gbifKingdom;
     const match = await this.client.get<GbifMatch>(

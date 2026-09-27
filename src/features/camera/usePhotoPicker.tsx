@@ -2,8 +2,10 @@ import { useCallback, useRef, useState, type ReactElement } from 'react';
 import { ACCEPTED_INPUT, MAX_SOURCE_BYTES } from '../../lib/image';
 
 /**
- * Hidden <input type=file> wrapper. `capture` asks mobile browsers to open the
- * camera directly — used as the fallback when getUserMedia is unavailable.
+ * Hidden <input type=file> wrapper. With `capture`, phones open the native
+ * camera app directly: full resolution, autofocus and HDR, which identifies far
+ * better than frames grabbed from a live video preview. Desktop browsers ignore
+ * `capture` and show a file picker.
  */
 export function usePhotoPicker(onPick: (file: File) => void, options: { capture?: boolean } = {}) {
   const inputRef = useRef<HTMLInputElement>(null);

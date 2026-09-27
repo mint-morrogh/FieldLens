@@ -41,15 +41,15 @@ test.describe('identification flow (mock API)', () => {
     await identifySelection(page);
 
     await expect(page.getByTestId('result-headline')).toHaveAttribute('data-band', 'low');
-    await expect(page.getByText('We’re not confident enough yet.')).toBeVisible();
+    await expect(page.getByTestId('group-headline')).toContainText('goldenrod (Solidago)');
     await expect(page.getByTestId('low-confidence-list').locator('li')).toHaveCount(3);
     const improve = page.getByTestId('improve');
     await expect(improve).toContainText('A photo of the flower would help.');
 
-    // Follow-up: the camera is unavailable in CI, so pick from the library inside the camera screen.
+    // Follow-up: the button opens the native camera (a file chooser in desktop/CI browsers).
+    const chooser = page.waitForEvent('filechooser');
     await improve.getByRole('button', { name: 'Add a flower photo' }).click();
-    await expect(page.getByRole('dialog', { name: 'Camera' })).toBeVisible();
-    await page.getByTestId('photo-file-input').last().setInputFiles(LEAF);
+    await (await chooser).setFiles(LEAF);
     await expect(page.getByRole('button', { name: 'Flower' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -135,6 +135,27 @@ test.describe('identification flow (mock API)', () => {
     await page.getByRole('button', { name: 'Delete observation' }).click();
     await expect(page.getByText('No identifications yet.')).toBeVisible();
   });
+});
+
+test('shows the live analysis checklist and a reference gallery', async ({ page }) => {
+  // Slow the response slightly so the in-progress screen is observable.
+  await page.route('**/api/identify', async (route) => {
+    await new Promise((r) => setTimeout(r, 600));
+    await route.continue();
+  });
+  await page.goto('/?mock=high');
+  await choosePhoto(page);
+  await page.getByRole('button', { name: 'Identify selection' }).click();
+  const steps = page.getByTestId('analysis-steps');
+  await expect(steps).toBeVisible();
+  await expect(steps.locator('[data-step="identify"]')).toBeVisible();
+  await expect(page.getByTestId('result-view')).toBeVisible({ timeout: 15_000 });
+  const gallery = page.getByTestId('reference-gallery');
+  await expect(gallery).toBeVisible();
+  await gallery.getByRole('button').first().click();
+  await expect(page.getByTestId('lightbox')).toContainText('CC0');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('lightbox')).toHaveCount(0);
 });
 
 test.describe('with location permission', () => {

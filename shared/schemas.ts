@@ -92,6 +92,7 @@ const speciesInfo = z.object({
     .object({ text: z.string(), source: z.string(), sourceUrl: z.string(), license: z.string() })
     .optional(),
   image: licensedImage.optional(),
+  images: z.array(licensedImage).optional(),
   links: z.array(link),
   sources: z.array(z.string()),
 });
@@ -135,6 +136,15 @@ export const identifyResponseSchema = z.object({
   confidenceBand: z.enum(['high', 'medium', 'low', 'none']),
   candidates: z.array(organismCandidateSchema),
   speciesInfo: speciesInfo.optional(),
+  groupSummary: z
+    .object({
+      rank: z.literal('genus'),
+      name: z.string(),
+      commonName: z.string().optional(),
+      confidence: score,
+      memberCount: z.number().int(),
+    })
+    .optional(),
   community: community.optional(),
   nearbySpecies: z
     .object({

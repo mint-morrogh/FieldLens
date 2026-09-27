@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
-import { getFeature } from '../../../shared/categories';
 import { navigate } from '../../app/router';
 import { Icon } from '../../components/Icon';
 import { Button, Card, Notice } from '../../components/ui';
 import type { ClientError, ClientErrorCode } from '../../lib/api';
 import { useOnline } from '../../lib/useOnline';
-import { CameraCapture } from '../camera/CameraCapture';
+import { usePhotoPicker } from '../camera/usePhotoPicker';
 import { CropEditor } from '../crop/CropEditor';
 import { ResultView } from '../results/ResultView';
+import { AnalysisProgress } from './AnalysisProgress';
 import { useSession } from './SessionContext';
 
 type ErrorCopy = { title: string; body?: string; retry: boolean };
@@ -54,63 +54,10 @@ export function errorCopy(error: ClientError): ErrorCopy {
   return table[error.code] ?? { title: 'Something went wrong.', body: error.message, retry: true };
 }
 
-function Progress() {
-  const { state } = useSession();
-  const { phase, fraction } = state.progress;
-  const last = state.images.at(-1);
-  const label =
-    phase === 'preparing'
-      ? 'Preparing your photo…'
-      : phase === 'uploading'
-        ? `Uploading… ${Math.round(fraction * 100)}%`
-        : 'Identifying…';
-  return (
-    <div className="space-y-4" aria-busy="true">
-      <Card as="div" className="overflow-hidden !p-0">
-        {last && (
-          <img
-            src={last.url}
-            alt="Photo being identified"
-            className="max-h-[46vh] w-full object-cover opacity-90"
-          />
-        )}
-        <div className="p-5">
-          <p
-            className="text-lg font-semibold"
-            role="status"
-            aria-live="polite"
-            data-testid="progress-label"
-          >
-            {label}
-          </p>
-          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-paper-deep">
-            <div
-              className="h-full rounded-full bg-moss transition-[width] duration-300"
-              style={{
-                width: `${phase === 'identifying' ? 100 : phase === 'uploading' ? Math.max(5, fraction * 90) : 3}%`,
-              }}
-            />
-          </div>
-          <div className="mt-5 space-y-2" aria-hidden>
-            <div className="skeleton h-7 w-2/3" />
-            <div className="skeleton h-5 w-1/2" />
-          </div>
-        </div>
-      </Card>
-      <Card as="div" aria-label="Loading details">
-        <div className="space-y-2" aria-hidden>
-          <div className="skeleton h-5 w-1/3" />
-          <div className="skeleton h-4 w-full" />
-          <div className="skeleton h-4 w-5/6" />
-        </div>
-      </Card>
-    </div>
-  );
-}
-
 function ErrorState({ error }: { error: ClientError }) {
   const session = useSession();
   const online = useOnline();
+  const retake = usePhotoPicker(session.startWithPhoto, { capture: true });
   const copy = errorCopy(error);
   const last = session.state.images.at(-1);
 
@@ -152,7 +99,8 @@ function ErrorState({ error }: { error: ClientError }) {
             <Icon name="refresh" className="h-5 w-5" /> Try again
           </Button>
         )}
-        <Button variant="secondary" onClick={() => session.startNew()}>
+        {retake.input}
+        <Button variant="secondary" onClick={retake.open}>
           <Icon name="camera" className="h-5 w-5" /> Take a different photo
         </Button>
         <Button variant="ghost" onClick={() => navigate({ name: 'home' })}>
@@ -166,24 +114,14 @@ function ErrorState({ error }: { error: ClientError }) {
 export function IdentifyScreen() {
   const session = useSession();
   const { state } = session;
+  // Follow-up photos: the native camera by default, the library as an alternative.
+  const camera = usePhotoPicker(session.photoSelected, { capture: true });
+  const library = usePhotoPicker(session.photoSelected);
+  const newCamera = usePhotoPicker(session.startWithPhoto, { capture: true });
 
   useEffect(() => {
     if (state.step === 'idle') navigate({ name: 'home' }, { replace: true });
   }, [state.step]);
-
-  if (state.step === 'capture') {
-    const feature = getFeature(state.category, state.pendingFeature);
-    return (
-      <CameraCapture
-        hint={state.pendingFeature !== 'auto' ? feature.advice : undefined}
-        onCapture={session.photoSelected}
-        onClose={() => {
-          session.cancelCapture();
-          if (!state.result && !state.error) navigate({ name: 'home' });
-        }}
-      />
-    );
-  }
 
   if (state.step === 'crop' && state.pending) {
     return (
@@ -202,7 +140,7 @@ export function IdentifyScreen() {
     );
   }
 
-  if (state.step === 'submitting') return <Progress />;
+  if (state.step === 'submitting') return <AnalysisProgress />;
   if (state.step === 'error' && state.error) return <ErrorState error={state.error} />;
 
   if (state.step === 'result' && state.result) {
@@ -223,14 +161,29 @@ export function IdentifyScreen() {
           improve={{
             photos: state.images.map((i) => ({ id: i.id, url: i.url, feature: i.feature })),
             canAddMore: session.canAddMore,
-            onAddPhoto: (feature) => session.startFollowUp(feature),
+            onAddPhoto: (feature) => {
+              session.startFollowUp(feature);
+              camera.open();
+            },
+            onAddFromLibrary: (feature) => {
+              session.startFollowUp(feature);
+              library.open();
+            },
             onRemovePhoto: session.removeImage,
             onResubmit: () => void session.submit(),
             dirty: state.images.length !== result.imagesSubmitted,
           }}
         />
+        {camera.input}
+        {library.input}
+        {newCamera.input}
+        {(camera.error ?? library.error ?? newCamera.error) && (
+          <Notice tone="error" role="alert">
+            {camera.error ?? library.error ?? newCamera.error}
+          </Notice>
+        )}
         <div className="mt-6 flex flex-col gap-2">
-          <Button size="lg" onClick={() => session.startNew()}>
+          <Button size="lg" onClick={newCamera.open}>
             <Icon name="camera" /> Identify something else
           </Button>
           <Button variant="ghost" onClick={() => navigate({ name: 'history' })}>

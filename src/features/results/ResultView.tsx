@@ -1,11 +1,12 @@
 import { getCategory } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
 import { CANDIDATES } from '../../../shared/config';
-import type { FeatureId, IdentifyResponse } from '../../../shared/types';
+import type { FeatureId, GroupSummary, IdentifyResponse } from '../../../shared/types';
 import { Icon } from '../../components/Icon';
 import { Button, Card, Notice, SectionTitle } from '../../components/ui';
 import { displayName } from '../../lib/format';
 import { ConfidenceMeter } from './ConfidenceMeter';
+import { CandidateThumb, ReferenceGallery, mergeImages } from './Gallery';
 import {
   Alternatives,
   GeographicEvidence,
@@ -21,11 +22,22 @@ export type ResultPhoto = { id: string; url: string; feature: FeatureId };
 export type ImproveProps = {
   photos: ResultPhoto[];
   canAddMore: boolean;
+  /** Opens the camera for a follow-up photo of this feature. */
   onAddPhoto: (feature: FeatureId) => void;
+  /** Same, but picks from the photo library. */
+  onAddFromLibrary?: (feature: FeatureId) => void;
   onRemovePhoto: (id: string) => void;
   onResubmit: () => void;
   dirty: boolean;
 };
+
+/** "a goldenrod (Solidago)" or "the genus Solidago" when no common name is known. */
+export function groupPhrase(group: GroupSummary): { short: string; full: string } {
+  const common = group.commonName?.toLowerCase();
+  if (!common) return { short: `the genus ${group.name}`, full: `the genus ${group.name}` };
+  const article = /^[aeiou]/.test(common) ? 'an' : 'a';
+  return { short: `${article} ${common}`, full: `${article} ${common} (${group.name})` };
+}
 
 function Headline({
   result,
@@ -39,6 +51,11 @@ function Headline({
   const top = result.candidates[0];
   const image = photoUrl ?? thumbnailUrl;
   const band = result.confidenceBand;
+  const group = result.groupSummary;
+  // Provider reference photos first (they match the model's view), then iNaturalist's.
+  const gallery = top
+    ? mergeImages(top.referenceImages, result.speciesInfo?.images).slice(0, 12)
+    : [];
 
   return (
     <Card className="overflow-hidden !p-0" as="div">
@@ -60,17 +77,47 @@ function Headline({
           </>
         ) : band === 'low' ? (
           <>
-            <h1 className="text-2xl font-bold">We’re not confident enough yet.</h1>
-            <p className="mt-1 text-ink-soft">Possible matches:</p>
-            <ol className="mt-2 space-y-1.5" data-testid="low-confidence-list">
-              {result.candidates.slice(0, CANDIDATES.minAlternativesShown).map((c) => (
-                <li key={c.id} className="flex items-baseline gap-3">
-                  <span className="w-12 shrink-0 text-right text-lg font-bold tabular-nums">
-                    {formatPercent(c.finalConfidence)}
-                  </span>
-                  <span>
+            {group ? (
+              <>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-moss">
+                  {group.confidence >= 0.8 ? 'Almost certainly' : 'Probably'}
+                </p>
+                <h1
+                  className="mt-1 font-serif text-3xl font-bold leading-tight"
+                  data-testid="group-headline"
+                >
+                  {groupPhrase(group).full.replace(/^./, (c) => c.toUpperCase())}
+                </h1>
+                <p className="mt-1 text-ink-soft">
+                  {formatPercent(group.confidence)} confidence it’s {groupPhrase(group).short},
+                  combined across {group.memberCount} {group.name} species. The exact species is
+                  uncertain.
+                </p>
+                <p className="mt-3 font-semibold">Possible species:</p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold">We’re not confident enough yet.</h1>
+                <p className="mt-1 text-ink-soft">Possible matches:</p>
+              </>
+            )}
+            <ol className="mt-2 space-y-2" data-testid="low-confidence-list">
+              {result.candidates.slice(0, CANDIDATES.minAlternativesShown).map((c, idx) => (
+                <li key={c.id} className="flex items-center gap-3">
+                  <CandidateThumb
+                    images={mergeImages(
+                      c.referenceImages,
+                      idx === 0 ? result.speciesInfo?.images : undefined,
+                    )}
+                    title={displayName(c)}
+                    size="h-12 w-12"
+                  />
+                  <span className="min-w-0 flex-1">
                     <span className="font-semibold">{displayName(c)}</span>{' '}
                     {c.commonName && <span className="sci text-ink-soft">{c.scientificName}</span>}
+                  </span>
+                  <span className="shrink-0 text-lg font-bold tabular-nums">
+                    {formatPercent(c.finalConfidence)}
                   </span>
                 </li>
               ))}
@@ -99,6 +146,17 @@ function Headline({
                 label={band === 'high' ? 'identification confidence' : 'confidence'}
               />
             </div>
+            {group && (
+              <p className="mt-2 text-[0.95rem] text-ink-soft" data-testid="group-line">
+                <strong className="text-ink">{formatPercent(group.confidence)}</strong> confident
+                it’s {groupPhrase(group).full}.
+              </p>
+            )}
+            {gallery.length > 0 && (
+              <div className="mt-5">
+                <ReferenceGallery images={gallery} title={displayName(top)} />
+              </div>
+            )}
           </>
         )}
         <p className="mt-3 flex items-center gap-1.5 text-sm text-ink-muted">
@@ -190,6 +248,15 @@ function ImproveIdentification({
         </div>
       ) : (
         <p className="text-ink-soft">You’ve added the maximum number of photos.</p>
+      )}
+      {improve.canAddMore && improve.onAddFromLibrary && (
+        <button
+          type="button"
+          onClick={() => improve.onAddFromLibrary?.(result.guidance[0]?.feature ?? 'auto')}
+          className="mt-2 min-h-11 font-semibold text-moss underline underline-offset-4"
+        >
+          Choose from photo library instead
+        </button>
       )}
       {improve.dirty && (
         <Button className="mt-3 w-full" onClick={improve.onResubmit}>

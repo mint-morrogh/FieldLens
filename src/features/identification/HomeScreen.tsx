@@ -108,11 +108,12 @@ function DemoModePanel() {
 
 export function HomeScreen({ health }: { health?: HealthResponse }) {
   const session = useSession();
-  const picker = usePhotoPicker((file) => {
-    session.reset();
-    session.photoSelected(file);
+  const start = (file: File) => {
+    session.startWithPhoto(file);
     navigate({ name: 'identify' });
-  });
+  };
+  const camera = usePhotoPicker(start, { capture: true });
+  const picker = usePhotoPicker(start);
   const [comingSoon, setComingSoon] = useState<string>();
 
   useEffect(() => {
@@ -138,23 +139,17 @@ export function HomeScreen({ health }: { health?: HealthResponse }) {
       {health?.mock && <DemoModePanel />}
 
       <div className="flex flex-col gap-3">
-        <Button
-          size="lg"
-          className="min-h-16 text-xl"
-          onClick={() => {
-            session.startNew();
-            navigate({ name: 'identify' });
-          }}
-        >
+        <Button size="lg" className="min-h-16 text-xl" onClick={camera.open}>
           <Icon name="camera" className="h-7 w-7" /> Take a Photo
         </Button>
         <Button size="lg" variant="secondary" className="min-h-16 text-xl" onClick={picker.open}>
           <Icon name="image" className="h-7 w-7" /> Choose Existing Photo
         </Button>
+        {camera.input}
         {picker.input}
-        {picker.error && (
+        {(camera.error ?? picker.error) && (
           <Notice tone="error" role="alert">
-            {picker.error}
+            {camera.error ?? picker.error}
           </Notice>
         )}
       </div>

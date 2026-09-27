@@ -1,6 +1,7 @@
 import type {
   ApproxLocation,
   CommunityObservationSummary,
+  LicensedImage,
   NearbySpeciesGroup,
   OccurrenceEvidence,
   OrganismCategory,
@@ -35,6 +36,26 @@ const MOCK_ATTRIBUTION = {
   provider: 'FieldLens demo data',
   text: 'Demo mode: results are fixtures, not a real identification',
   url: 'https://github.com/mint-morrogh/FieldLens#mock-mode',
+};
+
+const GENUS_COMMON_NAMES: Record<number, string> = {
+  3189834: 'maple',
+  2973363: 'clover',
+  5388868: 'goldenrod',
+};
+
+/** A real CC0 iNaturalist photo, so demo mode can show the reference gallery. */
+const DEMO_GALLERY: Record<string, LicensedImage[]> = {
+  'Acer rubrum': [
+    {
+      url: 'https://inaturalist-open-data.s3.amazonaws.com/photos/371065093/medium.jpg',
+      thumbnailUrl: 'https://inaturalist-open-data.s3.amazonaws.com/photos/371065093/square.jpg',
+      author: 'no rights reserved, uploaded by mefisher',
+      license: 'CC0',
+      source: 'iNaturalist',
+      sourceUrl: 'https://www.inaturalist.org/taxa/48098',
+    },
+  ],
 };
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -91,6 +112,9 @@ export class MockIdentificationProvider implements IdentificationProvider {
 class MockTaxonomyProvider implements TaxonomyProvider {
   readonly name = GBIF_SOURCE;
   constructor(private readonly scenario: MockScenario) {}
+  async commonNameForKey(key: number): Promise<string | undefined> {
+    return GENUS_COMMON_NAMES[key];
+  }
   async resolveTaxon(taxon: TaxonIdentity): Promise<ResolvedTaxon | undefined> {
     if (this.scenario === 'gbif-down') throw new UpstreamError(GBIF_SOURCE, 'timeout');
     const f = findFixture(taxon.scientificName);
@@ -148,6 +172,7 @@ class MockSpeciesInfoProvider implements SpeciesInfoProvider {
         sourceUrl: `https://en.wikipedia.org/wiki/${encodeURIComponent(f.scientificName.replace(/ /g, '_'))}`,
         license: 'Demo text',
       },
+      images: DEMO_GALLERY[f.scientificName],
       links: [
         {
           label: 'Wikipedia',

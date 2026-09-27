@@ -11,7 +11,13 @@ import {
 } from 'react';
 import { DEFAULT_CATEGORY } from '../../../shared/categories';
 import { UPLOAD } from '../../../shared/config';
-import type { FeatureId, IdentifyResponse, OrganismCategory } from '../../../shared/types';
+import type {
+  FeatureId,
+  IdentifyResponse,
+  IdentifyStage,
+  OrganismCategory,
+  StageEvent,
+} from '../../../shared/types';
 import { ClientError, identify } from '../../lib/api';
 import { newId } from '../../lib/ids';
 import { cropAndEncode, makeThumbnail } from '../../lib/image';
@@ -21,7 +27,17 @@ import { useLocationState } from '../location/LocationContext';
 
 export type SessionImage = { id: string; blob: Blob; url: string; feature: FeatureId };
 
-export type Step = 'idle' | 'capture' | 'crop' | 'submitting' | 'result' | 'error';
+export type Step = 'idle' | 'crop' | 'submitting' | 'result' | 'error';
+
+export type Progress = {
+  phase: 'preparing' | 'uploading' | 'identifying';
+  fraction: number;
+  /** Server-reported pipeline stages, updated live as they stream in. */
+  stages: Partial<Record<IdentifyStage, StageEvent['status']>>;
+  preview?: StageEvent['preview'];
+};
+
+const EMPTY_PROGRESS: Progress = { phase: 'preparing', fraction: 0, stages: {} };
 
 export type SessionState = {
   step: Step;
@@ -32,7 +48,7 @@ export type SessionState = {
   /** Full original photo awaiting a crop; stays on-device. */
   pending?: { blob: Blob; url: string };
   pendingFeature: FeatureId;
-  progress: { phase: 'preparing' | 'uploading' | 'identifying'; fraction: number };
+  progress: Progress;
   result?: IdentifyResponse;
   previousResult?: IdentifyResponse;
   error?: ClientError;
@@ -41,12 +57,13 @@ export type SessionState = {
 type Action =
   | { type: 'reset'; category: OrganismCategory }
   | { type: 'setCategory'; category: OrganismCategory }
-  | { type: 'capture'; feature?: FeatureId }
+  | { type: 'setPendingFeature'; feature: FeatureId }
   | { type: 'photo'; blob: Blob; url: string }
   | { type: 'cancelCapture' }
   | { type: 'addImage'; image: SessionImage }
   | { type: 'removeImage'; id: string }
-  | { type: 'submitting'; phase: SessionState['progress']['phase']; fraction: number }
+  | { type: 'submitting'; phase: Progress['phase']; fraction: number; restart?: boolean }
+  | { type: 'stage'; event: StageEvent }
   | { type: 'result'; result: IdentifyResponse }
   | { type: 'error'; error: ClientError };
 
@@ -58,7 +75,7 @@ function freshState(category: OrganismCategory): SessionState {
     capturedAt: new Date(),
     images: [],
     pendingFeature: 'auto',
-    progress: { phase: 'preparing', fraction: 0 },
+    progress: EMPTY_PROGRESS,
   };
 }
 
@@ -68,8 +85,8 @@ export function sessionReducer(state: SessionState, action: Action): SessionStat
       return freshState(action.category);
     case 'setCategory':
       return { ...state, category: action.category };
-    case 'capture':
-      return { ...state, step: 'capture', pendingFeature: action.feature ?? 'auto' };
+    case 'setPendingFeature':
+      return { ...state, pendingFeature: action.feature };
     case 'photo':
       return {
         ...state,
@@ -87,12 +104,25 @@ export function sessionReducer(state: SessionState, action: Action): SessionStat
       return { ...state, images: [...state.images, action.image], pending: undefined };
     case 'removeImage':
       return { ...state, images: state.images.filter((i) => i.id !== action.id) };
-    case 'submitting':
+    case 'submitting': {
+      const base = action.restart ? EMPTY_PROGRESS : state.progress;
       return {
         ...state,
         step: 'submitting',
         error: undefined,
-        progress: { phase: action.phase, fraction: action.fraction },
+        progress: { ...base, phase: action.phase, fraction: action.fraction },
+      };
+    }
+    case 'stage':
+      return {
+        ...state,
+        progress: {
+          ...state.progress,
+          phase: 'identifying',
+          fraction: 1,
+          stages: { ...state.progress.stages, [action.event.stage]: action.event.status },
+          preview: action.event.preview ?? state.progress.preview,
+        },
       };
     case 'result':
       return {
@@ -110,7 +140,9 @@ export function sessionReducer(state: SessionState, action: Action): SessionStat
 type SessionApi = {
   state: SessionState;
   setCategory: (category: OrganismCategory) => void;
-  startNew: (options?: { feature?: FeatureId }) => void;
+  /** Start a fresh session with a newly taken or chosen photo. */
+  startWithPhoto: (blob: Blob) => void;
+  /** Remember which feature (e.g. flower) the next follow-up photo shows. */
   startFollowUp: (feature: FeatureId) => void;
   photoSelected: (blob: Blob) => void;
   cancelCapture: () => void;
@@ -120,6 +152,8 @@ type SessionApi = {
   reset: () => void;
   canAddMore: boolean;
 };
+
+const RESULT_REVEAL_DELAY_MS = import.meta.env.MODE === 'test' ? 0 : 450;
 
 const SessionContext = createContext<SessionApi | null>(null);
 
@@ -148,7 +182,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (images?: SessionImage[]) => {
       const s = { ...stateRef.current, images: images ?? stateRef.current.images };
       if (s.images.length === 0) return;
-      dispatch({ type: 'submitting', phase: 'uploading', fraction: 0 });
+      dispatch({ type: 'submitting', phase: 'uploading', fraction: 0, restart: true });
       try {
         const location = await currentLocation();
         const result = await identify(
@@ -160,6 +194,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             capturedAt: s.capturedAt,
           },
           {
+            onStage: (event) => dispatch({ type: 'stage', event }),
             onUploadProgress: (fraction) =>
               dispatch({
                 type: 'submitting',
@@ -168,6 +203,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               }),
           },
         );
+        // Let the final checklist tick register before swapping to the result.
+        await new Promise((r) => setTimeout(r, RESULT_REVEAL_DELAY_MS));
         dispatch({ type: 'result', result });
         // Save locally (thumbnail + result, never coordinates). Failure here must not affect the result.
         if (result.candidates.length > 0) {
@@ -195,7 +232,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (box: Box, feature: FeatureId) => {
       const pending = stateRef.current.pending;
       if (!pending) return;
-      dispatch({ type: 'submitting', phase: 'preparing', fraction: 0 });
+      dispatch({ type: 'submitting', phase: 'preparing', fraction: 0, restart: true });
       let image: SessionImage;
       try {
         const { blob } = await cropAndEncode(pending.blob, box);
@@ -220,11 +257,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     () => ({
       state,
       setCategory: (category) => dispatch({ type: 'setCategory', category }),
-      startNew: (options) => {
+      startWithPhoto: (blob) => {
         dispatch({ type: 'reset', category: stateRef.current.category });
-        dispatch({ type: 'capture', feature: options?.feature });
+        dispatch({ type: 'photo', blob, url: URL.createObjectURL(blob) });
       },
-      startFollowUp: (feature) => dispatch({ type: 'capture', feature }),
+      startFollowUp: (feature) => dispatch({ type: 'setPendingFeature', feature }),
       photoSelected: (blob) => dispatch({ type: 'photo', blob, url: URL.createObjectURL(blob) }),
       cancelCapture: () => dispatch({ type: 'cancelCapture' }),
       confirmCrop,

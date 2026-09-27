@@ -19,7 +19,13 @@ export async function fetchJson<T = unknown>(url: string, options: FetchJsonOpti
     response = await fetchImpl(url, {
       ...init,
       signal: controller.signal,
-      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT, ...init?.headers },
+      headers: {
+        Accept: 'application/json',
+        // Node's fetch sends "Accept-Language: *", which makes GBIF omit common names.
+        'Accept-Language': 'en',
+        'User-Agent': USER_AGENT,
+        ...init?.headers,
+      },
     });
   } catch (error) {
     clearTimeout(timer);

@@ -7,7 +7,10 @@ import {
   GbifSpeciesInfoProvider,
   GbifTaxonomyProvider,
 } from './gbif/gbif.js';
-import { INaturalistObservationProvider } from './inaturalist/inaturalistProvider.js';
+import {
+  INaturalistObservationProvider,
+  INaturalistTaxonPhotosProvider,
+} from './inaturalist/inaturalistProvider.js';
 import { isMockScenario } from './mock/fixtures.js';
 import { createMockProviders } from './mock/mockProviders.js';
 import { PlantNetIdentificationProvider } from './plantnet/plantnetProvider.js';
@@ -28,6 +31,7 @@ export function createLiveProviders(env: ServerEnv, fetchImpl: typeof fetch = fe
   }
   // Future: identification.push(new BirdIdentificationProvider(...)), InsectIdentificationProvider, ...
 
+  const inat = new INaturalistObservationProvider(undefined, fetchImpl);
   const gbif = new GbifClient(undefined, fetchImpl);
   return {
     identification,
@@ -38,8 +42,9 @@ export function createLiveProviders(env: ServerEnv, fetchImpl: typeof fetch = fe
       new GbifSpeciesInfoProvider(gbif),
       new WikidataSpeciesInfoProvider(undefined, fetchImpl),
       new WikipediaSpeciesSummaryProvider(undefined, fetchImpl),
+      new INaturalistTaxonPhotosProvider(inat, undefined, fetchImpl),
     ],
-    community: new INaturalistObservationProvider(undefined, fetchImpl),
+    community: inat,
     mock: false,
   };
 }

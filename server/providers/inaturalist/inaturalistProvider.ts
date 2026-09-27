@@ -10,7 +10,11 @@ import type {
 } from '../../../shared/types.js';
 import { cached, sharedCache, type Cache } from '../../cache/cache.js';
 import { fetchJson } from '../../lib/http.js';
-import type { CommunityObservationProvider } from '../types.js';
+import type {
+  CommunityObservationProvider,
+  SpeciesInfoPart,
+  SpeciesInfoProvider,
+} from '../types.js';
 
 export const INAT_SOURCE = 'iNaturalist';
 export const INAT_ATTRIBUTION = {
@@ -21,7 +25,12 @@ export const INAT_ATTRIBUTION = {
 const API = 'https://api.inaturalist.org/v1';
 const SITE = 'https://www.inaturalist.org';
 
-type INatPhoto = { url?: string; license_code?: string | null; attribution?: string };
+type INatPhoto = {
+  url?: string;
+  medium_url?: string;
+  license_code?: string | null;
+  attribution?: string;
+};
 type INatTaxon = {
   id: number;
   name: string;
@@ -44,10 +53,11 @@ type INatSearch<T> = { total_results: number; results: T };
 export function licensedPhoto(
   photo: INatPhoto | undefined,
   observationUrl: string,
+  size: 'small' | 'medium' = 'small',
 ): LicensedImage | undefined {
   if (!photo?.url || !photo.license_code) return undefined;
   return {
-    url: photo.url.replace('/square.', '/small.'),
+    url: photo.url.replace('/square.', `/${size}.`),
     thumbnailUrl: photo.url,
     author: photo.attribution,
     license: photo.license_code.toUpperCase(),
@@ -204,4 +214,39 @@ export function coarsenPlace(place: string): string {
     .filter(Boolean);
   while (parts.length > 1 && STREET.test(parts[0])) parts.shift();
   return parts.slice(-3).join(', ');
+}
+
+/**
+ * Reference photos of a taxon from iNaturalist, for the result gallery. Works for
+ * any organism group, so future animal/fungus providers get galleries for free.
+ * Only openly licensed photos are returned, each with its attribution.
+ */
+export class INaturalistTaxonPhotosProvider implements SpeciesInfoProvider {
+  readonly name = INAT_SOURCE;
+
+  constructor(
+    private readonly observations: INaturalistObservationProvider = new INaturalistObservationProvider(),
+    private readonly cache: Cache = sharedCache,
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly maxPhotos = 8,
+  ) {}
+
+  async getSpeciesInfo(taxon: TaxonIdentity): Promise<SpeciesInfoPart> {
+    const inatTaxon = await this.observations.resolveTaxon(taxon);
+    if (!inatTaxon) return { source: INAT_SOURCE };
+    const url = `${API}/taxa/${inatTaxon.id}`;
+    const detail = await cached(this.cache, `inat:${url}`, CACHE_TTL_MS.speciesInfo, () =>
+      fetchJson<{ results: { taxon_photos?: { photo: INatPhoto }[] }[] }>(url, {
+        service: INAT_SOURCE,
+        timeoutMs: TIMEOUTS_MS.supporting,
+        fetchImpl: this.fetchImpl,
+      }),
+    );
+    const taxonUrl = `${SITE}/taxa/${inatTaxon.id}`;
+    const images = (detail.results[0]?.taxon_photos ?? [])
+      .map((tp) => licensedPhoto(tp.photo, taxonUrl, 'medium'))
+      .filter((img): img is LicensedImage => !!img)
+      .slice(0, this.maxPhotos);
+    return { source: INAT_SOURCE, images };
+  }
 }

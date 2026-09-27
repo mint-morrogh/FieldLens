@@ -10,6 +10,7 @@ import type {
   HealthResponse,
   IdentifyResponse,
   OrganismCategory,
+  StageEvent,
 } from '../../shared/types';
 import { getMockScenario } from './mockScenario';
 
@@ -36,6 +37,8 @@ export type IdentifyRequest = {
 
 export type IdentifyOptions = {
   onUploadProgress?: (fraction: number) => void;
+  /** Live pipeline progress, streamed by the server as each stage happens. */
+  onStage?: (event: StageEvent) => void;
   signal?: AbortSignal;
 };
 
@@ -58,7 +61,6 @@ export function buildIdentifyForm(
   if (mockScenario) form.append('mockScenario', mockScenario);
   return form;
 }
-
 function parseError(status: number, body: unknown): ClientError {
   const parsed = apiErrorSchema.safeParse(body);
   if (parsed.success) {
@@ -81,7 +83,38 @@ function parseError(status: number, body: unknown): ClientError {
   return new ClientError('internal_error', 'Something went wrong. Please try again.');
 }
 
-/** Upload with progress (XHR, since fetch cannot report upload progress). */
+/**
+ * Parses complete NDJSON lines from a growing response body.
+ * Returns the parsed lines and how many characters were consumed.
+ */
+export function readNdjson(text: string, from: number): { lines: unknown[]; next: number } {
+  const lines: unknown[] = [];
+  let next = from;
+  let newline = text.indexOf('\n', next);
+  while (newline !== -1) {
+    const raw = text.slice(next, newline).trim();
+    if (raw) {
+      try {
+        lines.push(JSON.parse(raw));
+      } catch {
+        /* ignore a malformed line; the final result line is validated separately */
+      }
+    }
+    next = newline + 1;
+    newline = text.indexOf('\n', next);
+  }
+  return { lines, next };
+}
+
+function isStageLine(line: unknown): line is { type: 'stage' } & StageEvent {
+  return typeof line === 'object' && line !== null && (line as { type?: unknown }).type === 'stage';
+}
+
+/**
+ * Upload with progress (XHR, since fetch cannot report upload progress), then
+ * read the streamed NDJSON response so each pipeline stage can be shown live.
+ * A plain JSON body (errors before processing starts) is handled too.
+ */
 export function identify(
   req: IdentifyRequest,
   options: IdentifyOptions = {},
@@ -93,12 +126,26 @@ export function identify(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/identify');
+    xhr.setRequestHeader('Accept', 'application/x-ndjson, application/json');
     xhr.responseType = 'text';
     xhr.timeout = 60_000;
+    let consumed = 0;
+    const isStream = () =>
+      (xhr.getResponseHeader('content-type') ?? '').includes('application/x-ndjson');
+    const drain = () => {
+      if (!isStream()) return [];
+      const { lines, next } = readNdjson(xhr.responseText, consumed);
+      consumed = next;
+      for (const line of lines) if (isStageLine(line)) options.onStage?.(line);
+      return lines;
+    };
+    const finalLines: unknown[] = [];
+
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) options.onUploadProgress?.(e.loaded / e.total);
     };
     xhr.upload.onload = () => options.onUploadProgress?.(1);
+    xhr.onprogress = () => finalLines.push(...drain());
     xhr.onerror = () =>
       reject(
         navigator.onLine === false
@@ -113,15 +160,36 @@ export function identify(
     xhr.onabort = () => reject(new ClientError('aborted', 'Cancelled.'));
     xhr.onload = () => {
       let body: unknown;
-      try {
-        body = JSON.parse(xhr.responseText);
-      } catch {
-        reject(parseError(xhr.status, undefined));
-        return;
-      }
-      if (xhr.status < 200 || xhr.status >= 300) {
-        reject(parseError(xhr.status, body));
-        return;
+      if (isStream()) {
+        // Flush any trailing line without a newline, then use the final result/error line.
+        finalLines.push(...drain());
+        const tail = xhr.responseText.slice(consumed).trim();
+        if (tail) finalLines.push(...readNdjson(tail + '\n', 0).lines);
+        const last = finalLines
+          .filter((l): l is { type: string } => typeof l === 'object' && l !== null)
+          .reverse()
+          .find((l) => l.type === 'result' || l.type === 'error');
+        if (!last) {
+          reject(new ClientError('bad_response', 'The response ended early. Please try again.'));
+          return;
+        }
+        if (last.type === 'error') {
+          const e = last as unknown as { status?: number; error: unknown };
+          reject(parseError(e.status ?? 500, { error: e.error }));
+          return;
+        }
+        body = (last as unknown as { result: unknown }).result;
+      } else {
+        try {
+          body = JSON.parse(xhr.responseText);
+        } catch {
+          reject(parseError(xhr.status, undefined));
+          return;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(parseError(xhr.status, body));
+          return;
+        }
       }
       const parsed = identifyResponseSchema.safeParse(body);
       if (!parsed.success) {

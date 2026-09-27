@@ -129,7 +129,7 @@ export function normalizePlantNetResponse(
       const referenceImages: LicensedImage[] = (r.images ?? [])
         .filter((img) => img.url.m || img.url.s)
         .filter((img) => img.license && img.author)
-        .slice(0, 3)
+        .slice(0, 6)
         .map((img) => ({
           url: (img.url.m ?? img.url.o ?? img.url.s)!,
           thumbnailUrl: img.url.s ?? img.url.m,

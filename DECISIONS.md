@@ -63,3 +63,19 @@ Redis would cost money and add a dependency. v1 uses in-memory structures per se
 ## Photos are never uploaded in full
 
 The client crops to the box, caps the long edge at 1600 px and re-encodes as JPEG. This strips EXIF (including GPS), keeps requests under Vercel’s 4.5 MB body limit even with five photos, and still keeps enough detail for classification. The original stays in memory on the device and is discarded when the session ends.
+
+## Native camera app instead of an in-page video preview
+
+v1 first captured photos from a `getUserMedia` video stream. On phones that stream is often 640×480–1280×720, softer, and without the camera app's autofocus/HDR, which visibly lowered identification scores. “Take a Photo” now uses `<input type="file" capture="environment">`, which opens the phone’s real camera and returns a full-resolution photo (the brief’s preference for `getUserMedia` is outweighed by accuracy). Desktop browsers fall back to a file picker.
+
+## Streamed progress for the analysis screen
+
+The identify endpoint streams NDJSON when asked (`Accept: application/x-ndjson`): one line per pipeline stage as it actually starts/finishes, the visual provider’s first guesses, then the final result. The analysis screen’s checklist is driven only by these events — nothing is simulated with timers. Plain JSON responses remain supported.
+
+## Genus-level answers
+
+Visual models often split confidence across near-identical species (e.g. garden daisy cultivars). When the species is uncertain but same-genus candidates together reach 55%, the result says so plainly (“Probably a maple (Acer)”) with the exact species listed as uncertain. The combined score is a sum of candidate confidences and is labeled as such.
+
+## Reference photo galleries
+
+Galleries use the identification provider’s reference images (Pl@ntNet) plus iNaturalist taxon photos, which exist for every organism group. Only openly licensed photos are shown, each with author, license and a source link.

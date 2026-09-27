@@ -20,7 +20,7 @@ type LocationState = {
   location?: ApproxLocation;
   request: () => Promise<ApproxLocation | undefined>;
   decline: () => void;
-  /** Returns a reasonably fresh location if permission was already granted, without prompting. */
+  /** A fresh approximate location for a request; prompts if the user hasn't decided yet. */
   current: () => Promise<ApproxLocation | undefined>;
 };
 
@@ -120,8 +120,11 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const current = useCallback(async () => {
-    if (status !== 'granted') return undefined;
-    if (location && Date.now() - fetchedAt.current < MAX_AGE_MS) return location;
+    if (status === 'denied' || status === 'declined' || status === 'unavailable') return undefined;
+    if (status === 'granted' && location && Date.now() - fetchedAt.current < MAX_AGE_MS) {
+      return location;
+    }
+    // Granted but stale, or not decided yet (e.g. the startup prompt is still open): ask now.
     return fetchLocation();
   }, [status, location, fetchLocation]);
 

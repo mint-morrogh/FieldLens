@@ -56,6 +56,12 @@ export const CLIENT_IMAGE = {
   thumbnailQuality: 0.75,
 } as const;
 
+export const GROUPING = {
+  /** Show a genus-level answer when same-genus candidates together reach this confidence. */
+  minConfidence: 0.55,
+  minMembers: 2,
+} as const;
+
 export const CANDIDATES = {
   /** How many candidates are requested from the visual provider and enriched with GBIF. */
   maxCandidates: 5,

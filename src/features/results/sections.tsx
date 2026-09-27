@@ -12,6 +12,7 @@ import { Icon } from '../../components/Icon';
 import { Card, ExternalLink, Notice, SectionTitle } from '../../components/ui';
 import { displayName, formatCount, formatDate, plural } from '../../lib/format';
 import { ConfidenceMeter } from './ConfidenceMeter';
+import { CandidateThumb } from './Gallery';
 import { MonthBars } from './MonthBars';
 
 export function geoSupportText(c: OrganismCandidate, locationUsed: boolean): string {
@@ -44,25 +45,11 @@ export function CandidateRow({
   return (
     <li className="flex gap-3 py-3" data-testid="candidate">
       <div className="w-16 shrink-0">
-        {ref ? (
-          <figure>
-            <img
-              src={ref.thumbnailUrl ?? ref.url}
-              alt={`Reference photo of ${candidate.scientificName}`}
-              className="h-16 w-16 rounded-xl object-cover"
-              loading="lazy"
-            />
-            <figcaption className="mt-0.5">
-              <ImageCredit image={ref} />
-            </figcaption>
-          </figure>
-        ) : (
-          <div
-            className="flex h-16 w-16 items-center justify-center rounded-xl bg-moss-soft text-moss"
-            aria-hidden
-          >
-            <Icon name="leaf" />
-          </div>
+        <CandidateThumb images={candidate.referenceImages ?? []} title={displayName(candidate)} />
+        {ref && (
+          <p className="mt-0.5">
+            <ImageCredit image={ref} />
+          </p>
         )}
       </div>
       <div className="min-w-0 flex-1">

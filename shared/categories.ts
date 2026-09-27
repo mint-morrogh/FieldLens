@@ -14,6 +14,8 @@ export type CategoryDefinition = {
   label: string;
   /** Whether an identification provider exists for this category yet. */
   available: boolean;
+  /** Name of the visual identification source, shown while analyzing. */
+  identificationSource?: string;
   /** Plural noun used in headings such as "Other maples nearby". */
   pluralNoun: string;
   /** Category-specific features (organs/body parts). "auto" is always implied first. */
@@ -44,6 +46,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
     id: 'plant',
     label: 'Plant',
     available: true,
+    identificationSource: 'Pl@ntNet',
     pluralNoun: 'plants',
     gbifKingdom: 'Plantae',
     inaturalistIconicTaxon: 'Plantae',

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MemoryCache, cached } from '../../server/cache/cache';
 import { handleHealth, handleIdentify } from '../../server/http/handlers';
 import { buildEvidence, buildGuidance } from '../../server/identify/evidence';
-import { peakMonthsFact, runIdentification } from '../../server/identify/pipeline';
+import { genusGroup, peakMonthsFact, runIdentification } from '../../server/identify/pipeline';
 import { ApiError, UpstreamError, toApiError } from '../../server/lib/errors';
 import { readEnv } from '../../server/lib/env';
 import { RateLimiter } from '../../server/lib/rateLimit';
@@ -280,6 +280,73 @@ describe('identification pipeline', () => {
   });
 });
 
+describe('genus grouping', () => {
+  it('summarizes same-genus candidates when the species is uncertain', async () => {
+    const result = await runIdentification(input(), { providers: createMockProviders('low') });
+    expect(result.groupSummary).toMatchObject({
+      rank: 'genus',
+      name: 'Solidago',
+      commonName: 'goldenrod',
+      memberCount: 3,
+    });
+    expect(result.groupSummary!.confidence).toBeGreaterThan(0.75);
+  });
+  it('is omitted for high-confidence results', async () => {
+    const result = await runIdentification(input(), { providers: createMockProviders('high') });
+    expect(result.groupSummary).toBeUndefined();
+  });
+  it('requires enough combined confidence and members', () => {
+    const c = (genus: string, finalConfidence: number) => ({ genus, finalConfidence }) as never;
+    expect(genusGroup([c('A', 0.3), c('A', 0.3)], 'low')).toMatchObject({
+      name: 'A',
+      memberCount: 2,
+    });
+    expect(genusGroup([c('A', 0.3), c('B', 0.3)], 'low')).toBeUndefined();
+    expect(genusGroup([c('A', 0.2), c('A', 0.2)], 'low')).toBeUndefined();
+  });
+});
+
+describe('progress stages', () => {
+  it('reports each stage in order, skipping location when absent', async () => {
+    const events: string[] = [];
+    await runIdentification(input(), {
+      providers: createMockProviders('high'),
+      onStage: (e) => events.push(`${e.stage}:${e.status}`),
+    });
+    expect(events).toEqual([
+      'identify:active',
+      'identify:done',
+      'taxonomy:active',
+      'taxonomy:done',
+      'occurrence:skipped',
+      'rank:done',
+      'enrich:active',
+      'enrich:done',
+    ]);
+  });
+  it('includes a preview of first guesses after the visual step', async () => {
+    let preview: unknown;
+    await runIdentification(input(), {
+      providers: createMockProviders('high'),
+      onStage: (e) => {
+        if (e.stage === 'identify' && e.status === 'done') preview = e.preview;
+      },
+    });
+    expect(preview).toEqual(
+      expect.arrayContaining([expect.objectContaining({ scientificName: 'Acer rubrum' })]),
+    );
+  });
+  it('never lets a failing progress callback break identification', async () => {
+    const result = await runIdentification(input(), {
+      providers: createMockProviders('high'),
+      onStage: () => {
+        throw new Error('ui crashed');
+      },
+    });
+    expect(result.candidates.length).toBeGreaterThan(0);
+  });
+});
+
 describe('evidence and guidance', () => {
   it('suggests photos of features not yet submitted, category-aware', () => {
     expect(buildGuidance({ category: 'plant', band: 'low', features: ['leaf'] })[0].feature).toBe(
@@ -352,6 +419,43 @@ describe('HTTP handlers', () => {
     const body = await res.json();
     expect(body.error.code).toBe('provider_timeout');
     expect(JSON.stringify(body)).not.toMatch(/stack|at /);
+  });
+  it('streams NDJSON stage lines followed by the result', async () => {
+    const f = new FormData();
+    f.append('images', new Blob([JPEG as BlobPart], { type: 'image/jpeg' }), 'a.jpg');
+    const req = new Request('http://localhost/api/identify', {
+      method: 'POST',
+      body: f,
+      headers: { accept: 'application/x-ndjson' },
+    });
+    const res = await handleIdentify(req, { env: mockEnv });
+    expect(res.headers.get('content-type')).toContain('application/x-ndjson');
+    const lines = (await res.text())
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
+    expect(lines[0]).toMatchObject({ type: 'stage', stage: 'identify', status: 'active' });
+    expect(lines.at(-1).type).toBe('result');
+    expect(lines.at(-1).result.candidates[0].scientificName).toBe('Acer rubrum');
+  });
+  it('streams provider failures as an error line', async () => {
+    const f = new FormData();
+    f.append('images', new Blob([JPEG as BlobPart], { type: 'image/jpeg' }), 'a.jpg');
+    f.append('mockScenario', 'quota');
+    const req = new Request('http://localhost/api/identify', {
+      method: 'POST',
+      body: f,
+      headers: { accept: 'application/x-ndjson' },
+    });
+    const lines = (await (await handleIdentify(req, { env: mockEnv })).text())
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
+    expect(lines.at(-1)).toMatchObject({
+      type: 'error',
+      status: 503,
+      error: { code: 'provider_quota_exhausted' },
+    });
   });
   it('rejects non-POST and non-multipart requests', async () => {
     expect(

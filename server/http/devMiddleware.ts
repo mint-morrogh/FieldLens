@@ -43,6 +43,11 @@ export function apiMiddleware() {
 
     res.statusCode = response.status;
     response.headers.forEach((value, key) => res.setHeader(key, value));
-    res.end(Buffer.from(await response.arrayBuffer()));
+    if (!response.body) return res.end();
+    // Forward chunks as they arrive so streamed progress reaches the browser live.
+    for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+      res.write(chunk);
+    }
+    res.end();
   };
 }

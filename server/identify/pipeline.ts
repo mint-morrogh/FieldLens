@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { CATEGORIES } from '../../shared/categories.js';
 import { confidenceBand } from '../../shared/confidence.js';
-import { TIMEOUTS_MS } from '../../shared/config.js';
+import { GROUPING, TIMEOUTS_MS } from '../../shared/config.js';
 import { coarseLocationLabel } from '../../shared/geo.js';
 import type {
   Attribution,
   CommunityObservationSummary,
+  GroupSummary,
   IdentifyResponse,
   NearbySpeciesGroup,
   OccurrenceEvidence,
@@ -13,6 +14,7 @@ import type {
   SourceStatus,
   SpeciesFact,
   SpeciesInfo,
+  StageEvent,
   TaxonIdentity,
 } from '../../shared/types.js';
 import { ApiError, UpstreamError } from '../lib/errors.js';
@@ -107,7 +109,25 @@ export function peakMonthsFact(monthCounts: number[] | undefined): string | unde
 export type PipelineDeps = {
   providers: ProviderSet;
   reranker?: CandidateReranker;
+  /** Called as each stage starts/finishes, for live progress in the UI. Must not throw. */
+  onStage?: (event: StageEvent) => void;
 };
+
+/** Genus-level answer when the species is uncertain but top candidates share a genus. */
+export function genusGroup(
+  ranked: OrganismCandidate[],
+  band: string,
+): Omit<GroupSummary, 'commonName'> | undefined {
+  const genus = ranked[0]?.genus;
+  if (!genus || band === 'high') return undefined;
+  const members = ranked.filter((c) => c.genus === genus);
+  const confidence = Math.min(
+    1,
+    members.reduce((sum, c) => sum + c.finalConfidence, 0),
+  );
+  if (members.length < GROUPING.minMembers || confidence < GROUPING.minConfidence) return undefined;
+  return { rank: 'genus', name: genus, confidence, memberCount: members.length };
+}
 
 export async function runIdentification(
   input: IdentificationInput,
@@ -115,6 +135,13 @@ export async function runIdentification(
 ): Promise<IdentifyResponse> {
   const { providers } = deps;
   const reranker = deps.reranker ?? new DeterministicGeoReranker();
+  const stage = (event: StageEvent) => {
+    try {
+      deps.onStage?.(event);
+    } catch {
+      /* progress reporting must never break identification */
+    }
+  };
   const category = CATEGORIES[input.category];
   const requestId = randomUUID();
 
@@ -141,11 +168,23 @@ export async function runIdentification(
 
   // 2. Visual identification (the only stage allowed to fail the request).
   const started = Date.now();
+  stage({ stage: 'identify', status: 'active' });
   const identification = await provider.identify(input);
+  const topVisual = identification.candidates[0]?.visualConfidence;
   logger.info('identify.visual', {
     provider: provider.name,
     candidates: identification.candidates.length,
+    topScore: topVisual !== undefined ? Math.round(topVisual * 100) / 100 : undefined,
     ms: Date.now() - started,
+  });
+  stage({
+    stage: 'identify',
+    status: 'done',
+    preview: identification.candidates.slice(0, 3).map((c) => ({
+      scientificName: c.scientificName,
+      commonName: c.commonName,
+      visualConfidence: c.visualConfidence,
+    })),
   });
 
   const locationProvided = !!input.location;
@@ -179,6 +218,7 @@ export async function runIdentification(
   }
 
   // 3. Taxonomy normalization (parallel, failures tolerated per candidate).
+  stage({ stage: 'taxonomy', status: 'active' });
   const taxonomyResults = await Promise.all(
     identification.candidates.map((c) =>
       settle(withDeadline(providers.taxonomy.resolveTaxon(toIdentity(c)), STAGE_MS, GBIF_SOURCE)),
@@ -186,11 +226,14 @@ export async function runIdentification(
   );
   const resolved = taxonomyResults.map((r) => (r.ok ? r.value : undefined));
   const candidates = identification.candidates.map((c, i) => mergeTaxonomy(c, resolved[i]));
+  stage({ stage: 'taxonomy', status: 'done' });
 
   // 4. Geographic evidence (parallel).
   let occurrenceStatus: SourceStatus = 'skipped';
   let withOccurrence: (ProviderCandidate & { occurrence?: OccurrenceEvidence })[] = candidates;
+  if (!input.location) stage({ stage: 'occurrence', status: 'skipped' });
   if (input.location) {
+    stage({ stage: 'occurrence', status: 'active' });
     const loc = input.location;
     const occurrence = await Promise.all(
       candidates.map((c) =>
@@ -214,6 +257,7 @@ export async function runIdentification(
         ? { ...c, occurrence: o.value, source: { ...c.source, occurrence: [GBIF_SOURCE] } }
         : c;
     });
+    stage({ stage: 'occurrence', status: occurrenceStatus === 'ok' ? 'done' : 'skipped' });
   }
 
   // 5. Deterministic reranking.
@@ -225,29 +269,29 @@ export async function runIdentification(
   const top = ranked[0];
   const topResolved = resolved[identification.candidates.findIndex((c) => c.id === top.id)];
   const band = confidenceBand(top.finalConfidence);
+  stage({ stage: 'rank', status: 'done' });
+  const group = genusGroup(ranked, band);
 
-  // 6. Facts, community observations and nearby species — all independent and optional.
+  // 6. Facts, photos, community observations and nearby species — all independent and optional.
+  stage({ stage: 'enrich', status: 'active' });
   const topIdentity = toIdentity(top);
   const speciesInfoTask = (async (): Promise<{
     info?: SpeciesInfo;
     status: SourceStatus;
     sources: Set<string>;
   }> => {
-    const parts = [];
-    let wikipediaTitle: string | undefined;
-    let failures = 0;
-    for (const p of providers.speciesInfo) {
-      const r = await settle(
-        withDeadline(p.getSpeciesInfo(topIdentity, { wikipediaTitle }), STAGE_MS, p.name),
-      );
-      if (!r.ok) {
-        failures++;
-        continue;
-      }
-      if ('wikipediaTitle' in r.value && r.value.wikipediaTitle)
-        wikipediaTitle = r.value.wikipediaTitle;
-      parts.push(r.value);
-    }
+    // Every source runs in parallel except Wikipedia, which waits for Wikidata's article title.
+    const run = (p: (typeof providers.speciesInfo)[number], wikipediaTitle?: string) =>
+      settle(withDeadline(p.getSpeciesInfo(topIdentity, { wikipediaTitle }), STAGE_MS, p.name));
+    const independent = providers.speciesInfo.filter((p) => p.name !== WIKIPEDIA_SOURCE);
+    const wikipedia = providers.speciesInfo.filter((p) => p.name === WIKIPEDIA_SOURCE);
+    const first = await Promise.all(independent.map((p) => run(p)));
+    const title = first
+      .map((r) => (r.ok && 'wikipediaTitle' in r.value ? r.value.wikipediaTitle : undefined))
+      .find(Boolean);
+    const results = [...first, ...(await Promise.all(wikipedia.map((p) => run(p, title))))];
+    const parts = results.filter((r) => r.ok).map((r) => r.value);
+    const failures = results.length - parts.length;
     const facts: SpeciesFact[] = parts.flatMap((p) => p.facts ?? []);
     const peak = peakMonthsFact(top.occurrence?.monthCounts);
     if (peak) {
@@ -268,7 +312,10 @@ export async function runIdentification(
     for (const n of commonNames) if (!dedupe.has(n.toLowerCase())) dedupe.set(n.toLowerCase(), n);
     const sources = new Set(
       parts
-        .filter((p) => (p.facts?.length ?? 0) > 0 || p.summary || p.commonNames?.length)
+        .filter(
+          (p) =>
+            (p.facts?.length ?? 0) > 0 || p.summary || p.commonNames?.length || p.images?.length,
+        )
         .map((p) => p.source),
     );
     const info: SpeciesInfo = {
@@ -285,6 +332,7 @@ export async function runIdentification(
       },
       facts,
       summary: parts.find((p) => p.summary)?.summary,
+      images: parts.flatMap((p) => p.images ?? []),
       links: [
         ...top.links,
         ...parts
@@ -318,18 +366,29 @@ export async function runIdentification(
         ).catch(() => undefined)
       : Promise.resolve(undefined);
 
-  const [speciesResult, communityResult, nearbySpecies] = await Promise.all([
+  const groupNameTask: Promise<string | undefined> =
+    group && topResolved?.genusKey && providers.taxonomy.commonNameForKey
+      ? withDeadline(
+          providers.taxonomy.commonNameForKey(topResolved.genusKey),
+          STAGE_MS,
+          GBIF_SOURCE,
+        ).catch(() => undefined)
+      : Promise.resolve(undefined);
+
+  const [speciesResult, communityResult, nearbySpecies, groupCommonName] = await Promise.all([
     speciesInfoTask,
     communityTask,
     nearbyTask,
+    groupNameTask,
   ]);
+  stage({ stage: 'enrich', status: 'done' });
   const community: CommunityObservationSummary | undefined = communityResult.ok
     ? communityResult.value
     : undefined;
   if (!communityResult.ok) logger.warn('identify.community_unavailable');
 
   if (resolved.some(Boolean) || occurrenceStatus === 'ok') attribution.push(GBIF_ATTRIBUTION);
-  if (community) attribution.push(INAT_ATTRIBUTION);
+  if (community || speciesResult.info?.images?.length) attribution.push(INAT_ATTRIBUTION);
   if (speciesResult.sources.has('Wikidata')) {
     attribution.push({
       provider: 'Wikidata',
@@ -373,6 +432,7 @@ export async function runIdentification(
     confidenceBand: band,
     candidates: ranked,
     speciesInfo: speciesResult.info,
+    groupSummary: group ? { ...group, commonName: groupCommonName } : undefined,
     community,
     nearbySpecies,
     evidence,
