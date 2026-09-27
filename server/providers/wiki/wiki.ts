@@ -69,11 +69,33 @@ export class WikidataSpeciesInfoProvider implements SpeciesInfoProvider {
         .filter((v) => v?.language === 'en' && v.text)
         .map((v) => v!.text!.trim());
       const wikipediaTitle = entity?.sitelinks?.enwiki?.title;
+      // P789 "edibility" (mostly fungi): resolve the value items to English labels.
+      const edibilityIds = (entity?.claims?.P789 ?? [])
+        .map((c) => (c.mainsnak?.datavalue?.value as { id?: string } | undefined)?.id)
+        .filter((id): id is string => !!id && /^Q\d+$/.test(id));
+      let edibility: string[] = [];
+      if (edibilityIds.length) {
+        const labels = await fetchJson<{ entities?: Record<string, WikidataEntity> }>(
+          `https://www.wikidata.org/w/api.php?${new URLSearchParams({
+            action: 'wbgetentities',
+            ids: edibilityIds.join('|'),
+            props: 'labels',
+            languages: 'en',
+            format: 'json',
+          })}`,
+          opts,
+        ).catch(() => undefined);
+        edibility = edibilityIds
+          .map((id) => labels?.entities?.[id]?.labels?.en?.value)
+          .filter((v): v is string => !!v);
+      }
       return {
         source: WIKIDATA_SOURCE,
         commonNames: [...new Set(commonNames)],
         links: [{ label: 'Wikidata', url: `https://www.wikidata.org/wiki/${qid}` }],
         wikipediaTitle,
+        edibility,
+        wikidataUrl: `https://www.wikidata.org/wiki/${qid}`,
       };
     });
   }

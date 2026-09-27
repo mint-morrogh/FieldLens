@@ -85,9 +85,9 @@ describe('category picker', () => {
     expect(screen.getByRole('radio', { name: /Plant/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText('Flowers, trees, leaves')).toBeInTheDocument();
     const { default: userEvent } = await import('@testing-library/user-event');
-    await userEvent.click(screen.getByRole('radio', { name: /Fungus/ }));
+    await userEvent.click(screen.getByRole('radio', { name: /Mammal/ }));
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole('status')).toHaveTextContent('Fungus identification is coming soon');
+    expect(screen.getByRole('status')).toHaveTextContent('Mammal identification is coming soon');
     await userEvent.click(screen.getByRole('radio', { name: /Plant/ }));
     expect(onChange).toHaveBeenCalledWith('plant');
   });

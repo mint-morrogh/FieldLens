@@ -181,6 +181,25 @@ export const identifyResponseSchema = z.object({
       suggestedGroup: z.string().optional(),
     })
     .optional(),
+  safety: z
+    .object({
+      statements: z.array(
+        z.object({
+          kind: z.enum(['toxic', 'edible', 'caution', 'lookalike']),
+          text: z.string(),
+          subject: z.string().optional(),
+          basis: z.enum(['species', 'genus']).optional(),
+          severity: z.enum(['deadly', 'toxic', 'skin', 'caution']).optional(),
+          quote: z.boolean().optional(),
+          source: z.string(),
+          sourceUrl: z.string().optional(),
+          license: z.string().optional(),
+        }),
+      ),
+      level: z.enum(['danger', 'caution', 'none']),
+      topToxic: z.boolean().optional(),
+    })
+    .optional(),
   mock: z.boolean().optional(),
 }) satisfies z.ZodType<IdentifyResponse>;
 

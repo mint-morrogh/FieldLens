@@ -152,7 +152,7 @@ export function ReferenceGallery({ images, title }: { images: LicensedImage[]; t
       </div>
       <ul className="-mx-5 flex snap-x snap-mandatory gap-2 overflow-x-auto px-5 pb-1">
         {images.map((img, idx) => (
-          <li key={img.url} className="snap-start">
+          <li key={img.url} className="shrink-0 snap-start">
             <button
               type="button"
               onClick={() => setOpen(idx)}

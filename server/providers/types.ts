@@ -12,6 +12,7 @@ import type {
   TaxonIdentity,
   TaxonomyRanks,
 } from '../../shared/types.js';
+import type { SafetyTextProvider } from '../safety/safety.js';
 
 export type InputImage = {
   data: Uint8Array;
@@ -88,7 +89,12 @@ export interface NearbySpeciesProvider {
 }
 
 /** Partial info from one source; the pipeline merges several into a SpeciesInfo. */
-export type SpeciesInfoPart = Partial<Omit<SpeciesInfo, 'scientificName'>> & { source: string };
+export type SpeciesInfoPart = Partial<Omit<SpeciesInfo, 'scientificName'>> & {
+  source: string;
+  /** Wikidata P789 edibility labels (mostly mushrooms), used by the safety section. */
+  edibility?: string[];
+  wikidataUrl?: string;
+};
 
 export interface SpeciesInfoProvider {
   readonly name: string;
@@ -114,5 +120,7 @@ export type ProviderSet = {
   /** Applied in order; later providers may use `wikipediaTitle` discovered by earlier ones. */
   speciesInfo: SpeciesInfoProvider[];
   community: CommunityObservationProvider;
+  /** Quoted edibility/toxicity sentences for plants and fungi (optional). */
+  safety?: SafetyTextProvider;
   mock: boolean;
 };

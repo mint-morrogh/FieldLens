@@ -16,6 +16,7 @@ import {
 import { isMockScenario } from './mock/fixtures.js';
 import { createMockProviders } from './mock/mockProviders.js';
 import { PlantNetIdentificationProvider } from './plantnet/plantnetProvider.js';
+import { WikipediaSafetyProvider } from '../safety/safety.js';
 import type { IdentificationProvider, ProviderSet } from './types.js';
 import { WikidataSpeciesInfoProvider, WikipediaSpeciesSummaryProvider } from './wiki/wiki.js';
 
@@ -60,6 +61,7 @@ export function createLiveProviders(env: ServerEnv, fetchImpl: typeof fetch = fe
       new INaturalistTaxonPhotosProvider(inat, undefined, fetchImpl),
     ],
     community: inat,
+    safety: new WikipediaSafetyProvider(undefined, fetchImpl),
     mock: false,
   };
 }

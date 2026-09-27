@@ -13,6 +13,7 @@ import type {
   OrganismCandidate,
   SourceStatus,
   SpeciesFact,
+  SafetyStatement,
   SpeciesInfo,
   StageEvent,
   TaxonIdentity,
@@ -31,6 +32,7 @@ import type {
 } from '../providers/types.js';
 import { WIKIPEDIA_SOURCE } from '../providers/wiki/wiki.js';
 import { DeterministicGeoReranker, type CandidateReranker } from '../ranking/reranker.js';
+import { SAFETY_CATEGORIES, buildSafety } from '../safety/safety.js';
 import { buildEvidence, buildGuidance } from './evidence.js';
 
 /** Reject if `promise` doesn't settle within `ms`, so one slow source can't stall the response. */
@@ -290,6 +292,8 @@ export async function runIdentification(
     info?: SpeciesInfo;
     status: SourceStatus;
     sources: Set<string>;
+    edibility: string[];
+    wikidataUrl?: string;
   }> => {
     // Every source runs in parallel except Wikipedia, which waits for Wikidata's article title.
     const run = (p: (typeof providers.speciesInfo)[number], wikipediaTitle?: string) =>
@@ -353,7 +357,13 @@ export async function runIdentification(
       sources: [...sources],
     };
     const status: SourceStatus = failures === providers.speciesInfo.length ? 'unavailable' : 'ok';
-    return { info, status, sources };
+    return {
+      info,
+      status,
+      sources,
+      edibility: parts.flatMap((p) => p.edibility ?? []),
+      wikidataUrl: parts.find((p) => p.wikidataUrl)?.wikidataUrl,
+    };
   })();
 
   const communityTask = settle(
@@ -377,6 +387,15 @@ export async function runIdentification(
         ).catch(() => undefined)
       : Promise.resolve(undefined);
 
+  const safetyTextTask: Promise<SafetyStatement[]> =
+    SAFETY_CATEGORIES.includes(input.category) && providers.safety
+      ? withDeadline(
+          providers.safety.getSafetyStatements(topIdentity),
+          STAGE_MS,
+          providers.safety.name,
+        ).catch(() => [])
+      : Promise.resolve([]);
+
   const groupNameTask: Promise<string | undefined> =
     group && topResolved?.genusKey && providers.taxonomy.commonNameForKey
       ? withDeadline(
@@ -386,12 +405,8 @@ export async function runIdentification(
         ).catch(() => undefined)
       : Promise.resolve(undefined);
 
-  const [speciesResult, communityResult, nearbySpecies, groupCommonName] = await Promise.all([
-    speciesInfoTask,
-    communityTask,
-    nearbyTask,
-    groupNameTask,
-  ]);
+  const [speciesResult, communityResult, nearbySpecies, groupCommonName, safetyText] =
+    await Promise.all([speciesInfoTask, communityTask, nearbyTask, groupNameTask, safetyTextTask]);
   stage({ stage: 'enrich', status: 'done' });
   const community: CommunityObservationSummary | undefined = communityResult.ok
     ? communityResult.value
@@ -421,11 +436,30 @@ export async function runIdentification(
       url: 'https://www.wikidata.org/',
     });
   }
-  if (speciesResult.info?.summary) {
+  const safety = buildSafety({
+    category: input.category,
+    band,
+    candidates: ranked,
+    wikipedia: safetyText,
+    wikidataEdibility: speciesResult.edibility,
+    wikidataUrl: speciesResult.wikidataUrl,
+  });
+  if (safety?.statements.some((s) => s.source.startsWith('TPPT'))) {
+    attribution.push({
+      provider: 'TPPT',
+      text: 'Plant toxicity data from TPPT (Agroscope, CC BY 4.0)',
+      url: 'https://zenodo.org/records/15758276',
+    });
+  }
+
+  if (speciesResult.info?.summary || safety?.statements.some((s) => s.source === 'Wikipedia')) {
     attribution.push({
       provider: WIKIPEDIA_SOURCE,
       text: 'Summary from Wikipedia (CC BY-SA 4.0)',
-      url: speciesResult.info.summary.sourceUrl,
+      url:
+        speciesResult.info?.summary?.sourceUrl ??
+        safety?.statements.find((s) => s.source === 'Wikipedia')?.sourceUrl ??
+        'https://en.wikipedia.org/',
     });
   }
 
@@ -458,6 +492,7 @@ export async function runIdentification(
     candidates: ranked,
     speciesInfo: speciesResult.info,
     groupSummary: group ? { ...group, commonName: groupCommonName } : undefined,
+    safety,
     community,
     nearbySpecies,
     evidence,

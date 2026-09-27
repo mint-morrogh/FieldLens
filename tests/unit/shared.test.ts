@@ -62,7 +62,7 @@ describe('coordinate privacy', () => {
 describe('category registry', () => {
   it('has plant available and future categories defined but unavailable', () => {
     expect(CATEGORIES.plant.available).toBe(true);
-    expect(CATEGORIES.bird.available).toBe(false);
+    expect(CATEGORIES.mammal.available).toBe(false);
     expect(CATEGORIES.fungus.features.length).toBeGreaterThan(0);
   });
   it('validates features per category', () => {

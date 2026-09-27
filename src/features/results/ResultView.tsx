@@ -12,6 +12,7 @@ import { Button, Card, Notice, SectionTitle } from '../../components/ui';
 import { displayName } from '../../lib/format';
 import { ConfidenceMeter } from './ConfidenceMeter';
 import { CandidateThumb, ReferenceGallery, mergeImages } from './Gallery';
+import { SafetySection } from './SafetySection';
 import {
   Alternatives,
   GeographicEvidence,
@@ -63,6 +64,15 @@ function Headline({
   const image = photoUrl ?? thumbnailUrl;
   const band = result.confidenceBand;
   const group = result.groupSummary;
+  // Other common names (e.g. "swamp maple" for red maple), shown under the scientific name.
+  const primary = top?.commonName?.toLowerCase();
+  const otherNames = [
+    ...new Map(
+      [...(result.speciesInfo?.commonNames ?? []), ...(top?.commonNames ?? [])]
+        .filter((n) => n && n.toLowerCase() !== primary)
+        .map((n) => [n.toLowerCase(), n.toLowerCase()] as const),
+    ).values(),
+  ].slice(0, 3);
   // Provider reference photos first (they match the model's view), then iNaturalist's.
   const gallery = top
     ? mergeImages(top.referenceImages, result.speciesInfo?.images).slice(0, 12)
@@ -167,6 +177,11 @@ function Headline({
             </h1>
             {top.commonName && (
               <p className="sci mt-0.5 text-xl text-ink-soft">{top.scientificName}</p>
+            )}
+            {otherNames.length > 0 && (
+              <p className="mt-1 text-[0.95rem] text-ink-soft" data-testid="also-called">
+                Also called {otherNames.join(', ')}
+              </p>
             )}
             {top.family && (
               <p className="mt-1 text-[0.95rem] text-ink-muted">Family {top.family}</p>
@@ -337,6 +352,19 @@ export function ResultView({
           </p>
         </div>
       )}
+      {result.category === 'fungus' && (
+        <div
+          role="note"
+          data-testid="fungus-warning"
+          className="rounded-2xl border-2 border-rust/50 bg-rust-soft px-4 py-3 text-rust"
+        >
+          <p className="font-bold">Mushroom identification is difficult, even for experts.</p>
+          <p className="mt-0.5 text-[0.95rem]">
+            Many deadly mushrooms look like edible ones. Never eat a wild mushroom based on this
+            app.
+          </p>
+        </div>
+      )}
       <Headline result={result} photoUrl={photoUrl} thumbnailUrl={thumbnailUrl} />
 
       {result.categoryCheck?.suggestedCategory &&
@@ -373,6 +401,10 @@ export function ResultView({
 
       {improve && band !== 'high' && <ImproveIdentification result={result} improve={improve} />}
 
+      {top && result.safety && (
+        <SafetySection safety={result.safety} band={band} category={result.category} />
+      )}
+
       {top && <WhyThisMatch evidence={result.evidence} />}
 
       {top && (
@@ -403,7 +435,7 @@ export function ResultView({
 
       {improve && band === 'high' && <ImproveIdentification result={result} improve={improve} />}
 
-      {result.safetyNotice && (
+      {result.safetyNotice && !result.safety && (
         <Notice tone="info">
           <strong className="font-semibold">Safety: </strong>
           {result.safetyNotice}

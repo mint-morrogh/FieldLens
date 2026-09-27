@@ -228,11 +228,112 @@ export const INSECT_FIXTURES: FixtureSpecies[] = [
   },
 ];
 
+const AMANITA = {
+  genus: 'Amanita',
+  genusKey: 6005964,
+  family: 'Amanitaceae',
+  familyKey: 4171,
+  order: 'Agaricales',
+};
+const FUNGUS = { kingdom: 'Fungi', phylum: 'Basidiomycota', className: 'Agaricomycetes' };
+const MUSHROOM_SEASON = [0, 0, 0, 0, 1, 4, 20, 60, 90, 45, 6, 0];
+
+/** Returned for fungus identifications in mock mode. */
+export const FUNGUS_FIXTURES: FixtureSpecies[] = [
+  {
+    scientificName: 'Amanita muscaria',
+    authorship: '(L.) Lam.',
+    commonNames: ['Fly agaric'],
+    score: 0.72,
+    gbifKey: 8168319,
+    ...AMANITA,
+    ...FUNGUS,
+    radiusCounts: [2, 30, 210],
+    monthCounts: MUSHROOM_SEASON,
+  },
+  {
+    scientificName: 'Amanita flavoconia',
+    authorship: 'G.F.Atk.',
+    commonNames: ['Yellow patches'],
+    score: 0.12,
+    gbifKey: 5240273,
+    ...AMANITA,
+    ...FUNGUS,
+    radiusCounts: [0, 5, 40],
+    monthCounts: MUSHROOM_SEASON,
+  },
+  {
+    scientificName: 'Amanita rubescens',
+    authorship: 'Pers.',
+    commonNames: ['Blusher'],
+    score: 0.05,
+    gbifKey: 7496350,
+    ...AMANITA,
+    ...FUNGUS,
+    radiusCounts: [0, 3, 22],
+    monthCounts: MUSHROOM_SEASON,
+  },
+];
+
+const BIRD = { kingdom: 'Animalia', phylum: 'Chordata', className: 'Aves' };
+const BIRD_SEASON = [30, 28, 35, 40, 55, 50, 45, 48, 60, 70, 50, 38];
+
+/** Returned for bird identifications in mock mode. */
+export const BIRD_FIXTURES: FixtureSpecies[] = [
+  {
+    scientificName: 'Cyanocitta cristata',
+    authorship: '(Linnaeus, 1758)',
+    commonNames: ['Blue jay'],
+    score: 0.88,
+    gbifKey: 2482593,
+    genus: 'Cyanocitta',
+    genusKey: 2482592,
+    family: 'Corvidae',
+    familyKey: 5235,
+    order: 'Passeriformes',
+    ...BIRD,
+    radiusCounts: [60, 900, 5200],
+    monthCounts: BIRD_SEASON,
+  },
+  {
+    scientificName: 'Poecile atricapillus',
+    authorship: '(Linnaeus, 1766)',
+    commonNames: ['Black-capped chickadee'],
+    score: 0.04,
+    gbifKey: 2487805,
+    genus: 'Poecile',
+    genusKey: 2487782,
+    family: 'Paridae',
+    familyKey: 9327,
+    order: 'Passeriformes',
+    ...BIRD,
+    radiusCounts: [80, 1200, 7000],
+    monthCounts: BIRD_SEASON,
+  },
+  {
+    scientificName: 'Megaceryle alcyon',
+    authorship: '(Linnaeus, 1758)',
+    commonNames: ['Belted kingfisher'],
+    score: 0.02,
+    gbifKey: 2475472,
+    genus: 'Megaceryle',
+    genusKey: 2475462,
+    family: 'Alcedinidae',
+    familyKey: 2984,
+    order: 'Coraciiformes',
+    ...BIRD,
+    radiusCounts: [5, 120, 800],
+    monthCounts: BIRD_SEASON,
+  },
+];
+
 export const ALL_FIXTURE_SPECIES = [
   ...FIXTURES.high,
   ...FIXTURES.medium,
   ...FIXTURES.low,
   ...INSECT_FIXTURES,
+  ...FUNGUS_FIXTURES,
+  ...BIRD_FIXTURES,
 ];
 
 export function findFixture(scientificName: string): FixtureSpecies | undefined {

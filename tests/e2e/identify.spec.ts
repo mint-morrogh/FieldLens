@@ -30,7 +30,8 @@ test.describe('identification flow (mock API)', () => {
     await expect(page.getByTestId('why-this-match')).toContainText('Strong image-model match');
     await expect(page.getByTestId('attribution')).toContainText('Demo mode');
     await expect(page.getByTestId('demo-banner')).toBeVisible();
-    await expect(page.getByText('Do not use this identification alone')).toBeVisible();
+    await expect(page.getByTestId('safety')).toBeVisible();
+    await expect(page.getByTestId('safety')).toContainText('Never eat a wild plant');
   });
 
   test('receive a low-confidence result with guidance, then add a follow-up photo', async ({
@@ -182,8 +183,8 @@ test('category tiles select plants and explain upcoming groups', async ({ page }
     'true',
   );
   // Upcoming groups are aria-disabled (announced as unavailable) but still explain themselves on tap.
-  await picker.getByRole('radio', { name: /Bird/ }).click({ force: true });
-  await expect(picker).toContainText('Bird identification is coming soon');
+  await picker.getByRole('radio', { name: /Mammal/ }).click({ force: true });
+  await expect(picker).toContainText('Mammal identification is coming soon');
   await expect(picker.getByRole('radio', { name: /Plant/ })).toHaveAttribute(
     'aria-checked',
     'true',
@@ -218,6 +219,46 @@ test('an off-target insect photo can be re-identified as a plant', async ({ page
     timeout: 15_000,
   });
   await expect(page.getByTestId('experimental-badge')).toHaveCount(0);
+});
+
+test('mushrooms get the safety package', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await page
+    .getByTestId('category-picker')
+    .getByRole('radio', { name: /Fungus/ })
+    .click();
+  await choosePhoto(page);
+  await identifySelection(page);
+  await expect(page.getByTestId('fungus-warning')).toContainText(
+    'Mushroom identification is difficult',
+  );
+  await expect(page.getByTestId('result-headline')).toContainText('Amanita muscaria');
+  const safety = page.getByTestId('safety');
+  await expect(safety).toHaveAttribute('data-level', 'danger');
+  await expect(safety).toContainText('death cap');
+  await expect(safety.getByTestId('edible-list')).toHaveCount(0);
+  await expect(safety).toContainText('Never eat a wild mushroom based on an app');
+});
+
+test('birds are identified with an experimental label and no edibility section', async ({
+  page,
+}) => {
+  await page.goto('/?mock=high');
+  await page.getByTestId('category-picker').getByRole('radio', { name: /Bird/ }).click();
+  await choosePhoto(page);
+  await identifySelection(page);
+  await expect(page.getByTestId('result-headline')).toContainText('Blue Jay');
+  await expect(page.getByTestId('experimental-badge')).toBeVisible();
+  await expect(page.getByTestId('safety')).toHaveCount(0);
+});
+
+test('gallery thumbnails keep their size and scroll sideways', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await choosePhoto(page);
+  await identifySelection(page);
+  const thumb = page.getByTestId('reference-gallery').getByRole('button').first();
+  const box = (await thumb.boundingBox())!;
+  expect(Math.round(box.width)).toBeGreaterThanOrEqual(100);
 });
 
 test.describe('with location permission', () => {

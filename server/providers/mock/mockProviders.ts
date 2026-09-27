@@ -25,6 +25,8 @@ import type {
 } from '../types.js';
 import {
   FIXTURES,
+  BIRD_FIXTURES,
+  FUNGUS_FIXTURES,
   INSECT_FIXTURES,
   NEARBY_FIXTURES,
   findFixture,
@@ -72,7 +74,7 @@ export class MockIdentificationProvider implements IdentificationProvider {
   ) {}
 
   supports(category: OrganismCategory): boolean {
-    return category === 'plant' || category === 'insect' || category === 'arachnid';
+    return ['plant', 'insect', 'arachnid', 'fungus', 'bird'].includes(category);
   }
 
   async identify(input: IdentificationInput): Promise<IdentificationResult> {
@@ -110,7 +112,7 @@ export class MockIdentificationProvider implements IdentificationProvider {
     return { provider: this.name, candidates, attribution: [MOCK_ATTRIBUTION] };
   }
 
-  /** Insects & spiders (BioCLIP in live mode): experimental, with a category check. */
+  /** Insects, spiders, fungi, birds (BioCLIP in live mode): experimental, with a category check. */
   private identifyAnimal(input: IdentificationInput): IdentificationResult {
     if (this.scenario === 'wrong-category') {
       return {
@@ -126,7 +128,13 @@ export class MockIdentificationProvider implements IdentificationProvider {
         },
       };
     }
-    const candidates = INSECT_FIXTURES.map((s) => ({
+    const fixtures =
+      input.category === 'fungus'
+        ? FUNGUS_FIXTURES
+        : input.category === 'bird'
+          ? BIRD_FIXTURES
+          : INSECT_FIXTURES;
+    const candidates = fixtures.map((s) => ({
       id: slugId('mock', s.scientificName),
       category: input.category,
       scientificName: s.scientificName,

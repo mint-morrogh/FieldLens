@@ -15,8 +15,9 @@ export function PrivacyScreen() {
         <ul className="list-disc space-y-2 pl-5 text-ink-soft">
           <li>
             When you ask for an identification, the cropped photo is sent to an identification
-            provider (Pl@ntNet for plants). Photo metadata such as camera details and GPS tags is
-            removed first.
+            provider: Pl@ntNet for plants, and FieldLens’s own BioCLIP 2 service (hosted on Hugging
+            Face) for insects, spiders, fungi and birds. Photo metadata such as camera details and
+            GPS tags is removed first.
           </li>
           <li>
             Location is optional. If you allow it, an approximate position (rounded to about 1 km)
@@ -67,7 +68,9 @@ export function PrivacyScreen() {
         </p>
         <p className="mt-2 font-medium">
           Do not use this identification alone to decide whether an organism is safe to eat, touch,
-          handle, or use medicinally. Observe wildlife from a respectful distance.
+          handle, or use medicinally. The “Edibility &amp; safety” section only repeats what its
+          sources report; it never says anything is safe to eat. Observe wildlife from a respectful
+          distance.
         </p>
       </Card>
 
@@ -79,8 +82,18 @@ export function PrivacyScreen() {
             identification
           </li>
           <li>
+            <ExternalLink href="https://huggingface.co/imageomics/bioclip-2">
+              BioCLIP 2
+            </ExternalLink>{' '}
+            (Imageomics, MIT) — experimental identification of insects, spiders, fungi and birds
+          </li>
+          <li>
             <ExternalLink href="https://www.gbif.org/">GBIF</ExternalLink> — taxonomy and occurrence
             records
+          </li>
+          <li>
+            <ExternalLink href="https://zenodo.org/records/15758276">TPPT</ExternalLink> (Agroscope,
+            CC BY 4.0) — plant toxicity data
           </li>
           <li>
             <ExternalLink href="https://www.inaturalist.org/">iNaturalist</ExternalLink> — community

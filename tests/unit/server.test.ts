@@ -231,7 +231,7 @@ describe('upload validation', () => {
 describe('identification pipeline', () => {
   it('routes by category and rejects categories without a provider', async () => {
     await expect(
-      runIdentification(input({ category: 'bird' }), { providers: createMockProviders('high') }),
+      runIdentification(input({ category: 'mammal' }), { providers: createMockProviders('high') }),
     ).rejects.toMatchObject({ code: 'unsupported_category' });
   });
   it('returns a ranked, enriched result', async () => {

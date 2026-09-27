@@ -211,7 +211,32 @@ export type IdentifyResponse = {
   experimental?: boolean;
   /** Whether the photo actually looks like the chosen category, with a better guess if not. */
   categoryCheck?: CategoryCheck;
+  safety?: SafetyInfo;
   mock?: boolean;
+};
+
+export type SafetyStatement = {
+  kind: 'toxic' | 'edible' | 'caution' | 'lookalike';
+  text: string;
+  /** Set when the statement is about another taxon (an alternative candidate or a look-alike). */
+  subject?: string;
+  /** Genus-level statements are labelled as such in the UI. */
+  basis?: 'species' | 'genus';
+  severity?: 'deadly' | 'toxic' | 'skin' | 'caution';
+  /** True when `text` is quoted verbatim from the source. */
+  quote?: boolean;
+  source: string;
+  sourceUrl?: string;
+  license?: string;
+};
+
+/** Sourced edibility and toxicity notes. Never contains "safe to eat" claims. */
+export type SafetyInfo = {
+  statements: SafetyStatement[];
+  /** Most serious warning found for the candidates shown or their look-alikes. */
+  level: 'danger' | 'caution' | 'none';
+  /** The top candidate itself is reported toxic by a graded source (not just its look-alikes). */
+  topToxic?: boolean;
 };
 
 export type CategoryCheck = {
