@@ -325,3 +325,24 @@ describe('pipeline with groups', () => {
     expect(bug.experimental).toBe(true);
   });
 });
+
+describe('response schema accepts every picker choice', () => {
+  it('validates categoryDetection.requested for all groups', async () => {
+    const { identifyResponseSchema } = await import('../../shared/schemas');
+    const { CATEGORY_PICKER_ORDER } = await import('../../shared/categories');
+    const base = await runIdentification(input('herp'), { providers: createMockProviders('high') });
+    for (const requested of [...CATEGORY_PICKER_ORDER, 'animal']) {
+      const parsed = identifyResponseSchema.safeParse({
+        ...base,
+        categoryDetection: { requested, detected: 'amphibian' },
+      });
+      expect(parsed.success, requested).toBe(true);
+    }
+    expect(
+      identifyResponseSchema.safeParse({
+        ...base,
+        categoryDetection: { requested: 'dragon', detected: 'amphibian' },
+      }).success,
+    ).toBe(false);
+  });
+});

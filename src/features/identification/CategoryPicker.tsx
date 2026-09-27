@@ -15,11 +15,21 @@ const CATEGORY_ART: Record<string, string> = {
     'M3.5 12.5C3.5 7.8 7.3 4 12 4s8.5 3.8 8.5 8.5Z M9.8 12.5v5.3a2.2 2.2 0 0 0 4.4 0v-5.3 M8.5 8.3h.01 M13.5 6.8h.01 M16 9.5h.01',
   mammal:
     'M8 16.8c0-2.4 1.8-4.3 4-4.3s4 1.9 4 4.3c0 1.8-1.4 2.7-4 2.7s-4-.9-4-2.7Z M5.2 11.8a1.5 1.9 0 1 0 3 0 1.5 1.9 0 1 0-3 0Z M8.8 7.6a1.5 1.9 0 1 0 3 0 1.5 1.9 0 1 0-3 0Z M12.2 7.6a1.5 1.9 0 1 0 3 0 1.5 1.9 0 1 0-3 0Z M15.8 11.8a1.5 1.9 0 1 0 3 0 1.5 1.9 0 1 0-3 0Z',
+  reptile:
+    'M5 18.5c2.5 0 3-2 5-2s2.5 2 5 2 3.5-2 3.5-4.5S16.5 9.5 14 9.5h-3.5c-1.4 0-2.5-1.1-2.5-2.5S9.1 4.5 10.5 4.5H14 M14 4.5h2.5l1.5 1-1.5 1H14 M16.5 5.5h.01 M5 18.5c-1 0-1.5-.5-1.5-1.5',
+  amphibian:
+    'M12 8.5c3.6 0 6.5 2.5 6.5 5.5 0 2.2-1.6 3.5-3.5 3.5h-6c-1.9 0-3.5-1.3-3.5-3.5 0-3 2.9-5.5 6.5-5.5Z M8.5 9.5a2 2 0 1 1 1.5-3.3 M15.5 9.5a2 2 0 1 0-1.5-3.3 M8.4 7.4h.01 M15.6 7.4h.01 M7 17.5 4.5 20 M17 17.5l2.5 2.5 M10 13.5c1.2.8 2.8.8 4 0',
+  fish: 'M3.5 12c2.5-3.5 5.5-5 9-5 3 0 5.5 1.8 7 5-1.5 3.2-4 5-7 5-3.5 0-6.5-1.5-9-5Z M3.5 12 1.5 9v6l2-3 M16 11h.01 M11 7.5c-.8 1.4-1.2 2.9-1.2 4.5s.4 3.1 1.2 4.5',
   other:
     'M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9Z M18.5 16l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7Z',
 };
 
-const ART_ALIASES: Record<string, string> = { bug: 'insect', animal: 'mammal', auto: 'other' };
+const ART_ALIASES: Record<string, string> = {
+  bug: 'insect',
+  herp: 'amphibian',
+  animal: 'mammal',
+  auto: 'other',
+};
 
 function CategoryArt({ id, className }: { id: string; className?: string }) {
   return (
@@ -92,7 +102,7 @@ export function CategoryPicker({
               onClick={() =>
                 available ? onChange(id) : setNotice(`${c.label} identification is coming soon.`)
               }
-              className={`group relative flex min-h-[7.5rem] flex-col items-center justify-center gap-1.5 rounded-2xl border-2 px-1.5 pb-2.5 pt-3 text-center transition ${
+              className={`${id === 'auto' ? 'col-span-2' : ''} group relative flex min-h-[7.5rem] flex-col items-center justify-center gap-1.5 rounded-2xl border-2 px-1.5 pb-2.5 pt-3 text-center transition ${
                 selected
                   ? 'border-moss bg-moss-soft shadow-[0_2px_0_rgba(47,93,58,0.25)]'
                   : available

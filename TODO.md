@@ -26,7 +26,7 @@ Live: private Space `mintmundane/fieldlens-bioclip` (ZeroGPU), source in `hf-spa
 - [x] Fungi via BioCLIP (experimental) with the safety package: top-of-result mushroom warning, dangerous genera and look-alikes always checked (even when confident), food uses never shown for species reported toxic, stem-base photo prompt.
 - [x] Birds via BioCLIP (experimental).
 - [x] Mammals, reptiles, amphibians and fish (BioCLIP scopes; reptiles span Squamata/Testudines/Crocodylia/Sphenodontia, most fish have no class in the Tree of Life labels).
-- [x] Broad picker groups — Plant, Fungus, Bug, Bird, Animal, Not sure — with the specific category shown on the result.
+- [x] Picker: Plant, Fungus, Bug, Bird, Mammal, Reptile & amphibian, Fish, Not sure — combined tiles where people often can't tell groups apart; the result shows the specific category.
 - [x] “Not sure”: detect the category by top-20 species vote (beat class sums on real photos), then route (plants → Pl@ntNet).
 - [x] Tap your own photo for a full-screen view (original in-session; ≤2048 px copy saved in History).
 - [x] “Hear pronunciation” via on-device speech.

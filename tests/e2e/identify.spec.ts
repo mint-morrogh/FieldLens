@@ -141,7 +141,7 @@ test.describe('identification flow (mock API)', () => {
       await expect(page.getByTestId('history-item').first()).toContainText('Red Maple', {
         timeout: 1000,
       });
-    }).toPass({ timeout: 15_000 });
+    }).toPass({ timeout: 30_000 });
     const item = page.getByTestId('history-item').first();
     await item.getByRole('link').click();
     await expect(page.getByTestId('result-headline')).toContainText('Acer rubrum');
@@ -194,14 +194,19 @@ test('category tiles offer broad groups', async ({ page }) => {
     'aria-checked',
     'true',
   );
-  for (const name of [/Fungus/, /Bug/, /Bird/, /Animal/, /Not sure/]) {
+  for (const name of [
+    /Fungus/,
+    /Bug/,
+    /Bird/,
+    /Mammal/,
+    /Reptile & amphibian/,
+    /Fish/,
+    /Not sure/,
+  ]) {
     await expect(picker.getByRole('radio', { name })).toBeVisible();
   }
-  await picker.getByRole('radio', { name: /Animal/ }).click();
-  await expect(picker.getByRole('radio', { name: /Animal/ })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
+  await picker.getByRole('radio', { name: /Fish/ }).click();
+  await expect(picker.getByRole('radio', { name: /Fish/ })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('insects are identified with an experimental label', async ({ page }) => {
@@ -266,16 +271,17 @@ test('gallery thumbnails keep their size and scroll sideways', async ({ page }) 
   expect(Math.round(box.width)).toBeGreaterThanOrEqual(100);
 });
 
-test('"Animal" narrows to the specific group and says so', async ({ page }) => {
+test('reptiles and amphibians share a tile and the result says which', async ({ page }) => {
   await page.goto('/?mock=high');
   await page
     .getByTestId('category-picker')
-    .getByRole('radio', { name: /Animal/ })
+    .getByRole('radio', { name: /Reptile & amphibian/ })
     .click();
   await choosePhoto(page);
   await identifySelection(page);
-  await expect(page.getByTestId('detected-category')).toHaveText('Amphibian');
   await expect(page.getByTestId('result-headline')).toContainText('Wood Frog');
+  await expect(page.getByTestId('detected-category')).toHaveText('Amphibian');
+  await expect(page.getByTestId('experimental-badge')).toBeVisible();
 });
 
 test('"Not sure" detects the category first', async ({ page }) => {

@@ -148,7 +148,10 @@ export class MockIdentificationProvider implements IdentificationProvider {
             ? [INSECT_FIXTURES, 'arachnid']
             : t === 'bug' || t === 'insect'
               ? [INSECT_FIXTURES, 'insect']
-              : [AMPHIBIAN_FIXTURES, t === 'animal' || t === 'auto' ? 'amphibian' : t];
+              : [
+                  AMPHIBIAN_FIXTURES,
+                  t === 'animal' || t === 'herp' || t === 'auto' ? 'amphibian' : t,
+                ];
     const candidates = fixtures.map((s) => ({
       id: slugId('mock', s.scientificName),
       category,

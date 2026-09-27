@@ -142,7 +142,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   mammal: {
     id: 'mammal',
-    blurb: 'Wildlife, tracks, signs',
+    blurb: 'Deer, squirrels, bats…',
     label: 'Mammal',
     available: true,
     experimental: true,
@@ -244,7 +244,7 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
   },
   fish: {
     id: 'fish',
-    blurb: 'Freshwater and marine fish',
+    blurb: 'Freshwater & sea fish',
     label: 'Fish',
     available: true,
     experimental: true,
@@ -413,6 +413,41 @@ export const GROUPS: Record<CategoryGroupId, CategoryDefinition> = {
     generalAdvice: 'A clear photo from above showing the body and markings would help.',
     features: [],
   },
+  herp: {
+    id: 'herp',
+    label: 'Reptile & amphibian',
+    blurb: 'Snakes, turtles, frogs, salamanders',
+    available: true,
+    experimental: true,
+    identificationSource: 'BioCLIP 2',
+    members: ['reptile', 'amphibian'],
+    taxonScope: { class: ['Squamata', 'Testudines', 'Crocodylia', 'Sphenodontia', 'Amphibia'] },
+    pluralNoun: 'reptiles and amphibians',
+    gbifKingdom: 'Animalia',
+    safetyNotice: WILDLIFE_NOTICE,
+    generalAdvice:
+      'A clear photo of the head and the body pattern, from the side or above, would help.',
+    features: [
+      {
+        id: 'whole',
+        label: 'Whole animal',
+        followUpLabel: 'Add a whole-body photo',
+        advice: 'A photo showing the whole body would help.',
+      },
+      {
+        id: 'head',
+        label: 'Head',
+        followUpLabel: 'Add a head photo',
+        advice: 'A close photo of the head from the side would help.',
+      },
+      {
+        id: 'pattern',
+        label: 'Markings',
+        followUpLabel: 'Add a markings photo',
+        advice: 'A close photo of the skin, scales or shell pattern would help.',
+      },
+    ],
+  },
   animal: {
     id: 'animal',
     label: 'Animal',
@@ -470,12 +505,21 @@ export const GROUPS: Record<CategoryGroupId, CategoryDefinition> = {
 };
 
 /** Choices offered in the picker, in display order. */
+/**
+ * Choices offered in the picker, in display order. Specific animal groups narrow what the
+ * model chooses from; wrong picks are caught by the category check, which suggests the
+ * right group. Bug (insects/spiders) and Reptile & amphibian stay combined because people
+ * often can't tell those apart; "Not sure" covers everything else. The broader "animal" group is still
+ * supported by the server but not offered here.
+ */
 export const CATEGORY_PICKER_ORDER: IdentifyTarget[] = [
   'plant',
   'fungus',
   'bug',
   'bird',
-  'animal',
+  'mammal',
+  'herp',
+  'fish',
   'auto',
 ];
 

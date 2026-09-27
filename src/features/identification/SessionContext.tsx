@@ -290,11 +290,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Save locally (thumbnail + result, never coordinates). Failure here must not affect the result.
         if (result.candidates.length > 0) {
           const first = s.images[0];
-          void Promise.all([
-            makeThumbnail(first.blob).catch(() => undefined),
-            // A high-quality copy for the History viewer (stays on this device).
-            makeDisplayCopy(first.original?.blob ?? first.blob).catch(() => undefined),
-          ])
+          // Save the result straight away (so leaving the app quickly can't lose it), then
+          // add the thumbnail and a high-quality copy once they're encoded.
+          void saveObservation(toRecord(s.observationId, result, undefined, s.capturedAt))
+            .then(() =>
+              Promise.all([
+                makeThumbnail(first.blob).catch(() => undefined),
+                makeDisplayCopy(first.original?.blob ?? first.blob).catch(() => undefined),
+              ]),
+            )
             .then(([thumb, photo]) =>
               saveObservation(toRecord(s.observationId, result, thumb, s.capturedAt, photo)),
             )

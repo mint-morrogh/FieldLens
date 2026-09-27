@@ -16,7 +16,7 @@ export type OrganismCategory =
   | 'other';
 
 /** Broader picker choices that the server narrows to a specific category. */
-export type CategoryGroupId = 'bug' | 'animal' | 'auto';
+export type CategoryGroupId = 'bug' | 'herp' | 'animal' | 'auto';
 
 /** What the user asked to identify: a specific category or a broader group. */
 export type IdentifyTarget = OrganismCategory | CategoryGroupId;

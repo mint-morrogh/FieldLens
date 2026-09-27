@@ -83,13 +83,15 @@ describe('category picker', () => {
     render(
       <CategoryPicker value="plant" onChange={onChange} supported={['plant']} autoDetect={false} />,
     );
-    const names = screen.getAllByRole('radio').map((r) => r.textContent);
-    expect(names.join('|')).toMatch(/Plant.*Fungus.*Bug.*Bird.*Animal.*Not sure/);
-    expect(screen.getByRole('radio', { name: /Plant/ })).toHaveAttribute('aria-checked', 'true');
+    const names = screen.getAllByRole('radio').map((r) => r.textContent ?? '');
+    expect(names).toHaveLength(8);
+    expect(names.join('|')).toMatch(
+      /Plant.*Fungus.*Bug.*Bird.*Mammal.*Reptile & amphibian.*Fish.*Not sure/,
+    );
     expect(screen.getByText('Flowers, trees, leaves')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('radio', { name: /Animal/ }));
+    await userEvent.click(screen.getByRole('radio', { name: /Fish/ }));
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole('status')).toHaveTextContent('Animal identification is coming soon');
+    expect(screen.getByRole('status')).toHaveTextContent('Fish identification is coming soon');
     await userEvent.click(screen.getByRole('radio', { name: /Plant/ }));
     expect(onChange).toHaveBeenCalledWith('plant');
   });
@@ -104,7 +106,7 @@ describe('category picker', () => {
         autoDetect
       />,
     );
-    expect(screen.getByRole('radio', { name: /Animal/ })).not.toHaveAttribute(
+    expect(screen.getByRole('radio', { name: /Reptile & amphibian/ })).not.toHaveAttribute(
       'aria-disabled',
       'true',
     );
@@ -112,6 +114,7 @@ describe('category picker', () => {
       'aria-disabled',
       'true',
     );
+    expect(screen.getByRole('radio', { name: /Fish/ })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('radio', { name: /Bug/ })).toHaveAttribute('aria-disabled', 'true');
   });
 });
@@ -176,7 +179,8 @@ describe('local history', () => {
     await saveObservation(
       toRecord('b', await mockResult('low'), undefined, new Date('2026-02-01')),
     );
-    const records = await listObservations();
+    // Only look at this test's records (other tests may save in the background).
+    const records = (await listObservations()).filter((r) => r.id === 'a' || r.id === 'b');
     expect(records.map((r) => r.id)).toEqual(['b', 'a']);
     const saved = records[1];
     expect(saved.result.location.approx).toBeUndefined();

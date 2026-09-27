@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isIdentifyTarget } from './categories.js';
 import type { HealthResponse, IdentifyResponse } from './types.js';
 
 const categorySchema = z.enum([
@@ -192,21 +193,7 @@ export const identifyResponseSchema = z.object({
     .optional(),
   categoryDetection: z
     .object({
-      requested: z.enum([
-        'plant',
-        'bird',
-        'mammal',
-        'reptile',
-        'amphibian',
-        'fish',
-        'insect',
-        'arachnid',
-        'fungus',
-        'other',
-        'bug',
-        'animal',
-        'auto',
-      ]),
+      requested: z.string().refine(isIdentifyTarget),
       detected: categorySchema,
       likelihood: score.optional(),
     })
