@@ -79,3 +79,7 @@ Visual models often split confidence across near-identical species (e.g. garden 
 ## Reference photo galleries
 
 Galleries use the identification provider’s reference images (Pl@ntNet) plus iNaturalist taxon photos, which exist for every organism group. Only openly licensed photos are shown, each with author, license and a source link.
+
+## Our own BioCLIP 2 service on Hugging Face
+
+Non-plant identification uses BioCLIP 2 (MIT) running in a private Hugging Face Space on free ZeroGPU hardware under the owner's account, instead of paid APIs (Kindwise, ~€0.01–0.05 per ID) or card-backed hosting (Modal, Cloud Run). The Space loads pybioclip's precomputed embeddings for ~867k taxa, so each request only encodes the photo; it can restrict results to species/genera recorded near the user and return higher ranks (e.g. class) for Auto category detection. The FieldLens server calls it with a read-only `HF_TOKEN`, so usage counts against the owner's daily GPU quota and the Space isn't public. The public `imageomics/bioclip-2-demo` Space is a fallback. Scores are overconfident and must be tempered before mapping to confidence bands. Code lives in `hf-space/` and is deployed with `npm run space:deploy`.

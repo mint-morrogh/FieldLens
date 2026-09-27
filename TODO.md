@@ -4,11 +4,13 @@ Near-term, actionable work. Longer-term ideas live in [ROADMAP.md](ROADMAP.md); 
 
 ## In progress
 
-- [ ] **Run our own BioCLIP 2 on Hugging Face** (free ZeroGPU Space) as the identification service for non-plant groups.
-  - [ ] Create the Space under the owner's account (Gradio + ZeroGPU; account must be verified and 30+ days old).
-  - [ ] Endpoint: photo(s) + optional species list → ranked species with scores; cache species-list text embeddings per area.
+Live: private Space `mintmundane/fieldlens-bioclip` (ZeroGPU), source in `hf-space/`, redeploy with `npm run space:deploy`. Verified 2026-09-27: monarch, blue jay and fly agaric correct in 1–2 s per call.
+
+- [x] **Run our own BioCLIP 2 on Hugging Face** (free ZeroGPU Space) as the identification service for non-plant groups.
+  - [x] Create the Space under the owner's account (Gradio + ZeroGPU; account must be verified and 30+ days old).
+  - [x] Endpoint: photo(s) + optional species/genus list → ranked species with scores (uses precomputed embeddings for ~867k taxa, so no per-call text encoding); also rank-level output (e.g. class) for Auto detection.
   - [ ] Keep the public `imageomics/bioclip-2-demo` Space as a fallback.
-  - [ ] Store a read-only `HF_TOKEN` in Vercel (server-side only) so calls use the owner's daily GPU quota (5 min/day on a free account).
+  - [x] Store a read-only `HF_TOKEN` in Vercel (server-side only) so calls use the owner's daily GPU quota (5 min/day on a free account).
   - [ ] Temper BioCLIP 2's overconfident scores before mapping them to confidence bands.
 
 ## Next
@@ -21,6 +23,7 @@ Near-term, actionable work. Longer-term ideas live in [ROADMAP.md](ROADMAP.md); 
 
 ## Later
 
+- [ ] Delete the Hugging Face write token (`HF_DEPLOY_TOKEN` in `.env.local`, “fieldlens-setup” on huggingface.co) when not actively changing `hf-space/`.
 - [ ] Bird sound ID with BirdNET running in the browser (check licence before any public launch).
 - [ ] Fix the TypeScript warnings in Vercel's build log.
 - [ ] Optional: ask iNaturalist about paid partner access to their vision model.

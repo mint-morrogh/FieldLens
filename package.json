@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "icons": "node scripts/generate-icons.mjs",
-    "test:live": "LIVE_TESTS=1 vitest run"
+    "test:live": "LIVE_TESTS=1 vitest run",
+    "space:deploy": "node scripts/deploy-space.mjs"
   },
   "dependencies": {
     "idb": "^8.0.3",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@huggingface/hub": "^2.17.5",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",

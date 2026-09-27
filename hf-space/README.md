@@ -1,0 +1,44 @@
+---
+title: FieldLens BioCLIP
+emoji: 🌿
+colorFrom: green
+colorTo: yellow
+sdk: gradio
+sdk_version: 5.33.0
+app_file: app.py
+pinned: false
+license: mit
+short_description: Species identification API for FieldLens (BioCLIP 2)
+---
+
+# FieldLens BioCLIP service
+
+A small API around [BioCLIP 2](https://huggingface.co/imageomics/bioclip-2) (MIT) for the
+[FieldLens](https://github.com/mint-morrogh/FieldLens) app. It ranks species for one or more photos
+of the same organism, optionally restricted to a list of candidate species or genera (e.g. species
+recorded near the user), and can also classify at a higher rank (class, kingdom…) for automatic
+category detection.
+
+Source of truth: `hf-space/` in the FieldLens repository. Deploy with `npm run space:deploy`.
+
+## API
+
+`POST /gradio_api/call/identify` with `{"data": [payload]}`, where `payload` is:
+
+```json
+{
+  "images": ["<base64 JPEG>", "..."],
+  "taxa": ["Danaus plexippus", "Limenitis", "..."],
+  "rank": "species",
+  "k": 5
+}
+```
+
+- `taxa` (optional): species ("Genus species") and/or genera ("Genus"); unknown names are ignored.
+- `rank`: `species` (default) or `genus`, `family`, `order`, `class`, `phylum`, `kingdom`.
+
+Returns `{ "results": [{ "name", "commonName", "kingdom", "phylum", "class", "order", "family",
+"genus", "species", "score" }], "rank", "restricted", "candidateCount", "unmatched" }`.
+
+Scores are softmax probabilities over the candidate set; they are overconfident and are tempered
+by the FieldLens server before display.
