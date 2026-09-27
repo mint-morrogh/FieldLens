@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   BioclipIdentificationProvider,
-  EXPERIMENTAL_CONFIDENCE_CAP,
+  FUNGUS_CONFIDENCE_CAP,
   categoryForTaxon,
   parseGradioEvents,
   toCandidates,
@@ -85,9 +85,17 @@ describe('BioCLIP provider', () => {
     expect(categoryForTaxon('Animalia', 'Gastropoda')).toBe('other');
   });
 
-  it('caps experimental confidence and folds in how much the photo looks like the group', () => {
+  it('caps only mushroom confidence and folds in how much the photo looks like the group', () => {
     const [top] = toCandidates(monarch, 'insect');
-    expect(top.visualConfidence).toBe(EXPERIMENTAL_CONFIDENCE_CAP);
+    expect(top.visualConfidence).toBeCloseTo(0.97, 5);
+    const [mushroom] = toCandidates(
+      {
+        ...monarch,
+        results: [{ ...monarch.results[0], kingdom: 'Fungi', class: 'Agaricomycetes' }],
+      },
+      'fungus',
+    );
+    expect(mushroom.visualConfidence).toBe(FUNGUS_CONFIDENCE_CAP);
     const [weak] = toCandidates({ ...monarch, groupProbability: 0.45 }, 'insect');
     expect(weak.visualConfidence).toBeCloseTo(0.97 * 0.5, 2);
     expect(top).toMatchObject({
@@ -344,5 +352,19 @@ describe('response schema accepts every picker choice', () => {
         categoryDetection: { requested: 'dragon', detected: 'amphibian' },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('automatic mode resilience', () => {
+  it('falls back to plants without a "detected" tag when detection fails', async () => {
+    const providers = createMockProviders('high');
+    const mock = providers.identification[0] as { detectCategory: () => Promise<unknown> };
+    mock.detectCategory = async () => {
+      throw new Error('space asleep');
+    };
+    const result = await runIdentification(input('auto'), { providers });
+    expect(result.category).toBe('plant');
+    expect(result.candidates[0].scientificName).toBe('Acer rubrum');
+    expect(result.categoryDetection).toBeUndefined();
   });
 });

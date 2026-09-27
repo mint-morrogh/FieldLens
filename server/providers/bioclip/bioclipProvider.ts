@@ -23,8 +23,11 @@ export const BIOCLIP_ATTRIBUTION = {
 
 /** Below this share of belief in the chosen group, the photo probably shows something else. */
 export const GROUP_MISMATCH_THRESHOLD = 0.5;
-/** Newer provider: never present more than this as visual confidence until measured on real photos. */
-export const EXPERIMENTAL_CONFIDENCE_CAP = 0.9;
+/**
+ * Mushrooms were the one group that failed real-phone testing (2026-09-27), and
+ * mistakes there are dangerous, so their visual confidence is capped.
+ */
+export const FUNGUS_CONFIDENCE_CAP = 0.9;
 const TIMEOUT_MS = 25_000;
 
 export type BioclipResult = {
@@ -140,7 +143,10 @@ export function toCandidates(
         family: r.family || undefined,
         genus: r.genus || undefined,
         taxonKeys: {},
-        visualConfidence: Math.min(EXPERIMENTAL_CONFIDENCE_CAP, Math.max(0, r.score * groupFactor)),
+        visualConfidence: Math.min(
+          category === 'fungus' ? FUNGUS_CONFIDENCE_CAP : 1,
+          Math.max(0, r.score * groupFactor),
+        ),
         source: { identification: SERVICE },
         links: [],
       } satisfies ProviderCandidate;

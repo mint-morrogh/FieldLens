@@ -138,10 +138,9 @@ it('shows no demo banner for real (non-mock) results', async () => {
 });
 
 describe('experimental and off-target results', () => {
-  it('labels experimental results', async () => {
-    const result = { ...(await mockResult('high')), experimental: true };
-    render(<ResultView result={result} />);
-    expect(screen.getByTestId('experimental-badge')).toHaveTextContent('Experimental');
+  it('no longer shows an experimental tag', async () => {
+    render(<ResultView result={{ ...(await mockResult('high')), experimental: true }} />);
+    expect(screen.queryByText(/Experimental/)).not.toBeInTheDocument();
   });
   it('explains an off-target photo and offers the suggested category', async () => {
     const base = await mockResult('zero');

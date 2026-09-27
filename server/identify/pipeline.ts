@@ -159,9 +159,22 @@ export async function runIdentification(
       target = 'plant'; // Without a detector, plants are the only thing we can identify.
     } else {
       stage({ stage: 'detect', status: 'active' });
-      const found = await detector.detectCategory(input);
+      // If detection is unavailable (e.g. the Space is asleep), fall back to plants rather than fail.
+      const found = await withDeadline(
+        detector.detectCategory(input),
+        STAGE_MS * 2,
+        detector.name,
+      ).catch((error: unknown) => {
+        logger.warn('identify.detect_failed', {
+          reason: error instanceof Error ? error.name : 'unknown',
+        });
+        return { category: 'plant' as OrganismCategory, likelihood: 0 };
+      });
       stage({ stage: 'detect', status: 'done' });
-      detection = { requested: 'auto', detected: found.category, likelihood: found.likelihood };
+      // A failed detection (likelihood 0) silently falls back to plants without a "detected" tag.
+      if (found.likelihood > 0) {
+        detection = { requested: 'auto', detected: found.category, likelihood: found.likelihood };
+      }
       logger.info('identify.detect', {
         category: found.category,
         likelihood: Math.round(found.likelihood * 100) / 100,
@@ -226,7 +239,7 @@ export async function runIdentification(
   const categoryId: OrganismCategory =
     identification.detectedCategory ??
     (isCategoryGroup(target) ? targetMembers(target)[0] : target);
-  if (!detection && isCategoryGroup(input.category)) {
+  if (!detection && isCategoryGroup(input.category) && input.category !== 'auto') {
     detection = { requested: input.category, detected: categoryId };
   }
   if (detection) detection = { ...detection, detected: categoryId };

@@ -48,10 +48,15 @@ function CategoryArt({ id, className }: { id: string; className?: string }) {
   );
 }
 
+function article(label: string) {
+  return /^[aeiou]/i.test(label) ? 'an' : 'a';
+}
+
 /**
- * Tile grid for choosing what to identify. Available groups can be selected;
- * upcoming ones are shown (so people know they're planned) but explain they're
- * coming soon instead of being silently disabled.
+ * Optional hint for what the photo shows. Nothing selected means "auto": the
+ * server works out the group itself. Tapping a selected tile clears it again.
+ * Groups the server can't identify yet explain themselves instead of silently
+ * doing nothing.
  */
 export function CategoryPicker({
   value,
@@ -63,10 +68,11 @@ export function CategoryPicker({
   onChange: (id: IdentifyTarget) => void;
   /** Categories the server can identify right now (from /api/health); falls back to the registry. */
   supported?: OrganismCategory[];
-  /** Whether the server can work out the category itself ("Not sure"). */
+  /** Whether the server can work out the category itself ("auto"). */
   autoDetect?: boolean;
 }) {
   const [notice, setNotice] = useState<string>();
+  const auto = value === 'auto';
 
   useEffect(() => {
     if (!notice) return;
@@ -74,21 +80,37 @@ export function CategoryPicker({
     return () => clearTimeout(t);
   }, [notice]);
 
+  const current = getTarget(value);
+  const status = notice
+    ? notice
+    : auto
+      ? autoDetect === false
+        ? 'Identifying plants. Pick a group if it’s something else.'
+        : 'Nothing selected — FieldLens will work out what it is.'
+      : `Identifying as ${article(current.label)} ${current.label.toLowerCase()}. Tap it again to clear.`;
+
   return (
     <section aria-labelledby="category-title" data-testid="category-picker">
-      <h2 id="category-title" className="mb-3 text-lg font-bold">
-        What are you identifying?
-      </h2>
-      <div role="radiogroup" aria-labelledby="category-title" className="grid grid-cols-3 gap-2.5">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <h2 id="category-title" className="font-bold">
+          Know what it is? <span className="font-normal text-ink-muted">(optional)</span>
+        </h2>
+        {!auto && (
+          <button
+            type="button"
+            onClick={() => onChange('auto')}
+            className="min-h-10 text-sm font-semibold text-moss underline underline-offset-4"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <div role="radiogroup" aria-labelledby="category-title" className="grid grid-cols-4 gap-2">
         {CATEGORY_PICKER_ORDER.map((id) => {
           const c = getTarget(id);
-          // A group is available when any of its members is; "Not sure" needs server-side detection.
-          const available =
-            id === 'auto'
-              ? (autoDetect ?? !supported)
-              : supported
-                ? targetMembers(id).some((m) => supported.includes(m))
-                : c.available;
+          const available = supported
+            ? targetMembers(id).some((m) => supported.includes(m))
+            : c.available;
           const selected = value === id;
           return (
             <button
@@ -97,79 +119,47 @@ export function CategoryPicker({
               role="radio"
               aria-checked={selected}
               aria-disabled={!available}
-              aria-describedby={`category-${id}-blurb`}
+              aria-description={available ? c.blurb : 'Coming soon'}
+              title={available ? c.blurb : `${c.label} — coming soon`}
               data-category={id}
-              onClick={() =>
-                available ? onChange(id) : setNotice(`${c.label} identification is coming soon.`)
-              }
-              className={`${id === 'auto' ? 'col-span-2' : ''} group relative flex min-h-[7.5rem] flex-col items-center justify-center gap-1.5 rounded-2xl border-2 px-1.5 pb-2.5 pt-3 text-center transition ${
+              onClick={() => {
+                if (!available) {
+                  setNotice(`${c.label} identification is coming soon.`);
+                  return;
+                }
+                // Tapping the selected group again goes back to automatic.
+                onChange(selected ? 'auto' : id);
+              }}
+              className={`relative flex min-h-[4.75rem] flex-col items-center justify-center gap-1 rounded-2xl border-2 px-1 py-2 text-center transition ${
                 selected
-                  ? 'border-moss bg-moss-soft shadow-[0_2px_0_rgba(47,93,58,0.25)]'
+                  ? 'border-moss bg-moss-soft'
                   : available
-                    ? 'border-line bg-card hover:border-moss/50 hover:bg-paper-deep active:scale-[0.98]'
+                    ? 'border-line bg-card hover:border-moss/50 active:scale-[0.97]'
                     : 'border-dashed border-line bg-paper-deep/40'
               }`}
             >
-              {selected && (
-                <span
-                  className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-moss text-white"
-                  aria-hidden
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-3.5 w-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={3}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M5 12.5 10 17 19 7" />
-                  </svg>
-                </span>
-              )}
-              {available && c.experimental && !selected && (
-                <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-soft px-1.5 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-amber">
-                  Beta
-                </span>
-              )}
-              {!available && (
-                <span className="absolute right-1.5 top-1.5 rounded-full bg-paper-deep px-1.5 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-ink-muted">
-                  Soon
-                </span>
-              )}
               <span
-                className={`flex h-12 w-12 items-center justify-center rounded-full transition ${
+                className={`flex h-9 w-9 items-center justify-center rounded-full ${
                   selected
                     ? 'bg-moss text-white'
                     : available
-                      ? 'bg-moss-soft text-moss group-hover:bg-moss group-hover:text-white'
+                      ? 'bg-moss-soft text-moss'
                       : 'bg-paper-deep text-ink-muted/70'
                 }`}
               >
-                <CategoryArt id={id} className="h-7 w-7" />
+                <CategoryArt id={id} className="h-5 w-5" />
               </span>
               <span
-                className={`font-bold leading-tight ${available ? 'text-ink' : 'text-ink-muted'}`}
+                className={`text-[0.8rem] font-semibold leading-tight ${available ? 'text-ink' : 'text-ink-muted'}`}
               >
                 {c.label}
-              </span>
-              <span
-                id={`category-${id}-blurb`}
-                className="text-[0.72rem] leading-tight text-ink-muted"
-              >
-                {available ? c.blurb : 'Coming soon'}
               </span>
             </button>
           );
         })}
       </div>
-      <p
-        className="mt-2 min-h-5 text-center text-sm text-ink-muted"
-        role="status"
-        aria-live="polite"
-      >
-        {notice}
+      <p className="mt-2 min-h-5 text-sm text-ink-muted" role="status" aria-live="polite">
+        {status}
       </p>
     </section>
   );

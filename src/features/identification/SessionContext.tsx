@@ -9,7 +9,6 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
-import { DEFAULT_CATEGORY } from '../../../shared/categories';
 import { UPLOAD } from '../../../shared/config';
 import { toApproxLocation } from '../../../shared/geo';
 import type {
@@ -196,6 +195,9 @@ type SessionApi = {
   canAddMore: boolean;
 };
 
+/** The app's default: detect the group automatically (the server falls back to plants). */
+const CLIENT_DEFAULT_TARGET: IdentifyTarget = 'auto';
+
 /** A library photo taken this recently is assumed to be from here. */
 const RECENT_PHOTO_MS = 3 * 60 * 60 * 1000;
 
@@ -204,7 +206,8 @@ const RESULT_REVEAL_DELAY_MS = import.meta.env.MODE === 'test' ? 0 : 450;
 const SessionContext = createContext<SessionApi | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(sessionReducer, DEFAULT_CATEGORY, freshState);
+  // Snap first: with nothing picked, the server works out what the photo shows.
+  const [state, dispatch] = useReducer(sessionReducer, CLIENT_DEFAULT_TARGET, freshState);
   // Latest state for async callbacks, which must not capture a stale render.
   const stateRef = useRef(state);
   useLayoutEffect(() => {
@@ -249,7 +252,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const s = {
         ...stateRef.current,
         images: images ?? stateRef.current.images,
-        category: options?.category ?? stateRef.current.category,
+        // Follow-ups after an automatic result use the group that was detected.
+        category:
+          options?.category ??
+          (stateRef.current.category === 'auto' && stateRef.current.result?.categoryDetection
+            ? stateRef.current.result.category
+            : stateRef.current.category),
         locationChoice: options?.locationChoice ?? stateRef.current.locationChoice,
       };
       if (options?.category) dispatch({ type: 'setCategory', category: options.category });

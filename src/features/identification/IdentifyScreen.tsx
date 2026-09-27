@@ -129,7 +129,11 @@ export function IdentifyScreen() {
       <CropEditor
         key={state.pending.url}
         imageUrl={state.pending.url}
-        category={state.category}
+        category={
+          state.category === 'auto' && state.result?.categoryDetection
+            ? state.result.category
+            : state.category
+        }
         initialFeature={state.pendingFeature}
         confirmLabel={state.images.length > 0 ? 'Add photo and identify' : 'Identify selection'}
         onCancel={() => {

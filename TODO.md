@@ -26,7 +26,7 @@ Live: private Space `mintmundane/fieldlens-bioclip` (ZeroGPU), source in `hf-spa
 - [x] Fungi via BioCLIP (experimental) with the safety package: top-of-result mushroom warning, dangerous genera and look-alikes always checked (even when confident), food uses never shown for species reported toxic, stem-base photo prompt.
 - [x] Birds via BioCLIP (experimental).
 - [x] Mammals, reptiles, amphibians and fish (BioCLIP scopes; reptiles span Squamata/Testudines/Crocodylia/Sphenodontia, most fish have no class in the Tree of Life labels).
-- [x] Picker: Plant, Fungus, Bug, Bird, Mammal, Reptile & amphibian, Fish, Not sure — combined tiles where people often can't tell groups apart; the result shows the specific category.
+- [x] Photo-first home: automatic by default; optional tiles (Plant, Fungus, Bug, Bird, Mammal, Reptile & amphibian, Fish) narrow it down; the result shows the specific category. Detection failures fall back to plants.
 - [x] “Not sure”: detect the category by top-20 species vote (beat class sums on real photos), then route (plants → Pl@ntNet).
 - [x] Tap your own photo for a full-screen view (original in-session; ≤2048 px copy saved in History).
 - [x] “Hear pronunciation” via on-device speech.
@@ -36,7 +36,7 @@ Live: private Space `mintmundane/fieldlens-bioclip` (ZeroGPU), source in `hf-spa
 - [x] Balanced headline wrapping; no inline “Likely” prefix.
 - [ ] Optional: eBird nearby observations as an extra bird prior (needs an eBird key).
 - [x] "Auto" category detection (“Not sure”).
-- [ ] Measure accuracy on real phone photos for each group before removing the "experimental" label.
+- [x] Real-phone testing by the owner (2026-09-27): everything right except some mushrooms. Experimental tag removed; confidence cap kept only for mushrooms.
 
 ## Later
 

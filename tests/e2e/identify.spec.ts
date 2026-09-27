@@ -187,26 +187,19 @@ test('granting location later re-checks the result with location', async ({ page
   await expect(page.getByTestId('location-fix')).toHaveCount(0);
 });
 
-test('category tiles offer broad groups', async ({ page }) => {
+test('photo first: nothing is selected by default and tiles are optional', async ({ page }) => {
   await page.goto('/?mock=high');
   const picker = page.getByTestId('category-picker');
-  await expect(picker.getByRole('radio', { name: /Plant/ })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
-  for (const name of [
-    /Fungus/,
-    /Bug/,
-    /Bird/,
-    /Mammal/,
-    /Reptile & amphibian/,
-    /Fish/,
-    /Not sure/,
-  ]) {
-    await expect(picker.getByRole('radio', { name })).toBeVisible();
+  await expect(picker).toContainText('FieldLens will work out what it is');
+  for (const name of [/Plant/, /Fungus/, /Bug/, /Bird/, /Mammal/, /Reptile & amphibian/, /Fish/]) {
+    await expect(picker.getByRole('radio', { name })).toHaveAttribute('aria-checked', 'false');
   }
   await picker.getByRole('radio', { name: /Fish/ }).click();
   await expect(picker.getByRole('radio', { name: /Fish/ })).toHaveAttribute('aria-checked', 'true');
+  await expect(picker).toContainText('Identifying as a fish');
+  // Tapping again clears it.
+  await picker.getByRole('radio', { name: /Fish/ }).click();
+  await expect(picker).toContainText('FieldLens will work out what it is');
 });
 
 test('insects are identified with an experimental label', async ({ page }) => {
@@ -214,7 +207,6 @@ test('insects are identified with an experimental label', async ({ page }) => {
   await page.getByTestId('category-picker').getByRole('radio', { name: /Bug/ }).click();
   await choosePhoto(page);
   await identifySelection(page);
-  await expect(page.getByTestId('experimental-badge')).toBeVisible();
   await expect(page.getByTestId('result-headline')).toContainText('Danaus plexippus');
 });
 
@@ -228,7 +220,6 @@ test('an off-target insect photo can be re-identified as a plant', async ({ page
   await expect(page.getByTestId('result-headline')).toContainText('Acer rubrum', {
     timeout: 15_000,
   });
-  await expect(page.getByTestId('experimental-badge')).toHaveCount(0);
 });
 
 test('mushrooms get the safety package', async ({ page }) => {
@@ -258,7 +249,6 @@ test('birds are identified with an experimental label and no edibility section',
   await choosePhoto(page);
   await identifySelection(page);
   await expect(page.getByTestId('result-headline')).toContainText('Blue Jay');
-  await expect(page.getByTestId('experimental-badge')).toBeVisible();
   await expect(page.getByTestId('safety')).toHaveCount(0);
 });
 
@@ -281,32 +271,22 @@ test('reptiles and amphibians share a tile and the result says which', async ({ 
   await identifySelection(page);
   await expect(page.getByTestId('result-headline')).toContainText('Wood Frog');
   await expect(page.getByTestId('detected-category')).toHaveText('Amphibian');
-  await expect(page.getByTestId('experimental-badge')).toBeVisible();
 });
 
-test('"Not sure" detects the category first', async ({ page }) => {
+test('automatic mode detects the category first', async ({ page }) => {
   await page.goto('/?mock=auto-bug');
-  await page
-    .getByTestId('category-picker')
-    .getByRole('radio', { name: /Not sure/ })
-    .click();
   await choosePhoto(page);
   await identifySelection(page);
   await expect(page.getByTestId('detected-category')).toHaveText('Insect · detected');
   await expect(page.getByTestId('result-headline')).toContainText('Danaus plexippus');
 });
 
-test('"Not sure" routes plants to Pl@ntNet', async ({ page }) => {
+test('automatic mode routes plants to Pl@ntNet', async ({ page }) => {
   await page.goto('/?mock=high');
-  await page
-    .getByTestId('category-picker')
-    .getByRole('radio', { name: /Not sure/ })
-    .click();
   await choosePhoto(page);
   await identifySelection(page);
   await expect(page.getByTestId('detected-category')).toHaveText('Plant · detected');
   await expect(page.getByTestId('result-headline')).toContainText('Acer rubrum');
-  await expect(page.getByTestId('experimental-badge')).toHaveCount(0);
 });
 
 test('library photos ask where they were taken and can use the photo’s own location', async ({

@@ -509,7 +509,7 @@ export const GROUPS: Record<CategoryGroupId, CategoryDefinition> = {
  * Choices offered in the picker, in display order. Specific animal groups narrow what the
  * model chooses from; wrong picks are caught by the category check, which suggests the
  * right group. Bug (insects/spiders) and Reptile & amphibian stay combined because people
- * often can't tell those apart; "Not sure" covers everything else. The broader "animal" group is still
+ * often can't tell those apart. With nothing picked, the app detects the group ("auto"). The broader "animal" group is still
  * supported by the server but not offered here.
  */
 export const CATEGORY_PICKER_ORDER: IdentifyTarget[] = [
@@ -520,7 +520,6 @@ export const CATEGORY_PICKER_ORDER: IdentifyTarget[] = [
   'mammal',
   'herp',
   'fish',
-  'auto',
 ];
 
 export const DEFAULT_CATEGORY: IdentifyTarget = 'plant';
