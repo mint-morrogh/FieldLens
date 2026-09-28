@@ -131,6 +131,14 @@ function Headline({
               : ''}
           </p>
         )}
+        {result.sign && result.candidates.length > 0 && (
+          <p
+            className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-amber-soft px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-ink"
+            data-testid="sign-pill"
+          >
+            From {result.sign === 'track' ? 'tracks' : 'droppings'}
+          </p>
+        )}
         {result.categoryCheck && !result.categoryCheck.matchesCategory ? (
           <>
             <h1 className="text-2xl font-bold">
@@ -241,6 +249,14 @@ function Headline({
               </div>
             )}
           </>
+        )}
+        {result.sign && result.candidates.length > 0 && (
+          <p className="mt-3 text-sm text-ink-soft" data-testid="sign-note">
+            {result.sign === 'track' ? 'Tracks' : 'Droppings'} are much harder to identify than the
+            animal itself, so treat these as possible matches
+            {result.location.used ? ' among mammals recorded near you' : ''}. Several species leave
+            similar signs.
+          </p>
         )}
         <p className="mt-3 flex items-center gap-1.5 text-sm text-ink-muted">
           <Icon name="pin" className="h-4 w-4" />

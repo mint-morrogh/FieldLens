@@ -43,6 +43,35 @@ function Statement({ s }: { s: SafetyStatement }) {
   );
 }
 
+/** Sourced cautions for animals: disease, bites, and keeping a safe distance. */
+function WildlifeSafety({ safety }: { safety: SafetyInfo }) {
+  return (
+    <section
+      aria-labelledby="safety-title"
+      data-testid="safety"
+      data-kind="wildlife"
+      data-level={safety.level}
+      className="rounded-[var(--radius-card)] border-2 border-amber/40 bg-card p-5"
+    >
+      <div className="mb-3 flex items-center gap-2">
+        <Icon name="alert" className="h-6 w-6 text-amber" />
+        <h2 id="safety-title" className="text-lg font-bold">
+          Wildlife safety
+        </h2>
+      </div>
+      <ul className="space-y-2" aria-label="Warnings">
+        {safety.statements.map((s, i) => (
+          <Statement key={i} s={s} />
+        ))}
+      </ul>
+      <p className="mt-4 border-t border-line pt-3 text-sm font-medium text-ink">
+        Never touch or feed wild animals. If you’re bitten or scratched, wash the wound and see a
+        doctor right away.
+      </p>
+    </section>
+  );
+}
+
 /**
  * Sourced edibility and toxicity notes. Warnings are always shown; food uses are
  * only shown for high-confidence identifications, and never as "safe to eat".
@@ -56,6 +85,7 @@ export function SafetySection({
   band: ConfidenceBand;
   category: OrganismCategory;
 }) {
+  if (safety.kind === 'wildlife') return <WildlifeSafety safety={safety} />;
   const warnings = safety.statements.filter((s) => s.kind !== 'edible');
   const edible = safety.statements.filter((s) => s.kind === 'edible');
   // Food uses only for confident IDs, and never for species reported toxic themselves.

@@ -99,3 +99,15 @@ People rarely know whether a newt is a reptile or an amphibian, or that a tick i
 ## Photo location for library uploads
 
 A photo picked from the library may have been taken far away, so the crop screen asks where it was taken. The default is the photo's own GPS when present (read from EXIF on the device, rounded to ~1 km, never uploaded raw), "near here" for photos taken in the last three hours, otherwise "somewhere else". The photo's EXIF capture date also drives the seasonal check.
+
+## Mammals: tracks & droppings, wildlife safety, facts (2026-09-27)
+
+Evaluation on 44 real iNaturalist mammal photos (38 everyday, 6 trail-camera): BioCLIP 2 got 34/44 species right. Google SpeciesNet (Apache 2.0, free) was tested as a second opinion and got 16/44. It only matched BioCLIP on trail-camera shots, where BioCLIP was already 6/6, and it called several moose and bear photos "blank" or "human". It was not deployed. Half of BioCLIP's misses were tracks or droppings, and the rest were distant animals, which the crop box addresses.
+
+**Tracks and droppings.** Picking "Tracks" or "Droppings" identifies a mammal from its sign; under "Not sure" and "Animal" these are the only options offered. The Space compares the photo with prompts like "a photo of footprints of red fox (Vulpes vulpes)", blended 50/50 with the ordinary taxonomic match. Candidates are about 200 mammal species with research-grade iNaturalist records within 150 km, falling back to the most-recorded mammals worldwide.
+
+On 75 iNaturalist track and scat photos, ranked against 150 regional species, this took species-level accuracy from 13/38 to 19/38 for tracks and from 13/37 to 22/37 for scat. Because that is still only about half right, sign scores are capped at 50%, so results always read as possible matches. Guidance asks for a straight-down photo with something for scale.
+
+**Wildlife safety.** A curated list (`server/safety/wildlife.ts`) of warnings checked against CDC, US National Park Service, Humane World for Animals and Wikipedia pages. It covers rabies (bats, raccoons, skunks, foxes), bears, moose, bison, elk, wolves and cougars, coyotes, porcupines and dogs, and deer ticks. It also covers droppings hygiene: raccoon roundworm, and hantavirus from mouse and rat droppings. Notes for other likely candidates appear when the identification is uncertain. Nothing is ever described as harmless.
+
+**Facts.** Average adult weight, diet percentages, day or night activity and foraging stratum come from EltonTraits 1.0 (Wilman et al. 2014, CC0), bundled by `scripts/build-mammal-traits.mjs`. The script also indexes current GBIF names for species renamed since MSW3. Wikidata was too patchy: no mass for moose, and inconsistent units. As with other species facts, they are hidden when the identification is low-confidence.

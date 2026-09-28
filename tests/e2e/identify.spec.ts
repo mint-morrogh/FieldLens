@@ -306,6 +306,37 @@ test('reptiles and amphibians share a tile and the result says which', async ({ 
   await expect(page.getByTestId('detected-category')).toHaveText('Amphibian');
 });
 
+test('a track photo under "Not sure" is identified as a mammal sign', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await choosePhoto(page);
+  const signs = page.getByTestId('crop-feature');
+  await expect(signs).toContainText('Tracks or droppings?');
+  await expect(signs.getByRole('button', { name: 'Neither' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await signs.getByRole('button', { name: 'Tracks' }).click();
+  await identifySelection(page);
+  await expect(page.getByTestId('sign-pill')).toHaveText(/From tracks/i);
+  await expect(page.getByTestId('result-headline')).toContainText('Procyon lotor');
+  await expect(page.getByTestId('result-headline')).toHaveAttribute('data-band', 'low');
+  await expect(page.getByTestId('safety')).toContainText('Wildlife safety');
+  await expect(page.getByTestId('safety')).toContainText('rabies');
+  await expect(page.getByTestId('improve')).toContainText('for scale');
+});
+
+test('mammals offer Tracks and Droppings as parts', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await choosePhoto(page);
+  await pickCategory(page, 'Mammal');
+  const parts = page.getByTestId('crop-feature');
+  await expect(parts).toContainText('Which part?');
+  await parts.getByRole('button', { name: 'Droppings' }).click();
+  await identifySelection(page);
+  await expect(page.getByTestId('sign-pill')).toHaveText(/From droppings/i);
+  await expect(page.getByTestId('safety')).toContainText('roundworm');
+});
+
 test('automatic mode detects the category first', async ({ page }) => {
   await page.goto('/?mock=auto-bug');
   await choosePhoto(page);
@@ -417,4 +448,17 @@ test('offline: app shell loads from the service worker and photos are kept', asy
 
   await context.setOffline(false);
   await expect(page.getByTestId('result-view')).toBeVisible({ timeout: 15_000 });
+});
+
+test('mammal photos show size, diet and activity facts and wildlife safety', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await choosePhoto(page);
+  await pickCategory(page, 'Mammal');
+  await identifySelection(page);
+  await expect(page.getByTestId('result-headline')).toContainText('Procyon lotor');
+  const facts = page.getByTestId('species-facts');
+  await expect(facts).toContainText('Average adult weight');
+  await expect(facts).toContainText('EltonTraits');
+  await expect(page.getByTestId('safety')).toContainText('rabies');
+  await expect(page.getByTestId('sign-pill')).toHaveCount(0);
 });

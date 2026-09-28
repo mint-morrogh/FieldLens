@@ -59,3 +59,32 @@ describe('SafetySection', () => {
     expect(screen.getByTestId('edible-none')).toHaveTextContent('doesn’t mean it’s safe');
   });
 });
+
+describe('Wildlife safety', () => {
+  it('shows animal cautions without any edibility section', () => {
+    render(
+      <SafetySection
+        safety={{
+          kind: 'wildlife',
+          level: 'caution',
+          statements: [
+            {
+              kind: 'caution',
+              severity: 'caution',
+              text: 'Raccoons are among the animals most often found with rabies.',
+              source: 'CDC — About Rabies',
+              sourceUrl: 'https://www.cdc.gov/rabies/about/index.html',
+            },
+          ],
+        }}
+        band="high"
+        category="mammal"
+      />,
+    );
+    expect(screen.getByRole('heading', { name: 'Wildlife safety' })).toBeInTheDocument();
+    expect(screen.getByText(/most often found with rabies/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /CDC — About Rabies/ })).toBeInTheDocument();
+    expect(screen.queryByText(/edible/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Never touch or feed wild animals/)).toBeInTheDocument();
+  });
+});

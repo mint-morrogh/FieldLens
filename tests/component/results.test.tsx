@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ResultView, type ImproveProps } from '../../src/features/results/ResultView';
 import { INaturalistCard } from '../../src/features/results/sections';
-import { mockResult } from './fixtures';
+import { mockResult, mockTrackResult } from './fixtures';
 
 const improve = (overrides: Partial<ImproveProps> = {}): ImproveProps => ({
   photos: [{ id: 'p1', url: 'blob:1', feature: 'leaf' }],
@@ -192,5 +192,16 @@ describe('INaturalistCard', () => {
     expect(screen.getByTestId('inat-card')).toHaveTextContent(
       'Share your location to see nearby observations.',
     );
+  });
+});
+
+describe('ResultView for tracks and droppings', () => {
+  it('labels the result as coming from tracks and explains the uncertainty', async () => {
+    render(<ResultView result={await mockTrackResult()} />);
+    expect(screen.getByTestId('sign-pill')).toHaveTextContent(/From tracks/i);
+    expect(screen.getByTestId('sign-note')).toHaveTextContent(/mammals recorded near you/);
+    expect(screen.getByRole('heading', { name: 'Wildlife safety' })).toBeInTheDocument();
+    // Signs are always uncertain, so facts about one species stay hidden.
+    expect(screen.queryByTestId('species-facts')).not.toBeInTheDocument();
   });
 });

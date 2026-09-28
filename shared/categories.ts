@@ -44,6 +44,22 @@ export const AUTO_FEATURE: FeatureDefinition = {
   advice: 'Another photo from a different angle would help.',
 };
 
+/** Mammal signs. Picking one of these (even under "Not sure") identifies a mammal from its sign. */
+export const TRACK_FEATURE: FeatureDefinition = {
+  id: 'track',
+  label: 'Tracks',
+  followUpLabel: 'Add another track photo',
+  advice:
+    'A photo straight down on one clear print, with a hand, coin or ruler next to it for scale, would help.',
+};
+export const SCAT_FEATURE: FeatureDefinition = {
+  id: 'scat',
+  label: 'Droppings',
+  followUpLabel: 'Add another droppings photo',
+  advice:
+    'A closer photo of the droppings with something for scale (a coin or stick, not your hand) would help.',
+};
+
 const EDIBILITY_NOTICE =
   'Do not use this identification alone to decide whether an organism is safe to eat, touch, handle, or use medicinally.';
 const WILDLIFE_NOTICE =
@@ -166,12 +182,8 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
         followUpLabel: 'Add a face photo',
         advice: 'A photo of the face would help.',
       },
-      {
-        id: 'track',
-        label: 'Track',
-        followUpLabel: 'Add a track photo',
-        advice: 'A photo of the track with something for scale would help.',
-      },
+      TRACK_FEATURE,
+      SCAT_FEATURE,
       {
         id: 'fur',
         label: 'Fur',
@@ -479,7 +491,7 @@ export const GROUPS: Record<CategoryGroupId, CategoryDefinition> = {
     gbifKingdom: 'Animalia',
     safetyNotice: WILDLIFE_NOTICE,
     generalAdvice: 'A clear photo of the whole animal from the side would help.',
-    features: [],
+    features: [TRACK_FEATURE, SCAT_FEATURE],
   },
   auto: {
     id: 'auto',
@@ -500,7 +512,7 @@ export const GROUPS: Record<CategoryGroupId, CategoryDefinition> = {
     ],
     pluralNoun: 'organisms',
     generalAdvice: 'A closer, well-lit photo of just the organism would help.',
-    features: [],
+    features: [TRACK_FEATURE, SCAT_FEATURE],
   },
 };
 

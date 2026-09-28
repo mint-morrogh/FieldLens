@@ -20,3 +20,19 @@ export async function mockResult(
     { providers: createMockProviders(scenario) },
   );
 }
+
+/** A mammal track identified under "Not sure". */
+export async function mockTrackResult(): Promise<IdentifyResponse> {
+  return runIdentification(
+    {
+      observationId: 'o',
+      category: 'auto',
+      images: [
+        { data: new Uint8Array([0xff, 0xd8, 0xff]), mimeType: 'image/jpeg', feature: 'track' },
+      ],
+      location: { latitude: 46.24, longitude: -63.13 },
+      capturedAt: new Date('2026-09-20T12:00:00Z'),
+    },
+    { providers: createMockProviders('high') },
+  );
+}

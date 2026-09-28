@@ -62,6 +62,7 @@ export function createLiveProviders(env: ServerEnv, fetchImpl: typeof fetch = fe
     ],
     community: inat,
     safety: new WikipediaSafetyProvider(undefined, fetchImpl),
+    signCandidates: inat,
     mock: false,
   };
 }

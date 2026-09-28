@@ -12,6 +12,8 @@ import { cached, sharedCache, type Cache } from '../../cache/cache.js';
 import { fetchJson } from '../../lib/http.js';
 import type {
   CommunityObservationProvider,
+  SignCandidate,
+  SignCandidateProvider,
   SpeciesInfoPart,
   SpeciesInfoProvider,
 } from '../types.js';
@@ -70,7 +72,15 @@ function isoDaysAgo(days: number, now: Date): string {
   return new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10);
 }
 
-export class INaturalistObservationProvider implements CommunityObservationProvider {
+/** iNaturalist's taxon id for mammals. */
+const MAMMALIA = 40151;
+/** Radius for "mammals recorded near you" when ranking tracks and droppings. */
+export const SIGN_RADIUS_KM = 150;
+const SIGN_CANDIDATES = 200;
+
+export class INaturalistObservationProvider
+  implements CommunityObservationProvider, SignCandidateProvider
+{
   readonly name = INAT_SOURCE;
 
   constructor(
@@ -109,6 +119,40 @@ export class INaturalistObservationProvider implements CommunityObservationProvi
         (t) => t.name.toLowerCase() === wanted && (!iconic || t.iconic_taxon_name === iconic),
       ) ?? res.results.find((t) => t.name.toLowerCase() === wanted)
     );
+  }
+
+  /**
+   * Mammal species with research-grade records near the location, most-recorded first.
+   * Without a location (or with few local records) the most-recorded mammals worldwide
+   * fill the list, so the ranking still has sensible options.
+   */
+  async getMammalCandidates(location?: ApproxLocation): Promise<SignCandidate[]> {
+    type Count = { taxon: INatTaxon };
+    const query = (geo: Record<string, string | number>) =>
+      this.get<INatSearch<Count[]>>(
+        '/observations/species_counts',
+        {
+          taxon_id: MAMMALIA,
+          quality_grade: 'research',
+          per_page: SIGN_CANDIDATES,
+          ...geo,
+        },
+        CACHE_TTL_MS.speciesInfo,
+      );
+    const lists: Count[][] = [];
+    if (location) {
+      const [lat, lng] = locationCacheKey(location).split(',');
+      lists.push((await query({ lat, lng, radius: SIGN_RADIUS_KM })).results);
+    }
+    if ((lists[0]?.length ?? 0) < 40) lists.push((await query({})).results);
+    const seen = new Set<string>();
+    const out: SignCandidate[] = [];
+    for (const { taxon } of lists.flat()) {
+      if (taxon.rank !== 'species' || seen.has(taxon.name)) continue;
+      seen.add(taxon.name);
+      out.push({ name: taxon.name, common: taxon.preferred_common_name || undefined });
+    }
+    return out.slice(0, SIGN_CANDIDATES);
   }
 
   async getNearbyObservations(

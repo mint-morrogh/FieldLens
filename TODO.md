@@ -35,6 +35,9 @@ Live: private Space `mintmundane/fieldlens-bioclip` (ZeroGPU), source in `hf-spa
 - [x] “Where was this photo taken?” for library photos, with on-device EXIF GPS/date reading.
 - [x] Spinning globe of worldwide GBIF records per country.
 - [x] Balanced headline wrapping; no inline “Likely” prefix.
+- [x] Mammals (2026-09-27): tracks & droppings mode, sourced wildlife safety notes, EltonTraits size/diet/activity facts. SpeciesNet tested as a second opinion and rejected (16/44 vs BioCLIP's 34/44 on real photos).
+- [ ] Bird facts from EltonTraits' bird table (same CC0 dataset, `BirdFuncDat.txt`).
+- [ ] Grow the wildlife safety list (`server/safety/wildlife.ts`) beyond North America.
 - [ ] Optional: eBird nearby observations as an extra bird prior (needs an eBird key).
 - [x] "Auto" category detection (“Not sure”).
 - [x] Real-phone testing by the owner (2026-09-27): everything right except some mushrooms. Experimental tag removed; confidence cap kept only for mushrooms.

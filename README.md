@@ -6,7 +6,7 @@
 
 > Live identification is enabled (Pl@ntNet key set in Vercel). To switch the deployment to fixture data instead, set `USE_MOCK_API=true` in Vercel → Settings → Environment Variables and redeploy.
 
-v1 identifies **plants** (via Pl@ntNet) and, experimentally, **insects, spiders, fungi and birds** (via BioCLIP 2 on our own Hugging Face Space). Plant and mushroom results include a sourced **Edibility & safety** section (Wikipedia quotes, Wikidata, the TPPT toxic-plant database and a curated high-risk list) that never says anything is safe to eat. The architecture is taxonomy-neutral, so birds, insects, fungi and other groups plug into the same pipeline later.
+v1 identifies **plants** (via Pl@ntNet) and, experimentally, **insects, spiders, fungi and birds** (via BioCLIP 2 on our own Hugging Face Space). Plant and mushroom results include a sourced **Edibility & safety** section (Wikipedia quotes, Wikidata, the TPPT toxic-plant database and a curated high-risk list) that never says anything is safe to eat. Mammals also get **size, diet and activity facts** (EltonTraits, CC0), sourced **wildlife safety** notes (rabies, keeping distance, ticks, droppings hygiene) and can be identified from **tracks and droppings**. The architecture is taxonomy-neutral, so birds, insects, fungi and other groups plug into the same pipeline later.
 
 > “FieldLens” is a working name. The visible name lives in [`src/config/brand.ts`](src/config/brand.ts).
 

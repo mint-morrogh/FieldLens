@@ -1,4 +1,5 @@
 import type {
+  AnimalSign,
   ApproxLocation,
   Attribution,
   CategoryCheck,
@@ -32,7 +33,19 @@ export type IdentificationInput = {
   capturedAt: Date;
   /** Only honoured by mock providers. */
   mockScenario?: string;
+  /** Tracks or droppings: rank `signCandidates` instead of the whole Tree of Life. */
+  sign?: AnimalSign;
+  signCandidates?: SignCandidate[];
 };
+
+/** A species that could have left a sign, e.g. a mammal recorded near the user. */
+export type SignCandidate = { name: string; common?: string };
+
+export interface SignCandidateProvider {
+  readonly name: string;
+  /** Mammal species recorded near the location (or commonly recorded anywhere). */
+  getMammalCandidates(location?: ApproxLocation): Promise<SignCandidate[]>;
+}
 
 /** Candidate as returned by a visual provider, before geographic reranking. */
 export type ProviderCandidate = Omit<
@@ -133,5 +146,7 @@ export type ProviderSet = {
   community: CommunityObservationProvider;
   /** Quoted edibility/toxicity sentences for plants and fungi (optional). */
   safety?: SafetyTextProvider;
+  /** Candidate species for tracks and droppings (optional). */
+  signCandidates?: SignCandidateProvider;
   mock: boolean;
 };

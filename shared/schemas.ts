@@ -198,8 +198,10 @@ export const identifyResponseSchema = z.object({
       likelihood: score.optional(),
     })
     .optional(),
+  sign: z.enum(['track', 'scat']).optional(),
   safety: z
     .object({
+      kind: z.enum(['food', 'wildlife']).optional(),
       statements: z.array(
         z.object({
           kind: z.enum(['toxic', 'edible', 'caution', 'lookalike']),

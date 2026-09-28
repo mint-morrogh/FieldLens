@@ -40,6 +40,10 @@ Source of truth: `hf-space/` in the FieldLens repository. Deploy with `npm run s
 - `temperature` (optional, default 1): multiplies the logits; values below 1 soften BioCLIP's
   overconfident probabilities.
 
+- `sign` (optional): `"track"` or `"scat"` with `candidates: [{"name": "Vulpes vulpes", "common": "Red fox"}, …]`
+  (up to 400) ranks those species for a photo of tracks or droppings, using prompts such as "a photo of
+  footprints of Red fox (Vulpes vulpes)" blended with the taxonomic match.
+
 Returns `{ "results": [{ "name", "commonName", "kingdom", "phylum", "class", "order", "family",
 "genus", "species", "score" }], "rank", "restricted", "candidateCount", "unmatched",
 "groupProbability" }`. `groupProbability` (only with `within` and no `taxa`) is the share of the

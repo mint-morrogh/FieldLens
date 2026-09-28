@@ -378,6 +378,58 @@ export const AMPHIBIAN_FIXTURES: FixtureSpecies[] = [
   },
 ];
 
+const MAMMAL = { kingdom: 'Animalia', phylum: 'Chordata', className: 'Mammalia' };
+const MAMMAL_SEASON = [20, 18, 30, 45, 60, 70, 75, 72, 65, 50, 30, 22];
+
+/** Returned for mammal identifications (including tracks and droppings) in mock mode. */
+export const MAMMAL_FIXTURES: FixtureSpecies[] = [
+  {
+    scientificName: 'Procyon lotor',
+    authorship: '(Linnaeus, 1758)',
+    commonNames: ['Raccoon'],
+    score: 0.74,
+    gbifKey: 5218786,
+    genus: 'Procyon',
+    genusKey: 5218785,
+    family: 'Procyonidae',
+    familyKey: 5494,
+    order: 'Carnivora',
+    ...MAMMAL,
+    radiusCounts: [30, 400, 2600],
+    monthCounts: MAMMAL_SEASON,
+  },
+  {
+    scientificName: 'Mephitis mephitis',
+    authorship: '(Schreber, 1776)',
+    commonNames: ['Striped skunk'],
+    score: 0.1,
+    gbifKey: 2433875,
+    genus: 'Mephitis',
+    genusKey: 2433874,
+    family: 'Mephitidae',
+    familyKey: 9380,
+    order: 'Carnivora',
+    ...MAMMAL,
+    radiusCounts: [12, 180, 1300],
+    monthCounts: MAMMAL_SEASON,
+  },
+  {
+    scientificName: 'Vulpes vulpes',
+    authorship: '(Linnaeus, 1758)',
+    commonNames: ['Red fox'],
+    score: 0.05,
+    gbifKey: 5219243,
+    genus: 'Vulpes',
+    genusKey: 5219234,
+    family: 'Canidae',
+    familyKey: 9701,
+    order: 'Carnivora',
+    ...MAMMAL,
+    radiusCounts: [25, 350, 2400],
+    monthCounts: MAMMAL_SEASON,
+  },
+];
+
 export const ALL_FIXTURE_SPECIES = [
   ...FIXTURES.high,
   ...FIXTURES.medium,
@@ -386,6 +438,7 @@ export const ALL_FIXTURE_SPECIES = [
   ...FUNGUS_FIXTURES,
   ...BIRD_FIXTURES,
   ...AMPHIBIAN_FIXTURES,
+  ...MAMMAL_FIXTURES,
 ];
 
 export function findFixture(scientificName: string): FixtureSpecies | undefined {

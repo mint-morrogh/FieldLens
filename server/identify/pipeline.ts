@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { CATEGORIES, getTarget, isCategoryGroup, targetMembers } from '../../shared/categories.js';
 import { confidenceBand } from '../../shared/confidence.js';
-import { GROUPING, TIMEOUTS_MS } from '../../shared/config.js';
+import { GROUPING, SIGNS, TIMEOUTS_MS } from '../../shared/config.js';
 import { coarseLocationLabel } from '../../shared/geo.js';
 import type {
+  AnimalSign,
   Attribution,
   CommunityObservationSummary,
   GroupSummary,
@@ -34,7 +35,9 @@ import type {
 } from '../providers/types.js';
 import { WIKIPEDIA_SOURCE } from '../providers/wiki/wiki.js';
 import { DeterministicGeoReranker, type CandidateReranker } from '../ranking/reranker.js';
+import { ELTONTRAITS_SOURCE, ELTONTRAITS_URL, mammalTraitFacts } from '../facts/mammalFacts.js';
 import { SAFETY_CATEGORIES, buildSafety } from '../safety/safety.js';
+import { buildWildlifeSafety } from '../safety/wildlife.js';
 import { buildEvidence, buildGuidance } from './evidence.js';
 
 /** Reject if `promise` doesn't settle within `ms`, so one slow source can't stall the response. */
@@ -133,6 +136,17 @@ export function genusGroup(
   return { rank: 'genus', name: genus, confidence, memberCount: members.length };
 }
 
+/** Targets for which a "Tracks" or "Droppings" photo means a mammal sign. */
+const SIGN_TARGETS: IdentifyTarget[] = ['auto', 'animal', 'mammal'];
+
+/** Tracks or droppings, when the first photo is marked as one. */
+export function signFor(input: Pick<IdentificationInput, 'category' | 'images'>) {
+  const feature = input.images[0]?.feature;
+  return (feature === 'track' || feature === 'scat') && SIGN_TARGETS.includes(input.category)
+    ? (feature as AnimalSign)
+    : undefined;
+}
+
 export async function runIdentification(
   input: IdentificationInput,
   deps: PipelineDeps,
@@ -153,6 +167,9 @@ export async function runIdentification(
   //    groups ("bug", "animal") go to a provider that covers all their members.
   let target: IdentifyTarget = input.category;
   let detection: IdentifyResponse['categoryDetection'];
+  // Tracks and droppings are always treated as mammal signs; no category detection needed.
+  const sign = signFor(input);
+  if (sign) target = 'mammal';
   if (target === 'auto') {
     const detector = providers.identification.find((p) => p.detectCategory);
     if (!detector?.detectCategory) {
@@ -217,7 +234,28 @@ export async function runIdentification(
 
   // 2. Visual identification (the only stage allowed to fail the request).
   stage({ stage: 'identify', status: 'active' });
-  const identification = await provider.identify({ ...input, category: target });
+  // Signs are ranked against mammals recorded nearby; without that list, fall back to the
+  // ordinary identification (which still works for some tracks).
+  const signCandidates =
+    sign && providers.signCandidates
+      ? await withDeadline(
+          providers.signCandidates.getMammalCandidates(input.location),
+          SIGNS.candidateTimeoutMs,
+          providers.signCandidates.name,
+        ).catch(() => undefined)
+      : undefined;
+  const identification = await provider.identify({
+    ...input,
+    category: target,
+    sign,
+    signCandidates,
+  });
+  if (sign) {
+    identification.candidates = identification.candidates.map((c) => ({
+      ...c,
+      visualConfidence: Math.min(SIGNS.confidenceCap, c.visualConfidence),
+    }));
+  }
   const topVisual = identification.candidates[0]?.visualConfidence;
   logger.info('identify.visual', {
     provider: provider.name,
@@ -286,6 +324,7 @@ export async function runIdentification(
       experimental: identification.experimental || undefined,
       categoryCheck: identification.categoryCheck,
       categoryDetection: detection,
+      sign,
       mock: providers.mock || undefined,
     };
   }
@@ -368,6 +407,11 @@ export async function runIdentification(
     const parts = results.filter((r) => r.ok).map((r) => r.value);
     const failures = results.length - parts.length;
     const facts: SpeciesFact[] = parts.flatMap((p) => p.facts ?? []);
+    if (categoryId === 'mammal') {
+      facts.push(
+        ...mammalTraitFacts([top.scientificName, topResolved?.species, topResolved?.canonicalName]),
+      );
+    }
     const peak = peakMonthsFact(top.occurrence?.monthCounts);
     if (peak) {
       facts.push({
@@ -497,14 +541,24 @@ export async function runIdentification(
       url: 'https://www.wikidata.org/',
     });
   }
-  const safety = buildSafety({
-    category: categoryId,
-    band,
-    candidates: ranked,
-    wikipedia: safetyText,
-    wikidataEdibility: speciesResult.edibility,
-    wikidataUrl: speciesResult.wikidataUrl,
-  });
+  const safety =
+    categoryId === 'mammal'
+      ? buildWildlifeSafety({ band, candidates: ranked, feature: sign ?? features[0] })
+      : buildSafety({
+          category: categoryId,
+          band,
+          candidates: ranked,
+          wikipedia: safetyText,
+          wikidataEdibility: speciesResult.edibility,
+          wikidataUrl: speciesResult.wikidataUrl,
+        });
+  if (speciesResult.info?.facts.some((f) => f.source === ELTONTRAITS_SOURCE)) {
+    attribution.push({
+      provider: 'EltonTraits',
+      text: 'Mammal size, diet and activity from EltonTraits 1.0 (Wilman et al. 2014, CC0)',
+      url: ELTONTRAITS_URL,
+    });
+  }
   if (safety?.statements.some((s) => s.source.startsWith('TPPT'))) {
     attribution.push({
       provider: 'TPPT',
@@ -554,10 +608,11 @@ export async function runIdentification(
     speciesInfo: speciesResult.info,
     groupSummary: group ? { ...group, commonName: groupCommonName } : undefined,
     safety,
+    sign,
     community,
     nearbySpecies,
     evidence,
-    guidance: buildGuidance({ category: categoryId, band, features }),
+    guidance: buildGuidance({ category: categoryId, band, features, sign }),
     attribution,
     sourceStatus: {
       identification: 'ok',

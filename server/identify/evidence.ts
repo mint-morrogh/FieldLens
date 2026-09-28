@@ -1,5 +1,6 @@
-import { CATEGORIES } from '../../shared/categories.js';
+import { CATEGORIES, SCAT_FEATURE, TRACK_FEATURE } from '../../shared/categories.js';
 import type {
+  AnimalSign,
   CommunityObservationSummary,
   ConfidenceBand,
   EvidenceItem,
@@ -104,9 +105,14 @@ export function buildEvidence(ctx: EvidenceContext): {
 
 /** Category-aware suggestions for what additional photo would most help. */
 export function buildGuidance(
-  ctx: Pick<EvidenceContext, 'category' | 'band' | 'features'>,
+  ctx: Pick<EvidenceContext, 'category' | 'band' | 'features'> & { sign?: AnimalSign },
 ): Guidance[] {
   if (ctx.band === 'high') return [];
+  // Tracks and droppings: another, better photo of the sign is what the person can take.
+  if (ctx.sign) {
+    const f = ctx.sign === 'track' ? TRACK_FEATURE : SCAT_FEATURE;
+    return [{ feature: f.id, message: f.advice }];
+  }
   const category = CATEGORIES[ctx.category];
   const submitted = new Set(ctx.features.filter((f) => f !== 'auto'));
   const suggestions = category.features

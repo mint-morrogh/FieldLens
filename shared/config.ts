@@ -69,6 +69,16 @@ export const CANDIDATES = {
   minAlternativesShown: 3,
 } as const;
 
+/**
+ * Tracks and droppings are much harder than photos of the animal (about half right at
+ * species level in our 2026-09-27 evaluation), so they are always shown as possible matches.
+ */
+export const SIGNS = {
+  confidenceCap: 0.5,
+  /** How long to wait for the list of nearby mammals before identifying without it. */
+  candidateTimeoutMs: 5_000,
+} as const;
+
 export const CACHE_TTL_MS = {
   taxonomy: 7 * 24 * 60 * 60 * 1000,
   occurrence: 6 * 60 * 60 * 1000,

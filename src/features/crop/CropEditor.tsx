@@ -192,6 +192,10 @@ export function CropEditor({
   };
 
   const features = categoryDef.features.length ? [AUTO_FEATURE, ...categoryDef.features] : [];
+  // "Not sure" and "Animal" only offer the mammal signs, so ask about those directly.
+  const signsOnly =
+    categoryDef.features.length > 0 &&
+    categoryDef.features.every((f) => f.id === 'track' || f.id === 'scat');
   const [notice, setNotice] = useState<string>();
 
   return (
@@ -344,10 +348,14 @@ export function CropEditor({
           </p>
         )}
         {features.length > 0 && (
-          <SheetRow title="Which part?" hint="Optional">
+          <SheetRow
+            title={signsOnly ? 'Tracks or droppings?' : 'Which part?'}
+            hint={signsOnly ? 'For mammal signs' : 'Optional'}
+            testId="crop-feature"
+          >
             {features.map((f) => (
               <SheetChip key={f.id} selected={feature === f.id} onClick={() => setFeature(f.id)}>
-                {f.label}
+                {signsOnly && f.id === 'auto' ? 'Neither' : f.label}
               </SheetChip>
             ))}
           </SheetRow>

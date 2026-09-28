@@ -31,6 +31,7 @@ import {
   BIRD_FIXTURES,
   FUNGUS_FIXTURES,
   INSECT_FIXTURES,
+  MAMMAL_FIXTURES,
   NEARBY_FIXTURES,
   findFixture,
   fixtureOccurrence,
@@ -148,10 +149,12 @@ export class MockIdentificationProvider implements IdentificationProvider {
             ? [INSECT_FIXTURES, 'arachnid']
             : t === 'bug' || t === 'insect'
               ? [INSECT_FIXTURES, 'insect']
-              : [
-                  AMPHIBIAN_FIXTURES,
-                  t === 'animal' || t === 'herp' || t === 'auto' ? 'amphibian' : t,
-                ];
+              : t === 'mammal'
+                ? [MAMMAL_FIXTURES, 'mammal']
+                : [
+                    AMPHIBIAN_FIXTURES,
+                    t === 'animal' || t === 'herp' || t === 'auto' ? 'amphibian' : t,
+                  ];
     const candidates = fixtures.map((s) => ({
       id: slugId('mock', s.scientificName),
       category,
@@ -316,6 +319,11 @@ export function createMockProviders(scenario: MockScenario = 'high'): ProviderSe
     nearbySpecies: new MockNearbySpeciesProvider(),
     speciesInfo: [new MockSpeciesInfoProvider(scenario)],
     community: new MockCommunityProvider(scenario),
+    signCandidates: {
+      name: 'Mock iNaturalist',
+      getMammalCandidates: async () =>
+        MAMMAL_FIXTURES.map((s) => ({ name: s.scientificName, common: s.commonNames[0] })),
+    },
     mock: true,
   };
 }

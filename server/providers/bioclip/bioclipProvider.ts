@@ -57,6 +57,9 @@ type BioclipPayload = {
   k?: number;
   taxa?: string[];
   within?: Partial<Record<string, string[]>>;
+  /** Tracks or droppings: rank `candidates` with sign prompts (see hf-space/app.py). */
+  sign?: string;
+  candidates?: { name: string; common?: string }[];
 };
 
 const FISH_CLASSES = new Set([
@@ -219,6 +222,7 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
   }
 
   async identify(input: IdentificationInput): Promise<IdentificationResult> {
+    if (input.sign && input.signCandidates?.length) return this.identifySign(input);
     const scope = getTarget(input.category).taxonScope;
     const images = input.images.map((img) => Buffer.from(img.data).toString('base64'));
     const started = Date.now();
@@ -262,6 +266,32 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
       experimental: true,
       categoryCheck,
       detectedCategory: candidates[0]?.category,
+    };
+  }
+
+  /** Tracks or droppings, ranked against mammals recorded near the user. */
+  private async identifySign(input: IdentificationInput): Promise<IdentificationResult> {
+    const images = input.images.map((img) => Buffer.from(img.data).toString('base64'));
+    const started = Date.now();
+    const response = await this.call({
+      images,
+      sign: input.sign,
+      candidates: input.signCandidates,
+      k: CANDIDATES.maxCandidates,
+    });
+    logger.info('bioclip.identify_sign', {
+      sign: input.sign,
+      candidates: input.signCandidates?.length,
+      topScore: Math.round((response.results[0]?.score ?? 0) * 100) / 100,
+      ms: Date.now() - started,
+    });
+    const candidates = toCandidates(response, 'mammal');
+    return {
+      provider: SERVICE,
+      candidates,
+      attribution: [BIOCLIP_ATTRIBUTION],
+      experimental: true,
+      detectedCategory: candidates.length ? 'mammal' : undefined,
     };
   }
 

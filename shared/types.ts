@@ -234,8 +234,13 @@ export type IdentifyResponse = {
     likelihood?: number;
   };
   safety?: SafetyInfo;
+  /** Set when the photo shows tracks or droppings rather than the animal itself. */
+  sign?: AnimalSign;
   mock?: boolean;
 };
+
+/** Signs an animal leaves behind, identified with lower confidence than the animal itself. */
+export type AnimalSign = 'track' | 'scat';
 
 export type SafetyStatement = {
   kind: 'toxic' | 'edible' | 'caution' | 'lookalike';
@@ -254,6 +259,8 @@ export type SafetyStatement = {
 
 /** Sourced edibility and toxicity notes. Never contains "safe to eat" claims. */
 export type SafetyInfo = {
+  /** "food" (plants & fungi: edibility and toxicity) or "wildlife" (animals: bites, disease, distance). */
+  kind?: 'food' | 'wildlife';
   statements: SafetyStatement[];
   /** Most serious warning found for the candidates shown or their look-alikes. */
   level: 'danger' | 'caution' | 'none';
