@@ -326,6 +326,8 @@ class MockCommunityProvider implements CommunityObservationProvider {
 export function createMockProviders(scenario: MockScenario = 'high'): ProviderSet {
   return {
     identification: [new MockIdentificationProvider(scenario)],
+    // Calls: the same bird fixtures, as if heard.
+    audio: new MockIdentificationProvider(scenario),
     taxonomy: new MockTaxonomyProvider(scenario),
     occurrence: new MockOccurrenceProvider(scenario),
     nearbySpecies: new MockNearbySpeciesProvider(),

@@ -12,6 +12,7 @@ import { cached, sharedCache, type Cache } from '../../cache/cache.js';
 import { fetchJson } from '../../lib/http.js';
 import type {
   CommunityObservationProvider,
+  FloweringProvider,
   SignCandidate,
   SignCandidateProvider,
   SpeciesInfoPart,
@@ -77,9 +78,14 @@ const MAMMALIA = 40151;
 /** Radius for "mammals recorded near you" when ranking tracks and droppings. */
 export const SIGN_RADIUS_KM = 150;
 const SIGN_CANDIDATES = 200;
+/** iNaturalist's "Plant Phenology" annotation and its "Flowering" value. */
+const PHENOLOGY_TERM = 12;
+const FLOWERING_VALUE = 13;
+/** Radius for "when does this flower around here". */
+export const FLOWERING_RADIUS_KM = 150;
 
 export class INaturalistObservationProvider
-  implements CommunityObservationProvider, SignCandidateProvider
+  implements CommunityObservationProvider, SignCandidateProvider, FloweringProvider
 {
   readonly name = INAT_SOURCE;
 
@@ -119,6 +125,31 @@ export class INaturalistObservationProvider
         (t) => t.name.toLowerCase() === wanted && (!iconic || t.iconic_taxon_name === iconic),
       ) ?? res.results.find((t) => t.name.toLowerCase() === wanted)
     );
+  }
+
+  async getFloweringMonths(
+    taxon: TaxonIdentity,
+    location: ApproxLocation,
+  ): Promise<number[] | undefined> {
+    const t = await this.resolveTaxon(taxon);
+    if (!t) return undefined;
+    const res = await this.get<{ results: { month_of_year?: Record<string, number> } }>(
+      '/observations/histogram',
+      {
+        taxon_id: t.id,
+        lat: location.latitude,
+        lng: location.longitude,
+        radius: FLOWERING_RADIUS_KM,
+        interval: 'month_of_year',
+        term_id: PHENOLOGY_TERM,
+        term_value_id: FLOWERING_VALUE,
+        quality_grade: 'research',
+      },
+      CACHE_TTL_MS.speciesInfo,
+    );
+    const months = res.results.month_of_year;
+    if (!months) return undefined;
+    return Array.from({ length: 12 }, (_, i) => Number(months[String(i + 1)] ?? 0));
   }
 
   /**

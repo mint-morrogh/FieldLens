@@ -10,6 +10,7 @@ import type {
   OccurrenceEvidence,
   OrganismCandidate,
   OrganismCategory,
+  RangeStatus,
   SpeciesInfo,
   TaxonIdentity,
   TaxonomyRanks,
@@ -22,11 +23,16 @@ export type InputImage = {
   feature: FeatureId;
 };
 
+/** Calls: a validated mono 16-bit PCM WAV at `AUDIO.sampleRate`. */
+export type InputAudio = { data: Uint8Array; mimeType: 'audio/wav'; seconds: number };
+
 export type IdentificationInput = {
   observationId: string;
   /** A specific category, a group ("bug", "animal") or "auto"; see the pipeline. */
   category: IdentifyTarget;
   images: InputImage[];
+  /** Calls: identify this recording instead of photos. */
+  audio?: InputAudio;
   location?: ApproxLocation;
   /** Where the position came from: the device now, or the photo's own GPS. */
   locationSource?: 'device' | 'photo';
@@ -61,6 +67,8 @@ export type IdentificationResult = {
   categoryCheck?: CategoryCheck;
   /** The photo shows a person; no candidates are returned. */
   person?: boolean;
+  /** Calls: a non-bird sound ("Human vocal", "Dog", "Engine"…) was louder than any bird. */
+  sound?: string;
   /** For groups: the specific category of the top candidate (e.g. "amphibian" for "animal"). */
   detectedCategory?: OrganismCategory;
   /** Provider-native response, kept only for debugging; never sent to the UI. */
@@ -143,6 +151,30 @@ export interface CommunityObservationProvider {
   ): Promise<CommunityObservationSummary>;
 }
 
+export interface FloweringProvider {
+  readonly name: string;
+  /** Nearby research-grade records annotated as flowering, per month (index 0 = January). */
+  getFloweringMonths(taxon: TaxonIdentity, location: ApproxLocation): Promise<number[] | undefined>;
+}
+
+/** Lower-cased names of the bird species reported near a location recently. */
+export type RecentBirds = { scientificNames: Set<string>; commonNames: Set<string> };
+
+export interface RecentBirdsProvider {
+  readonly name: string;
+  /** Undefined when the area has too few recent reports for absence to mean anything. */
+  getRecentBirds(location: ApproxLocation): Promise<RecentBirds | undefined>;
+}
+
+export interface RangeProvider {
+  readonly name: string;
+  /** Keyed by lower-cased scientific name; species without a range map are left out. */
+  getRangeStatus(
+    scientificNames: string[],
+    location: ApproxLocation,
+  ): Promise<Map<string, RangeStatus>>;
+}
+
 export type ProviderSet = {
   identification: IdentificationProvider[];
   taxonomy: TaxonomyProvider;
@@ -155,5 +187,13 @@ export type ProviderSet = {
   safety?: SafetyTextProvider;
   /** Candidate species for tracks and droppings (optional). */
   signCandidates?: SignCandidateProvider;
+  /** When plants flower locally, for photos of flowers (optional). */
+  flowering?: FloweringProvider;
+  /** Birds reported nearby in the last month (optional; needs an eBird key). */
+  recentBirds?: RecentBirdsProvider;
+  /** Identifies bird calls from recordings (optional). */
+  audio?: IdentificationProvider;
+  /** Modelled species ranges (optional). */
+  ranges?: RangeProvider;
   mock: boolean;
 };

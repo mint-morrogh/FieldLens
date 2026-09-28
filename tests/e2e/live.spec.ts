@@ -18,7 +18,7 @@ test.use({
 
 test('scans automatically and shows the match over the camera', async ({ page }) => {
   await page.goto('/?mock=high');
-  await page.getByTestId('live-button').click();
+  await page.getByRole('button', { name: 'Live identify' }).click();
   await expect(page.getByTestId('live-screen')).toBeVisible();
   const card = page.getByTestId('live-result');
   await expect(card).toBeVisible({ timeout: 20_000 });
@@ -31,7 +31,7 @@ test('scans automatically and shows the match over the camera', async ({ page })
 
 test('clearing the match resumes scanning', async ({ page }) => {
   await page.goto('/?mock=high');
-  await page.getByTestId('live-button').click();
+  await page.getByRole('button', { name: 'Live identify' }).click();
   const card = page.getByTestId('live-result');
   await expect(card).toBeVisible({ timeout: 20_000 });
   await card.getByRole('button', { name: 'Clear' }).click();
@@ -41,7 +41,7 @@ test('clearing the match resumes scanning', async ({ page }) => {
 
 test('can be closed back to the home screen', async ({ page }) => {
   await page.goto('/?mock=high');
-  await page.getByTestId('live-button').click();
+  await page.getByRole('button', { name: 'Live identify' }).click();
   await page.getByRole('button', { name: 'Close live identify' }).click();
   await expect(page.getByTestId('viewfinder')).toBeVisible();
 });

@@ -8,16 +8,20 @@ export type Route =
   | { name: 'home' }
   | { name: 'identify' }
   | { name: 'live' }
+  | { name: 'listen' }
   | { name: 'history' }
   | { name: 'observation'; id: string }
-  | { name: 'privacy' };
+  | { name: 'privacy' }
+  | { name: 'settings' };
 
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, '') || '/';
   if (path === '/identify') return { name: 'identify' };
   if (path === '/live') return { name: 'live' };
+  if (path === '/listen') return { name: 'listen' };
   if (path === '/history') return { name: 'history' };
   if (path === '/privacy') return { name: 'privacy' };
+  if (path === '/settings') return { name: 'settings' };
   const obs = path.match(/^\/history\/([A-Za-z0-9_-]+)$/);
   if (obs) return { name: 'observation', id: obs[1] };
   return { name: 'home' };

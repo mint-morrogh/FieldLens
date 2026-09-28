@@ -5,10 +5,12 @@ import { BRAND } from '../config/brand';
 import { HistoryScreen, ObservationScreen } from '../features/history/HistoryScreen';
 import { HomeScreen, LocationReadout } from '../features/identification/HomeScreen';
 import { IdentifyScreen } from '../features/identification/IdentifyScreen';
+import { ListenScreen } from '../features/listen/ListenScreen';
 import { LiveScreen } from '../features/live/LiveScreen';
 import { SessionProvider } from '../features/identification/SessionContext';
 import { LocationProvider } from '../features/location/LocationContext';
 import { PrivacyScreen } from '../features/privacy/PrivacyScreen';
+import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { useOnline } from '../lib/useOnline';
 import { HealthProvider } from './health';
 import { useRoute, type Route } from './router';
@@ -37,6 +39,8 @@ function Screen({ route }: { route: Route }) {
   switch (route.name) {
     case 'live':
       return <LiveScreen />;
+    case 'listen':
+      return <ListenScreen />;
     case 'identify':
       return <IdentifyScreen />;
     case 'history':
@@ -45,6 +49,8 @@ function Screen({ route }: { route: Route }) {
       return <ObservationScreen id={route.id} />;
     case 'privacy':
       return <PrivacyScreen />;
+    case 'settings':
+      return <SettingsScreen />;
     default:
       return <HomeScreen />;
   }
@@ -95,7 +101,12 @@ export function App() {
                   <Icon name="book" className="h-5 w-5" /> Journal
                 </NavLink>
                 <NavLink href="#/privacy" active={route.name === 'privacy'}>
-                  <Icon name="info" className="h-5 w-5" /> About
+                  <Icon name="info" className="h-5 w-5" />
+                  <span className="sr-only sm:not-sr-only">About</span>
+                </NavLink>
+                <NavLink href="#/settings" active={route.name === 'settings'}>
+                  <Icon name="settings" className="h-5 w-5" />
+                  <span className="sr-only">Settings</span>
                 </NavLink>
               </div>
             </nav>

@@ -55,3 +55,27 @@ Every response also includes `person` (0–1): how much a small general CLIP mod
 
 Scores are softmax probabilities over the candidate set; they are overconfident and are tempered
 by the FieldLens server before display.
+
+## Bird calls (BirdNET)
+
+`POST /gradio_api/call/identify_audio` with `{"data": [payload]}`:
+
+```json
+{
+  "audio": "<base64 mono 16-bit PCM WAV, 48 kHz, up to 30 s>",
+  "lat": 42.44,
+  "lon": -76.5,
+  "week": 20,
+  "k": 5
+}
+```
+
+- `lat`/`lon` (optional): drops species BirdNET's location model doesn't expect there; `week` is
+  BirdNET's 1–48 week (four per month).
+- Returns `{"results": [{"name", "common", "score", "mean", "segments", "of"}], "sound", "seconds"}`,
+  ranked by the mean score over overlapping 3 s windows; `score` is the best window. `sound` names a
+  non-bird class ("Human vocal", "Dog", "Engine"…) when it's louder than any bird.
+- Runs on CPU (no ZeroGPU quota), about 0.3 s for 10 s of audio.
+- Models: [BirdNET v2.4](https://github.com/birdnet-team/BirdNET-Analyzer) (K. Lisa Yang Center for
+  Conservation Bioacoustics, Cornell Lab of Ornithology, and Chemnitz University of Technology),
+  **CC BY-NC-SA 4.0**. They're downloaded from Zenodo on first start, and non-commercial use only.

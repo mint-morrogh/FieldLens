@@ -32,6 +32,8 @@ if not os.environ.get("FIELDLENS_COMPILE"):
 import open_clip  # noqa: E402
 from bioclip import TreeOfLifeClassifier  # noqa: E402
 
+import birdnet_audio  # noqa: E402
+
 MODEL = "hf-hub:imageomics/bioclip-2"
 RANKS = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
 MAX_IMAGES = 5
@@ -311,11 +313,40 @@ def identify(payload: dict) -> dict:
     return _run(payload)
 
 
+MAX_AUDIO_BYTES = 4 * 1024 * 1024
+
+
+def identify_audio(payload: dict) -> dict:
+    """Bird calls with BirdNET. CPU only: it doesn't touch the daily ZeroGPU quota."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("audio"), str):
+        raise gr.Error("Send {\"audio\": \"<base64 WAV>\"}.")
+    if len(payload["audio"]) > MAX_AUDIO_BYTES * 4 // 3 + 4:
+        raise gr.Error("Recording too large.")
+    try:
+        wav = base64.b64decode(payload["audio"], validate=True)
+        lat, lon = payload.get("lat"), payload.get("lon")
+        located = isinstance(lat, (int, float)) and isinstance(lon, (int, float))
+        return birdnet_audio.identify_audio(
+            wav,
+            float(lat) if located else None,
+            float(lon) if located else None,
+            int(payload["week"]) if isinstance(payload.get("week"), int) else None,
+            k=max(1, min(MAX_K, int(payload.get("k", 5)))),
+        )
+    except ValueError as e:
+        raise gr.Error(str(e)) from e
+
+
 with gr.Blocks(title="FieldLens BioCLIP") as demo:
     gr.Markdown("## FieldLens BioCLIP service\nJSON API for the FieldLens app. See the README for the payload format.")
     inp = gr.JSON(label="Payload", value={"images": [], "taxa": [], "rank": "species", "k": 5})
     out = gr.JSON(label="Result")
     gr.Button("Run").click(identify, inputs=inp, outputs=out, api_name="identify")
+    audio_inp = gr.JSON(label="Audio payload", value={"audio": "", "lat": None, "lon": None, "week": None})
+    audio_out = gr.JSON(label="Audio result")
+    gr.Button("Run audio").click(
+        identify_audio, inputs=audio_inp, outputs=audio_out, api_name="identify_audio"
+    )
 
 demo.queue(default_concurrency_limit=2, max_size=20)
 

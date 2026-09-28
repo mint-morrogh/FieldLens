@@ -1,0 +1,9 @@
+{
+  // Vercel type-checks each function with the tsconfig nearest to it. The root tsconfig only
+  // lists project references, so point the functions at the server settings explicitly.
+  "extends": "../tsconfig.server.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.api.tsbuildinfo"
+  },
+  "include": ["./", "../server", "../shared"]
+}

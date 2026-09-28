@@ -1,10 +1,15 @@
 import type { ConfidenceBand, FollowUpQuestion, OrganismCandidate } from '../../shared/types.js';
+import { BIRD_BILLS } from './birdBills.js';
 import { BIRD_TRAITS } from './birdTraits.js';
 import { ELTONTRAITS_SOURCE, ELTONTRAITS_URL } from './mammalFacts.js';
 import { MAMMAL_TRAITS } from './mammalTraits.js';
 
+export const AVONET_SOURCE = 'AVONET (Tobias et al. 2022)';
+export const AVONET_URL = 'https://doi.org/10.1111/ele.13898';
+
 /**
- * Follow-up questions built only from sourced traits (EltonTraits body mass and activity).
+ * Follow-up questions built only from sourced traits: EltonTraits body mass and activity,
+ * and AVONET bill measurements for birds.
  * A question is asked only when the likely candidates' recorded traits give different
  * answers, so answering it can actually separate them.
  */
@@ -33,12 +38,34 @@ const TIME_OPTIONS = [
   { id: 'night', label: 'At night' },
 ];
 
+const BILL_OPTIONS = [
+  { id: 'cone', label: 'Short and thick, like a sparrow or finch' },
+  { id: 'thin', label: 'Thin or pointed, like a robin or warbler' },
+  { id: 'long', label: 'Long, like a heron, sandpiper or hummingbird' },
+  { id: 'hooked', label: 'Hooked, like a hawk, owl or parrot' },
+  { id: 'flat', label: 'Flat, like a duck or goose' },
+];
+/**
+ * Bill shapes from AVONET measurements. The bands overlap near their edges so a bird
+ * that sits between two shapes fits both; hooked and flat come from the bird's order.
+ */
+function billShapes(b: { t: number; l: number; o?: 'h' | 'f' }): string[] {
+  const shapes = [
+    b.t >= 0.42 && 'cone',
+    b.t < 0.5 && b.l < 0.3 && 'thin',
+    b.l >= 0.26 && 'long',
+    b.o === 'h' && 'hooked',
+    b.o === 'f' && 'flat',
+  ].filter(Boolean) as string[];
+  return shapes;
+}
+
 /** A runner-up counts as a real contender when it has at least this share of the top's score. */
 const CONTENDER_SHARE = 0.35;
 const MIN_CONFIDENCE = 0.05;
 const MAX_CANDIDATES = 4;
 
-type Traits = { mass?: number; activity?: string[] };
+type Traits = { mass?: number; activity?: string[]; bill?: string[] };
 
 function traitsFor(c: OrganismCandidate): Traits | undefined {
   const key = c.scientificName.trim().toLowerCase();
@@ -55,9 +82,14 @@ function traitsFor(c: OrganismCandidate): Traits | undefined {
   }
   if (c.category === 'bird') {
     const t = BIRD_TRAITS[key];
-    if (!t) return undefined;
-    // Diurnal birds are also about at dawn and dusk.
-    return { mass: t.m, activity: t.n ? ['twilight', 'night'] : ['day', 'twilight'] };
+    const b = BIRD_BILLS[key];
+    if (!t && !b) return undefined;
+    return {
+      mass: t?.m,
+      // Diurnal birds are also about at dawn and dusk.
+      activity: t ? (t.n ? ['twilight', 'night'] : ['day', 'twilight']) : undefined,
+      bill: b ? billShapes(b) : undefined,
+    };
   }
   return undefined;
 }
@@ -132,6 +164,19 @@ export function buildQuestions(
       options: TIME_OPTIONS,
       fits: timeFits,
       ...source,
+    });
+  }
+  const billFits = Object.fromEntries(
+    likely.filter((x) => x.t.bill?.length).map((x) => [x.c.id, x.t.bill!]),
+  );
+  if (separatesTop(billFits, topId, contenders)) {
+    questions.push({
+      id: 'bill',
+      prompt: 'What was its bill like?',
+      options: BILL_OPTIONS,
+      fits: billFits,
+      source: AVONET_SOURCE,
+      sourceUrl: AVONET_URL,
     });
   }
   return questions;

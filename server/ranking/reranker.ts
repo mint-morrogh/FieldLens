@@ -80,8 +80,10 @@ export function computeFinalConfidence(
   geo: number | undefined,
   season: number | undefined,
   config: RankingConfig = RANKING,
+  weights: { visual: number; geo: number; season: number } = season !== undefined
+    ? config.weightsWithSeason
+    : config.weightsWithoutSeason,
 ): number {
-  const weights = season !== undefined ? config.weightsWithSeason : config.weightsWithoutSeason;
   let numerator = weights.visual;
   let denominator = weights.visual;
   if (geo !== undefined) {
@@ -106,11 +108,34 @@ export class DeterministicGeoReranker implements CandidateReranker {
         input.locationUsed && candidate.occurrence
           ? geographicSupport(candidate.occurrence, this.config)
           : undefined;
+      // Flowering records are the sharper signal for a photo of a flower; fall back to all
+      // records when there are too few flowering ones to judge.
+      const recent = geo !== undefined ? candidate.occurrence?.recentlyReported : undefined;
       const season =
-        geo !== undefined
-          ? seasonalSupport(candidate.occurrence?.monthCounts, input.capturedAt, this.config)
-          : undefined;
-      const finalConfidence = computeFinalConfidence(visual, geo, season, this.config);
+        recent !== undefined
+          ? recent
+            ? 1
+            : 0
+          : geo !== undefined
+            ? (seasonalSupport(
+                candidate.occurrence?.floweringMonthCounts,
+                input.capturedAt,
+                this.config,
+              ) ??
+              seasonalSupport(candidate.occurrence?.monthCounts, input.capturedAt, this.config))
+            : undefined;
+      const range = geo !== undefined ? candidate.occurrence?.range : undefined;
+      const rangeFactor = range
+        ? this.config.rangeFactors[candidate.category === 'plant' ? 'plant' : 'animal'][range]
+        : 1;
+      const finalConfidence =
+        computeFinalConfidence(
+          visual,
+          geo,
+          season,
+          this.config,
+          recent !== undefined ? this.config.weightsWithRecentSightings : undefined,
+        ) * rangeFactor;
       const result: RerankedCandidate = {
         ...candidate,
         visualConfidence: visual,

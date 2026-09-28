@@ -40,13 +40,16 @@ export class UpstreamError extends Error {
   readonly service: string;
   readonly status?: number;
   readonly kind: 'timeout' | 'network' | 'http' | 'parse';
+  /** Extra detail safe to show, e.g. how long until a quota resets ("2 h 5 min"). */
+  readonly detail?: string;
 
-  constructor(service: string, kind: UpstreamError['kind'], status?: number) {
+  constructor(service: string, kind: UpstreamError['kind'], status?: number, detail?: string) {
     super(`${service} ${kind}${status ? ` ${status}` : ''}`);
     this.name = 'UpstreamError';
     this.service = service;
     this.kind = kind;
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -60,11 +63,14 @@ export function toApiError(error: unknown): ApiError {
       );
     }
     if (error.status === 429) {
-      return new ApiError(
-        'provider_quota_exhausted',
-        'The identification service is busy or its daily quota is used up. Please try again later.',
-        { retryAfterSeconds: 60 },
-      );
+      // No fallback to a lower-accuracy service: say plainly that today's free quota is used.
+      const message =
+        error.service === 'Pl@ntNet'
+          ? 'We’ve used today’s free plant identifications from Pl@ntNet. They reset at midnight UTC — please try again then.'
+          : error.service === 'BioCLIP 2'
+            ? `We’ve used today’s free identification time for animals, fungi and insects.${error.detail ? ` It resets in about ${error.detail}.` : ' It resets within a day.'}`
+            : 'The identification service’s daily quota is used up. Please try again later.';
+      return new ApiError('provider_quota_exhausted', message, { retryAfterSeconds: 3600 });
     }
     if (error.status === 401 || error.status === 403) {
       return new ApiError(

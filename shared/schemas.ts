@@ -35,6 +35,9 @@ const occurrenceEvidence = z.object({
   radiusCounts: z.array(z.object({ radiusKm: z.number(), count: z.number() })),
   nearestRadiusKm: z.number().optional(),
   monthCounts: z.array(z.number()).optional(),
+  floweringMonthCounts: z.array(z.number()).optional(),
+  recentlyReported: z.boolean().optional(),
+  range: z.enum(['in', 'near', 'out']).optional(),
 });
 
 export const organismCandidateSchema = z.object({
@@ -199,11 +202,12 @@ export const identifyResponseSchema = z.object({
     })
     .optional(),
   sign: z.enum(['track', 'scat']).optional(),
+  call: z.boolean().optional(),
   person: z.boolean().optional(),
   questions: z
     .array(
       z.object({
-        id: z.enum(['size', 'time']),
+        id: z.enum(['size', 'time', 'bill']),
         prompt: z.string(),
         options: z.array(z.object({ id: z.string(), label: z.string() })),
         fits: z.record(z.string(), z.array(z.string())),

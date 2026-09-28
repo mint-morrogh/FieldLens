@@ -4,8 +4,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/identify.ts": { "maxDuration": 30, "memory": 1024 },
-    "api/health.ts": { "maxDuration": 5 }
+    "api/identify.ts": { "maxDuration": 30 },
+    "api/health.ts": { "maxDuration": 5 },
+    "api/usage.ts": { "maxDuration": 10 }
   },
   "headers": [
     {

@@ -25,8 +25,14 @@ export function PrivacyScreen() {
             frames, cropped to the box, are sent for identification, the same way as photos.
           </li>
           <li>
+            Bird calls are recorded only while you’re listening. The clip is converted on your
+            device to a short sound file, sent once for identification and not kept; your history
+            keeps only the picture of the sound (a spectrogram).
+          </li>
+          <li>
             Location is optional. If you allow it, an approximate position (rounded to about 1 km)
-            is used to check which species are recorded nearby on GBIF and iNaturalist.
+            is used to check which species are recorded nearby on GBIF, iNaturalist and eBird, and
+            which are expected there from iNaturalist’s range maps.
           </li>
           <li>{BRAND.name} does not intentionally store your location or photos on its servers.</li>
           <li>
@@ -45,7 +51,7 @@ export function PrivacyScreen() {
             <ExternalLink href="https://www.inaturalist.org/pages/privacy">
               iNaturalist
             </ExternalLink>
-            ,{' '}
+            , <ExternalLink href="https://www.birds.cornell.edu/home/privacy/">eBird</ExternalLink>,{' '}
             <ExternalLink href="https://foundation.wikimedia.org/wiki/Policy:Privacy_policy">
               Wikimedia
             </ExternalLink>
@@ -112,6 +118,27 @@ export function PrivacyScreen() {
               EltonTraits 1.0
             </ExternalLink>{' '}
             (Wilman et al. 2014, CC0) — mammal size, diet and activity
+          </li>
+          <li>
+            <ExternalLink href="https://doi.org/10.1111/ele.13898">AVONET</ExternalLink> (Tobias et
+            al. 2022, CC BY 4.0) — bird bill shapes
+          </li>
+          <li>
+            <ExternalLink href="https://www.inaturalist.org/pages/range_maps">
+              iNaturalist Open Range Map Dataset
+            </ExternalLink>{' '}
+            (CC BY 4.0) — where species are expected to occur
+          </li>
+          <li>
+            <ExternalLink href="https://ebird.org/">eBird</ExternalLink> (Cornell Lab of
+            Ornithology) — recent bird sightings
+          </li>
+          <li>
+            <ExternalLink href="https://github.com/birdnet-team/BirdNET-Analyzer">
+              BirdNET
+            </ExternalLink>{' '}
+            (K. Lisa Yang Center for Conservation Bioacoustics, CC BY-NC-SA 4.0) — bird call
+            identification
           </li>
           <li>
             Home screen photos:{' '}

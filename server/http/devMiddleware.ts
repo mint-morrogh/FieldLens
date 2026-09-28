@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
-import { handleHealth, handleIdentify } from './handlers.js';
+import { handleHealth, handleIdentify, handleUsage } from './handlers.js';
 
 /**
  * Connect-style middleware that serves /api/* from the same handlers Vercel
@@ -14,6 +14,8 @@ export function apiMiddleware() {
     let response: Response;
     if (url.pathname === '/api/health') {
       response = handleHealth();
+    } else if (url.pathname === '/api/usage') {
+      response = await handleUsage();
     } else if (url.pathname === '/api/identify') {
       const headers = new Headers();
       for (const [k, v] of Object.entries(req.headers)) {

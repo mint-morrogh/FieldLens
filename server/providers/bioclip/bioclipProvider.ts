@@ -4,6 +4,7 @@ import type { CategoryCheck, IdentifyTarget, OrganismCategory } from '../../../s
 import { ApiError, UpstreamError } from '../../lib/errors.js';
 import { USER_AGENT } from '../../lib/http.js';
 import { logger } from '../../lib/logger.js';
+import { noteBioclipQuotaReached } from '../../usage/usage.js';
 import { slugId } from '../plantnet/plantnetProvider.js';
 import type {
   CategoryDetectionResult,
@@ -118,17 +119,38 @@ export function categoryForTaxon(
   return 'other';
 }
 
+/**
+ * "…retry in 2:05:11" / "Try again in 45:10" (ZeroGPU quota messages) → "2 h 5 min".
+ * Returns undefined when no duration is given.
+ */
+export function quotaRetryIn(message: string): string | undefined {
+  const m = message.match(/(?:retry|try again) in (?:(\d+):)?(\d+):(\d+)/i);
+  if (!m) return undefined;
+  const h = Number(m[1] ?? 0);
+  const min = Number(m[2]) + (Number(m[3]) >= 30 ? 1 : 0);
+  return h ? `${h} h ${min} min` : `${Math.max(1, min)} min`;
+}
+
 /** Parse Gradio's server-sent events and return the `complete` payload (or throw on `error`). */
-export function parseGradioEvents(text: string): unknown {
+export function parseGradioEvents(text: string, service: string = SERVICE): unknown {
   let event: string | undefined;
   for (const line of text.split('\n')) {
     if (line.startsWith('event:')) event = line.slice(6).trim();
     else if (line.startsWith('data:')) {
       if (event === 'complete') return JSON.parse(line.slice(5));
-      if (event === 'error') throw new UpstreamError(SERVICE, 'http', 500);
+      if (event === 'error') {
+        // ZeroGPU reports an exhausted daily GPU quota as an error event.
+        const data = line.slice(5);
+        if (/quota/i.test(data)) {
+          const retryIn = quotaRetryIn(data);
+          noteBioclipQuotaReached(retryIn);
+          throw new UpstreamError(service, 'http', 429, retryIn);
+        }
+        throw new UpstreamError(service, 'http', 500);
+      }
     }
   }
-  throw new UpstreamError(SERVICE, 'parse');
+  throw new UpstreamError(service, 'parse');
 }
 
 export function toCandidates(
@@ -171,6 +193,59 @@ export function toCandidates(
     });
 }
 
+export type SpaceTarget = {
+  spaceUrl: string;
+  token: string;
+  fetchImpl: typeof fetch;
+  service: string;
+};
+
+/** Calls a Gradio endpoint on our Hugging Face Space and returns its output list. */
+export async function callSpace(
+  space: SpaceTarget,
+  endpoint: string,
+  payload: unknown,
+  timeoutMs: number = TIMEOUT_MS,
+): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = {
+    Authorization: `Bearer ${space.token}`,
+    'User-Agent': USER_AGENT,
+  };
+  try {
+    const submit = await space.fetchImpl(`${space.spaceUrl}/gradio_api/call/${endpoint}`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: [payload] }),
+      signal: controller.signal,
+    });
+    if (!submit.ok) {
+      await submit.text().catch(() => undefined);
+      throw new UpstreamError(space.service, 'http', submit.status);
+    }
+    const { event_id: eventId } = (await submit.json()) as { event_id?: string };
+    if (!eventId) throw new UpstreamError(space.service, 'parse');
+    const stream = await space.fetchImpl(
+      `${space.spaceUrl}/gradio_api/call/${endpoint}/${eventId}`,
+      { headers, signal: controller.signal },
+    );
+    if (!stream.ok) throw new UpstreamError(space.service, 'http', stream.status);
+    return parseGradioEvents(await stream.text(), space.service);
+  } catch (error) {
+    if (error instanceof UpstreamError) throw error;
+    if (controller.signal.aborted) {
+      throw new ApiError(
+        'provider_timeout',
+        'The identification service is waking up or busy. Please try again in a minute.',
+      );
+    }
+    throw new UpstreamError(space.service, 'network');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * BioCLIP 2 running in our private Hugging Face Space (see hf-space/). One
  * provider serves every category that declares a `taxonScope`; the scope keeps
@@ -195,45 +270,13 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
   }
 
   private async call(payload: BioclipPayload): Promise<BioclipResponse> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const headers = {
-      Authorization: `Bearer ${this.token}`,
-      'User-Agent': USER_AGENT,
-    };
-    try {
-      const submit = await this.fetchImpl(`${this.spaceUrl}/gradio_api/call/identify`, {
-        method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: [payload] }),
-        signal: controller.signal,
-      });
-      if (!submit.ok) {
-        await submit.text().catch(() => undefined);
-        throw new UpstreamError(SERVICE, 'http', submit.status);
-      }
-      const { event_id: eventId } = (await submit.json()) as { event_id?: string };
-      if (!eventId) throw new UpstreamError(SERVICE, 'parse');
-      const stream = await this.fetchImpl(`${this.spaceUrl}/gradio_api/call/identify/${eventId}`, {
-        headers,
-        signal: controller.signal,
-      });
-      if (!stream.ok) throw new UpstreamError(SERVICE, 'http', stream.status);
-      const data = parseGradioEvents(await stream.text()) as BioclipResponse[];
-      if (!Array.isArray(data) || !data[0]?.results) throw new UpstreamError(SERVICE, 'parse');
-      return data[0];
-    } catch (error) {
-      if (error instanceof UpstreamError) throw error;
-      if (controller.signal.aborted) {
-        throw new ApiError(
-          'provider_timeout',
-          'The identification service is waking up or busy. Please try again in a minute.',
-        );
-      }
-      throw new UpstreamError(SERVICE, 'network');
-    } finally {
-      clearTimeout(timer);
-    }
+    const data = (await callSpace(
+      { spaceUrl: this.spaceUrl, token: this.token, fetchImpl: this.fetchImpl, service: SERVICE },
+      'identify',
+      payload,
+    )) as BioclipResponse[];
+    if (!Array.isArray(data) || !data[0]?.results) throw new UpstreamError(SERVICE, 'parse');
+    return data[0];
   }
 
   async identify(input: IdentificationInput): Promise<IdentificationResult> {

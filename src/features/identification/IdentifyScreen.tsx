@@ -214,22 +214,36 @@ export function IdentifyScreen() {
           userPhotos={state.images.map((i) => i.original?.url ?? i.url)}
           mixedOrganismWarning={mixed}
           onSwitchCategory={(category) => void session.submit(undefined, { category })}
-          improve={{
-            photos: state.images.map((i) => ({ id: i.id, url: i.url, feature: i.feature })),
-            canAddMore: session.canAddMore,
-            onAddPhoto: (feature) => {
-              session.startFollowUp(feature);
-              camera.open();
-            },
-            onAddFromLibrary: (feature) => {
-              session.startFollowUp(feature);
-              library.open();
-            },
-            onRemovePhoto: session.removeImage,
-            onResubmit: () => void session.submit(),
-            dirty: state.images.length !== result.imagesSubmitted,
-          }}
+          improve={
+            result.call
+              ? undefined
+              : {
+                  photos: state.images.map((i) => ({ id: i.id, url: i.url, feature: i.feature })),
+                  canAddMore: session.canAddMore,
+                  onAddPhoto: (feature) => {
+                    session.startFollowUp(feature);
+                    camera.open();
+                  },
+                  onAddFromLibrary: (feature) => {
+                    session.startFollowUp(feature);
+                    library.open();
+                  },
+                  onRemovePhoto: session.removeImage,
+                  onResubmit: () => void session.submit(),
+                  dirty: state.images.length !== result.imagesSubmitted,
+                }
+          }
         />
+        {result.call && (
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => navigate({ name: 'listen' })}
+            data-testid="listen-again"
+          >
+            <Icon name="mic" className="h-5 w-5" /> Listen again
+          </Button>
+        )}
         {camera.input}
         {library.input}
         {newCamera.input}

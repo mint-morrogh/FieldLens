@@ -174,3 +174,73 @@ History became the **Field Journal**, computed on the device from local history 
 **Live identify, revised.** Scanning is fully automatic: there's no button. While a frame is being identified, a glass tag shows what kind of organism it looks like (the auto-detect stage now streams the detected group), then the first name guess. A likely or very likely match appears in a frosted card over the camera with the name, up to three reference photos, **Clear** (keep scanning) and **Details** (full results page). Up to 8 frames per session.
 
 **Tree** is a picker choice alongside Plant and Fungus. It is still identified by Pl@ntNet, whose plant model covers trees, but offers tree parts: leaves or needles, bark, cones/nuts/fruit, flowers and catkins, twigs and buds, and whole tree. Parts Pl@ntNet has no organ for are sent as "auto".
+
+## More free evidence: flowering, eBird, ranges, bill shape (2026-09-28)
+
+**Pl@ntNet regional floras were tested and not adopted.** On 32 iNaturalist photos from the northeastern US, `k-northeastern-u-s-a` returned exactly the same species and scores as `all` for all 16 wild plants: the regional project filters the world model's list, it doesn't re-score it. It dropped garden and house plants: Monstera, Hydrangea and snake plant disappeared, and garden plants in the top 3 fell from 11/16 to 7/16. Range evidence is handled softly by the reranker instead (below).
+
+**Flowering season.** For a plant photo tagged as a flower, the seasonal check uses iNaturalist research-grade records annotated "Flowering" within 150 km, instead of all records. For example, bloodroot near upstate New York has 919 flowering records in April and none in September. With fewer than 12 flowering records it falls back to all records, so garden plants with no local flowering data aren't penalised. It runs for the top 4 matches only, to stay within iNaturalist's rate limits.
+
+**eBird recent sightings (birds).** With `EBIRD_API_KEY` set, one call lists the species reported within 50 km in the last 30 days (free for non-commercial use). Migrants come and go within weeks, which GBIF month counts can't show. For birds, "reported recently" replaces the month check and weighs a little more (visual 0.8, geo 0.1, season 0.1), so a bird with no recent reports loses at most 10%. Areas with fewer than 30 species reported in the month are treated as "no data", because there absence means nothing. Names are matched on scientific or English name, since eBird uses Clements taxonomy.
+
+**Range maps.** iNaturalist's Open Range Map Dataset (CC BY 4.0, rebuilt monthly) models where each of about 123,000 taxa is expected, as H3 resolution-4 cells (~26 km). There's no public API that answers "is it expected here?" (`/computervision` needs a login, `/taxa/nearby` returns observation counts), so `scripts/build-range-shards.py` turns the geopackages into one small binary file per resolution-2 parent cell. The files are stored in a private Hugging Face dataset (`RANGES_DATASET`, read with `HF_TOKEN`). A request fetches only the shard(s) for its ~26 km cell and neighbours, cached per instance for a day. Candidates get a capped multiplier: in range 1; within one cell 0.92 (plants 0.97); outside 0.75 (plants 0.9, because gardens and houseplants grow far outside native ranges). Species without a map aren't touched. This can only lower a score. The maps sometimes include places where a species is absent (a red fox "in range" in Auckland), which just means no penalty. They can also miss poorly recorded regions, which is why the penalty is capped. Using the ranges to restrict BioCLIP's search was considered and rejected, because a gap in a map would make the right species impossible to find.
+
+**Bill shape question (birds).** AVONET (Tobias et al. 2022, CC BY 4.0) measurements give each bird's bill thickness (depth ÷ length) and relative length (length ÷ wing). "What was its bill like?" offers:
+
+- short and thick (thickness ≥ 0.42);
+- thin or pointed;
+- long (length ≥ 0.26 × wing);
+- hooked (raptors, owls, parrots);
+- flat (ducks, geese).
+
+The bands overlap near their edges so in-between birds fit both. AVONET's "lifestyle" and "habitat" fields were rejected for questions because they don't match what people see: gulls, herons and blue jays are all "terrestrial".
+
+## Quotas, Settings, and live voting (2026-09-28)
+
+**No fallbacks.** When a free quota runs out, identification fails with a clear message, and we never switch to a lower-accuracy service (owner's decision). Pl@ntNet's 429 says "today's free plant identifications … reset at midnight UTC". ZeroGPU's quota error arrives as a Gradio error event; it's detected by its text and reported with the time until reset when the message includes it.
+
+**Settings → Today's identification usage** (`GET /api/usage`):
+
+- **Pl@ntNet:** reads the exact count from `/v2/quota/daily`, which doesn't use up an identification, cached for 60 s.
+- **Hugging Face:** doesn't report ZeroGPU usage, so we show the allowance and, once a request has hit the limit, "Limit reached".
+
+**Live multi-frame voting.** A card only appears once two frames in a row agree on the species. The follow-up frame is taken after 0.5 s instead of 2.5 s, a big camera move resets the vote, and the per-session cap rose from 8 to 12 frames to allow for it.
+
+**Vercel TypeScript errors.** Vercel type-checks each function with the tsconfig nearest to it. The root tsconfig only lists references, so the functions were checked without Node types or a modern `lib`. `api/tsconfig.json` now extends `tsconfig.server.json`. Node is pinned to `22.x` (it was `>=20`, which Vercel warned would auto-upgrade), and the `memory` setting Vercel ignores was removed.
+
+## Calls: identifying birds by sound (2026-09-28)
+
+**Bird calls** is a third way in on the home screen, next to Live identify and Choose photo.
+
+**Recording.** The phone records up to 15 seconds from the microphone, with echo cancellation, noise suppression and auto-gain turned off, because phone voice processing strips birdsong. A live spectrogram (0–11 kHz) shows what's being heard. The clip is decoded on the device and sent once as mono 16-bit WAV at 48 kHz: about 1 MB for 10 s, well under Vercel's limit. This avoids handling each browser's format (AAC on iOS, Opus elsewhere) on the server, and it sends no container metadata. The server checks the WAV header and length (3–15 s). The recording isn't stored anywhere: history keeps the spectrogram image as that find's "photo".
+
+**Model.** Identification uses BirdNET v2.4 (K. Lisa Yang Center for Conservation Bioacoustics), running on the same Hugging Face Space as BioCLIP.
+
+- It runs on CPU, so it doesn't use the daily ZeroGPU quota: about 0.3 s for 10 s of audio.
+- The TFLite models run directly with `ai-edge-litert`. The `birdnet` package starts worker processes per call, which would reload BioCLIP each time.
+- The location model drops species not expected at that place and week.
+- Species are ranked by their mean score over overlapping 3 s windows, which favours the bird singing throughout. Confidence follows the best window, is capped at 95%, and never rises down the list.
+- Noise classes ("Human vocal", "Dog", "Engine"…) are never matched to species. When one is louder than any bird, the app says so.
+- **Results:** on 40 real recordings (iNaturalist, mostly phone clips), top-1 was 36/40 and top-3 37/40 with location. Two live checks through the deployed Space got Northern Cardinal (0.82) and Blue Jay (0.95).
+- **Licence:** the model weights are **CC BY-NC-SA 4.0**. That's fine for this non-commercial project, but they'd need replacing or a licence for any commercial use.
+
+After identification, calls go through the same pipeline as photos (taxonomy, GBIF, eBird, ranges, facts, bill-shape question), with "sound-model" wording and no photo tips.
+
+**Space dependency pin.** `torch<2.14`, because ZeroGPU supports torch up to 2.13 and the unpinned requirement would have pulled 2.14 on the next rebuild.
+
+## Fishial (fish): evaluated, not deployed (2026-09-28)
+
+Fishial's open classifier (v0.10.2, 866 fish classes, DinoV2, TorchScript) was tested as a second opinion next to BioCLIP on 40 iNaturalist fish photos: 32 of species Fishial knows, 8 of species it doesn't.
+
+- Used as a confirm-only tie-breaker, it raised top-1 on known species from 20/32 to 24/32 and changed nothing on unknown ones. It fixed carp, clownfish, guppy and striped bass, and broke none.
+- The rule: raise a BioCLIP candidate only when Fishial's top pick matches it with similarity ≥ 0.6. Never lower a score, and never use Fishial's own percentages.
+- Those percentages are unusable: it gave 0.999+ to wrong answers, and it names a close relative for fish it doesn't know.
+
+It isn't deployed for now, because:
+
+- the thresholds were tuned on the same small set;
+- the weights ship without a licence file (only the code is clearly MIT);
+- the recommended detector depends on AGPL-licensed `ultralytics`;
+- it adds about 1 GB of memory to the Space.
+
+Revisit it if Fishial confirms the weights' licence, and after checking the thresholds on a fresh set of 100+ photos.

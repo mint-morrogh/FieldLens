@@ -63,6 +63,9 @@ export type TaxonomyRanks = {
 
 export type RadiusCount = { radiusKm: number; count: number };
 
+/** Where a location sits relative to a species' modelled range. */
+export type RangeStatus = 'in' | 'near' | 'out';
+
 export type OccurrenceEvidence = {
   source: string;
   /** Counts at each configured search radius (smallest first). */
@@ -71,6 +74,12 @@ export type OccurrenceEvidence = {
   nearestRadiusKm?: number;
   /** Records per calendar month (index 0 = January) within the widest radius. */
   monthCounts?: number[];
+  /** Nearby records annotated as flowering, per month; used for photos of flowers. */
+  floweringMonthCounts?: number[];
+  /** Birds: whether eBird has reports within 50 km in the last 30 days. */
+  recentlyReported?: boolean;
+  /** Relative to the species' iNaturalist range map; absent when it has no map. */
+  range?: RangeStatus;
 };
 
 export type ExternalLink = { label: string; url: string };
@@ -243,11 +252,13 @@ export type IdentifyResponse = {
   person?: boolean;
   /** Set when the photo shows tracks or droppings rather than the animal itself. */
   sign?: AnimalSign;
+  /** Identified from a recording of its call (Calls) rather than photos. */
+  call?: boolean;
   mock?: boolean;
 };
 
 export type FollowUpQuestion = {
-  id: 'size' | 'time';
+  id: 'size' | 'time' | 'bill';
   prompt: string;
   /** "Not sure" is always offered by the UI in addition to these. */
   options: { id: string; label: string }[];

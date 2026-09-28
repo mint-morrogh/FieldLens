@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { getCategory, getTarget } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
 import { CANDIDATES } from '../../../shared/config';
@@ -97,12 +97,14 @@ function Headline({
           type="button"
           onClick={() => setViewing(true)}
           className="relative block w-full"
-          aria-label="View your photo full screen"
+          aria-label={
+            result.call ? 'View the recording’s spectrogram' : 'View your photo full screen'
+          }
           data-testid="own-photo"
         >
           <img
             src={image}
-            alt="The photo you submitted"
+            alt={result.call ? 'Spectrogram of your recording' : 'The photo you submitted'}
             className="max-h-[46vh] w-full bg-paper-deep object-cover"
           />
           <span className="absolute bottom-2 right-2 rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-white">
@@ -169,8 +171,9 @@ function Headline({
           <>
             <h1 className="text-2xl font-bold">No match found</h1>
             <p className="mt-2 text-ink-soft">
-              We couldn’t find a match for this photo. Make sure the organism fills most of the box
-              and is in focus.
+              {result.call
+                ? result.guidance[0]?.message
+                : 'We couldn’t find a match for this photo. Make sure the organism fills most of the box and is in focus.'}
             </p>
           </>
         ) : band === 'low' ? (
@@ -427,10 +430,15 @@ function FollowUpQuestions({
         </p>
       )}
       <p className="mt-3 text-xs text-ink-muted">
-        Compared with typical size and activity from{' '}
-        <ExternalLink href={questions[0].sourceUrl} className="!font-normal">
-          {questions[0].source}
-        </ExternalLink>
+        Compared with recorded traits from{' '}
+        {[...new Map(questions.map((q) => [q.source, q.sourceUrl]))].map(([source, url], i) => (
+          <Fragment key={source}>
+            {i > 0 && ' and '}
+            <ExternalLink href={url} className="!font-normal">
+              {source}
+            </ExternalLink>
+          </Fragment>
+        ))}
       </p>
     </Card>
   );

@@ -42,12 +42,26 @@ const TICK_MS = 100;
 const STILL_FOR_MS = 900;
 const MOTION_THRESHOLD = 7;
 /** Frames sent per live session, to protect the free identification quotas. */
-const MAX_ATTEMPTS = 8;
+const MAX_ATTEMPTS = 12;
 const COOLDOWN_MS = 2500;
+/**
+ * A match is only shown once this many frames in a row agree on the species, so one odd
+ * frame can't produce a confident-looking card. The follow-up frame is taken sooner.
+ */
+const VOTES_NEEDED = 2;
+const CONFIRM_COOLDOWN_MS = 500;
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Status =
-  'starting' | 'aim' | 'steady' | 'analysing' | 'found' | 'person' | 'exhausted' | 'error';
+  | 'starting'
+  | 'aim'
+  | 'steady'
+  | 'analysing'
+  | 'confirming'
+  | 'found'
+  | 'person'
+  | 'exhausted'
+  | 'error';
 type Found = { result: IdentifyResponse; frame: Blob; crop: Blob };
 
 function newId() {
@@ -159,6 +173,8 @@ export function LiveScreen() {
     busy: false,
     /** A result card is showing: scanning waits until it's cleared. */
     paused: false,
+    /** Frames agreeing so far on one species, and the most confident of them. */
+    vote: undefined as { name: string; count: number; best: Found } | undefined,
     attempts: 0,
     nextAttemptAt: 0,
     done: false,
@@ -189,6 +205,7 @@ export function LiveScreen() {
     setKind(undefined);
     setGuess(undefined);
     l.paused = false;
+    l.vote = undefined;
     l.stillSince = 0;
     l.nextAttemptAt = performance.now() + 800;
     setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'aim');
@@ -245,11 +262,28 @@ export function LiveScreen() {
         setStatus('person');
         setKind('Person');
       } else if (top && result.confidenceBand !== 'low' && result.confidenceBand !== 'none') {
-        l.paused = true;
+        const name = top.scientificName.toLowerCase();
+        const current: Found = { result, frame, crop };
+        const agrees = l.vote?.name === name;
+        const count = agrees ? l.vote!.count + 1 : 1;
+        const best =
+          agrees && l.vote!.best.result.candidates[0].finalConfidence >= top.finalConfidence
+            ? l.vote!.best
+            : current;
         setKind(getCategory(result.category).label);
-        setFound({ result, frame, crop });
-        setStatus('found');
+        if (count >= VOTES_NEEDED) {
+          l.vote = undefined;
+          l.paused = true;
+          setFound(best);
+          setStatus('found');
+        } else {
+          // First sighting of this species: check another frame before showing it.
+          l.vote = { name, count, best };
+          setGuess(displayName(top));
+          setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'confirming');
+        }
       } else {
+        l.vote = undefined;
         setGuess(undefined);
         setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'aim');
       }
@@ -258,7 +292,7 @@ export function LiveScreen() {
       setError(e instanceof ClientError ? e.message : 'Live identification failed.');
     } finally {
       l.busy = false;
-      l.nextAttemptAt = performance.now() + COOLDOWN_MS;
+      l.nextAttemptAt = performance.now() + (l.vote ? CONFIRM_COOLDOWN_MS : COOLDOWN_MS);
       l.stillSince = 0;
     }
   }, [current]);
@@ -369,7 +403,14 @@ export function LiveScreen() {
       }
       l.lastLuma = luma;
       if (motion < MOTION_THRESHOLD) l.stillSince ||= now;
-      else l.stillSince = 0;
+      else {
+        l.stillSince = 0;
+        // A big move means a different subject: start the vote again.
+        if (motion > MOTION_THRESHOLD * 3 && l.vote && !l.busy) {
+          l.vote = undefined;
+          setStatus((st) => (st === 'confirming' ? 'aim' : st));
+        }
+      }
 
       // 3. People are recognised on the device; no need to send them anywhere.
       if (l.focusIsPerson && !l.busy) {
@@ -380,7 +421,13 @@ export function LiveScreen() {
       if (l.busy || l.attempts >= MAX_ATTEMPTS || now < l.nextAttemptAt) return;
       const still = l.stillSince && now - l.stillSince;
       setStatus((s) =>
-        s === 'error' || s === 'exhausted' ? s : still ? 'steady' : s === 'person' ? 'aim' : s,
+        s === 'error' || s === 'exhausted' || s === 'confirming'
+          ? s
+          : still
+            ? 'steady'
+            : s === 'person'
+              ? 'aim'
+              : s,
       );
       if (still && still >= STILL_FOR_MS) void analyse();
     }, TICK_MS);
@@ -392,11 +439,12 @@ export function LiveScreen() {
     aim: 'Point at a plant, animal or mushroom',
     steady: 'Hold steady',
     analysing: guess ? `${guess}…` : kind ? `Looks like a ${kind.toLowerCase()}…` : 'Identifying…',
+    confirming: guess ? `${guess}? Checking again…` : 'Checking again…',
     person: 'That’s a person. Point at something wild',
     exhausted: 'Scan limit reached for this session',
     error: error ?? 'Something went wrong',
   };
-  const scanning = status === 'analysing';
+  const scanning = status === 'analysing' || status === 'confirming';
 
   return (
     <div

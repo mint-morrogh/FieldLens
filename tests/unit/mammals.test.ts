@@ -296,6 +296,34 @@ describe('follow-up questions', () => {
   });
 });
 
+describe('bird bill question', () => {
+  const bird = (id: string, scientificName: string, finalConfidence: number) =>
+    candidate({ id, scientificName, category: 'bird', finalConfidence });
+
+  it('separates a finch from a warbler by bill shape, from AVONET', () => {
+    const questions = buildQuestions('medium', [
+      bird('finch', 'Haemorhous mexicanus', 0.4),
+      bird('warbler', 'Setophaga petechia', 0.3),
+    ]);
+    const bill = questions.find((q) => q.id === 'bill')!;
+    expect(bill.source).toContain('AVONET');
+    expect(bill.fits.finch).toEqual(['cone']);
+    expect(bill.fits.warbler).toEqual(['thin']);
+  });
+
+  it('gives hawks and ducks their order-based shapes and long bills to waders', () => {
+    const questions = buildQuestions('medium', [
+      bird('hawk', 'Buteo jamaicensis', 0.3),
+      bird('duck', 'Anas platyrhynchos', 0.25),
+      bird('heron', 'Ardea herodias', 0.2),
+    ]);
+    const bill = questions.find((q) => q.id === 'bill')!;
+    expect(bill.fits.hawk).toContain('hooked');
+    expect(bill.fits.duck).toContain('flat');
+    expect(bill.fits.heron).toEqual(['long']);
+  });
+});
+
 describe('tree choice', () => {
   it('identifies trees as plants with Pl@ntNet, sending tree parts as organs', async () => {
     const result = await runIdentification(input('tree', 'bark'), {

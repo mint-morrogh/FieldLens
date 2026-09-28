@@ -20,6 +20,8 @@ export type EvidenceContext = {
   locationProvided: boolean;
   occurrenceStatus: SourceStatus;
   community?: CommunityObservationSummary;
+  /** Identified from a recording (Calls) rather than photos. */
+  call?: boolean;
 };
 
 const CLOSE_MARGIN = 0.15;
@@ -37,10 +39,11 @@ export function buildEvidence(ctx: EvidenceContext): {
   const [top, second] = ctx.candidates;
   if (!top) return { supports, uncertainties };
 
+  const model = ctx.call ? 'sound-model' : 'image-model';
   if (top.visualConfidence >= 0.7)
-    supports.push({ code: 'visual_strong', text: 'Strong image-model match' });
+    supports.push({ code: 'visual_strong', text: `Strong ${model} match` });
   else if (top.visualConfidence < 0.4)
-    uncertainties.push({ code: 'visual_weak', text: 'The image-model match is weak' });
+    uncertainties.push({ code: 'visual_weak', text: `The ${model} match is weak` });
 
   if (ctx.locationProvided) supports.push({ code: 'location_used', text: 'Location used' });
   else uncertainties.push({ code: 'location_not_used', text: 'Location not used' });
@@ -85,7 +88,9 @@ export function buildEvidence(ctx: EvidenceContext): {
     });
   }
 
-  if (ctx.imageCount > 1)
+  if (ctx.call) {
+    // One recording: the photo-count notes don't apply.
+  } else if (ctx.imageCount > 1)
     supports.push({ code: 'multiple_photos', text: `${ctx.imageCount} photos submitted` });
   else if (ctx.band !== 'high')
     uncertainties.push({ code: 'single_photo', text: 'Only one photo submitted' });

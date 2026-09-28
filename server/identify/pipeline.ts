@@ -24,8 +24,10 @@ import type {
 import { ApiError, UpstreamError } from '../lib/errors.js';
 import { settle } from '../lib/http.js';
 import { logger } from '../lib/logger.js';
+import { EBIRD_ATTRIBUTION, EBIRD_SOURCE } from '../providers/ebird/ebird.js';
 import { GBIF_ATTRIBUTION, GBIF_SOURCE } from '../providers/gbif/gbif.js';
-import { INAT_ATTRIBUTION } from '../providers/inaturalist/inaturalistProvider.js';
+import { RANGES_ATTRIBUTION, RANGES_SOURCE } from '../providers/ranges/ranges.js';
+import { INAT_ATTRIBUTION, INAT_SOURCE } from '../providers/inaturalist/inaturalistProvider.js';
 import { taxonLinks } from '../providers/plantnet/plantnetProvider.js';
 import type {
   CategoryDetectionResult,
@@ -52,6 +54,8 @@ export function withDeadline<T>(promise: Promise<T>, ms: number, service: string
 }
 
 const STAGE_MS = TIMEOUTS_MS.supporting + 1500;
+/** Flowering months are looked up for this many of the best visual matches. */
+const FLOWERING_CANDIDATES = 4;
 const MONTHS = [
   'January',
   'February',
@@ -202,7 +206,8 @@ export async function runIdentification(
 
   // 1. Resolve what to identify. "Not sure" asks a provider to detect the category first;
   //    groups ("bug", "animal") go to a provider that covers all their members.
-  let target: IdentifyTarget = input.category;
+  // Calls are always birds.
+  let target: IdentifyTarget = input.audio ? 'bird' : input.category;
   let detection: IdentifyResponse['categoryDetection'];
   // Tracks and droppings are always treated as mammal signs; no category detection needed.
   const sign = signFor(input);
@@ -251,7 +256,15 @@ export async function runIdentification(
     }
   }
 
-  const provider = providers.identification.find((p) => p.supports(target));
+  if (input.audio && !providers.audio) {
+    throw new ApiError(
+      'not_configured',
+      'Bird call identification isn’t set up on this server yet.',
+    );
+  }
+  const provider = input.audio
+    ? providers.audio
+    : providers.identification.find((p) => p.supports(target));
   if (!provider) {
     if (providers.identification.length === 0) {
       throw new ApiError('not_configured', 'Identification isn’t configured on this server yet.');
@@ -362,13 +375,21 @@ export async function runIdentification(
       confidenceBand: 'none',
       candidates: [],
       evidence: { supports: [], uncertainties: [] },
-      guidance: identification.categoryCheck
+      guidance: input.audio
         ? [
             {
-              message: `This photo doesn't look like ${requested.pluralNoun === 'fish' ? 'a fish' : `one of the ${requested.pluralNoun}`} we can identify.`,
+              message: identification.sound
+                ? `That sounded like ${identification.sound.toLowerCase()} rather than a bird. Try again when the bird is singing.`
+                : 'No bird call came through clearly. Get closer, keep still, and record about 10 seconds away from wind and traffic.',
             },
           ]
-        : [{ message: category.generalAdvice }],
+        : identification.categoryCheck
+          ? [
+              {
+                message: `This photo doesn't look like ${requested.pluralNoun === 'fish' ? 'a fish' : `one of the ${requested.pluralNoun}`} we can identify.`,
+              },
+            ]
+          : [{ message: category.generalAdvice }],
       attribution,
       sourceStatus: {
         identification: 'ok',
@@ -381,6 +402,7 @@ export async function runIdentification(
       categoryCheck: identification.categoryCheck,
       categoryDetection: detection,
       sign,
+      call: input.audio ? true : undefined,
       mock: providers.mock || undefined,
     };
   }
@@ -403,27 +425,90 @@ export async function runIdentification(
   if (input.location) {
     stage({ stage: 'occurrence', status: 'active' });
     const loc = input.location;
-    const occurrence = await Promise.all(
-      candidates.map((c) =>
-        c.taxonKeys.gbif
-          ? settle(
-              withDeadline(
-                providers.occurrence.getOccurrenceEvidence(toIdentity(c), loc, input.capturedAt),
-                STAGE_MS,
-                GBIF_SOURCE,
-              ),
-            )
-          : Promise.resolve(undefined),
+    // For a photo of a flower, when the species flowers here says more than when it's recorded.
+    const flowering = providers.flowering;
+    const floweringLookup = categoryId === 'plant' && features.includes('flower') && flowering;
+    const birds = providers.recentBirds && candidates.some((c) => c.category === 'bird');
+    const [occurrence, floweringMonths, recentBirds, ranges] = await Promise.all([
+      Promise.all(
+        candidates.map((c) =>
+          c.taxonKeys.gbif
+            ? settle(
+                withDeadline(
+                  providers.occurrence.getOccurrenceEvidence(toIdentity(c), loc, input.capturedAt),
+                  STAGE_MS,
+                  GBIF_SOURCE,
+                ),
+              )
+            : Promise.resolve(undefined),
+        ),
       ),
-    );
+      Promise.all(
+        candidates.map((c, i) =>
+          floweringLookup && i < FLOWERING_CANDIDATES
+            ? settle(
+                withDeadline(
+                  floweringLookup.getFloweringMonths(toIdentity(c), loc),
+                  STAGE_MS,
+                  INAT_SOURCE,
+                ),
+              ).then((r) => (r.ok ? r.value : undefined))
+            : Promise.resolve(undefined),
+        ),
+      ),
+      birds
+        ? settle(
+            withDeadline(providers.recentBirds!.getRecentBirds(loc), STAGE_MS, EBIRD_SOURCE),
+          ).then((r) => (r.ok ? r.value : undefined))
+        : Promise.resolve(undefined),
+      providers.ranges
+        ? settle(
+            withDeadline(
+              providers.ranges.getRangeStatus(
+                candidates.map((c) => c.scientificName),
+                loc,
+              ),
+              STAGE_MS,
+              RANGES_SOURCE,
+            ),
+          ).then((r) => (r.ok ? r.value : undefined))
+        : Promise.resolve(undefined),
+    ]);
+    if (recentBirds) attribution.push(EBIRD_ATTRIBUTION);
+    if (ranges?.size) attribution.push(RANGES_ATTRIBUTION);
     const attempted = occurrence.filter((o) => o !== undefined);
     occurrenceStatus = attempted.some((o) => o.ok) ? 'ok' : 'unavailable';
     if (occurrenceStatus === 'unavailable') logger.warn('identify.occurrence_unavailable');
     withOccurrence = candidates.map((c, i) => {
       const o = occurrence[i];
-      return o?.ok
-        ? { ...c, occurrence: o.value, source: { ...c.source, occurrence: [GBIF_SOURCE] } }
-        : c;
+      if (!o?.ok) return c;
+      const flowers = floweringMonths[i];
+      const recentlyReported =
+        recentBirds && c.category === 'bird'
+          ? recentBirds.scientificNames.has(c.scientificName.trim().toLowerCase()) ||
+            (c.commonNames ?? [c.commonName]).some(
+              (n) => !!n && recentBirds.commonNames.has(n.trim().toLowerCase()),
+            )
+          : undefined;
+      const range = ranges?.get(c.scientificName.trim().toLowerCase());
+      return {
+        ...c,
+        occurrence: {
+          ...o.value,
+          ...(range && { range }),
+          ...(flowers && { floweringMonthCounts: flowers }),
+          ...(recentlyReported !== undefined && { recentlyReported }),
+        },
+        source: {
+          ...c.source,
+          occurrence: [
+            GBIF_SOURCE,
+            ...(flowers ? [INAT_SOURCE] : []),
+            ...(recentlyReported !== undefined ? [EBIRD_SOURCE] : []),
+            ...(range ? [RANGES_SOURCE] : []),
+          ],
+        },
+      };
     });
     stage({ stage: 'occurrence', status: occurrenceStatus === 'ok' ? 'done' : 'skipped' });
   }
@@ -643,6 +728,7 @@ export async function runIdentification(
     locationProvided,
     occurrenceStatus,
     community,
+    call: !!input.audio,
   });
 
   logger.info('identify.done', {
@@ -672,7 +758,16 @@ export async function runIdentification(
     community,
     nearbySpecies,
     evidence,
-    guidance: buildGuidance({ category: categoryId, band, features, sign }),
+    guidance: input.audio
+      ? band === 'high'
+        ? []
+        : [
+            {
+              message:
+                'A longer, closer recording helps. If you can see the bird, a photo can confirm it.',
+            },
+          ]
+      : buildGuidance({ category: categoryId, band, features, sign }),
     attribution,
     sourceStatus: {
       identification: 'ok',
@@ -684,6 +779,7 @@ export async function runIdentification(
     experimental: identification.experimental || undefined,
     categoryCheck: identification.categoryCheck,
     categoryDetection: detection,
+    call: input.audio ? true : undefined,
     mock: providers.mock || undefined,
   };
 }

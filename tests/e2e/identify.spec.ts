@@ -198,7 +198,9 @@ test('photo first: "What is it?" is optional on the crop screen and starts on Au
   page,
 }) => {
   await page.goto('/?mock=high');
-  await expect(page.getByTestId('viewfinder')).toContainText('Take a photo');
+  await expect(page.getByTestId('viewfinder')).toContainText('Live identify');
+  await expect(page.getByRole('button', { name: 'Take a photo' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Upload photo' })).toBeVisible();
   await choosePhoto(page);
   const row = page.getByTestId('crop-category');
   await expect(row.getByRole('button', { name: 'Auto', exact: true })).toHaveAttribute(

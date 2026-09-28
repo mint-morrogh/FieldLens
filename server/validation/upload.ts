@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { DEFAULT_CATEGORY, isIdentifyTarget, isValidFeature } from '../../shared/categories.js';
-import { UPLOAD } from '../../shared/config.js';
+import { AUDIO, UPLOAD } from '../../shared/config.js';
 import { isValidLatLng, toApproxLocation } from '../../shared/geo.js';
 import type { IdentifyTarget } from '../../shared/types.js';
 import { ApiError } from '../lib/errors.js';
-import type { IdentificationInput, InputImage } from '../providers/types.js';
+import type { IdentificationInput, InputAudio, InputImage } from '../providers/types.js';
 
 type Limits = typeof UPLOAD;
 
@@ -126,6 +126,40 @@ export function assertContentLength(request: Request, limits: Limits = UPLOAD): 
   }
 }
 
+/** Duration in seconds of a mono 16-bit PCM WAV at the expected rate, or undefined if it isn't one. */
+export function wavSeconds(
+  data: Uint8Array,
+  sampleRate: number = AUDIO.sampleRate,
+): number | undefined {
+  if (data.length < 44) return undefined;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const tag = (offset: number) => String.fromCharCode(...data.subarray(offset, offset + 4));
+  if (tag(0) !== 'RIFF' || tag(8) !== 'WAVE' || tag(12) !== 'fmt ' || tag(36) !== 'data')
+    return undefined;
+  const pcm = view.getUint16(20, true) === 1;
+  const mono = view.getUint16(22, true) === 1;
+  const bits = view.getUint16(34, true);
+  if (!pcm || !mono || bits !== 16 || view.getUint32(24, true) !== sampleRate) return undefined;
+  const bytes = Math.min(view.getUint32(40, true), data.length - 44);
+  return bytes / 2 / sampleRate;
+}
+
+async function parseAudio(form: FormData): Promise<InputAudio | undefined> {
+  const file = form.get('audio');
+  if (!file || typeof file === 'string') return undefined;
+  // 16-bit mono: 2 bytes per sample, plus the 44-byte header.
+  if (file.size > 44 + AUDIO.maxSeconds * AUDIO.sampleRate * 2 + 1024) {
+    throw new ApiError('invalid_file', `Recordings can be up to ${AUDIO.maxSeconds} seconds.`);
+  }
+  const data = new Uint8Array(await file.arrayBuffer());
+  const seconds = wavSeconds(data);
+  if (seconds === undefined) throw new ApiError('invalid_file', 'That recording couldn’t be read.');
+  if (seconds < AUDIO.minSeconds - 0.25) {
+    throw new ApiError('invalid_file', `Record at least ${AUDIO.minSeconds} seconds.`);
+  }
+  return { data, mimeType: 'audio/wav', seconds };
+}
+
 export async function parseIdentifyForm(
   form: FormData,
   limits: Limits = UPLOAD,
@@ -146,7 +180,8 @@ export async function parseIdentifyForm(
 
   const files = form.getAll('images').filter((v): v is File => typeof v !== 'string');
   const features = form.getAll('features').map((v) => (typeof v === 'string' ? v : 'auto'));
-  if (files.length === 0)
+  const audio = await parseAudio(form);
+  if (files.length === 0 && !audio)
     throw new ApiError('invalid_request', 'Please include at least one photo.');
   if (files.length > limits.maxImages) {
     throw new ApiError(
@@ -216,5 +251,6 @@ export async function parseIdentifyForm(
     locationSource: location ? (fields.locationSource ?? 'device') : undefined,
     capturedAt,
     mockScenario: fields.mockScenario,
+    ...(audio && { audio }),
   };
 }

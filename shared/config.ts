@@ -20,6 +20,19 @@ export const RANKING = {
   seasonMinRecords: 12,
   /** Window (± months) around the capture month that counts as "in season". */
   seasonWindowMonths: 1,
+  /**
+   * Birds with eBird data: whether the species was reported nearby in the last month is
+   * sharper seasonal evidence (migrants come and go within weeks), so it weighs more.
+   */
+  weightsWithRecentSightings: { visual: 0.8, geo: 0.1, season: 0.1 },
+  /**
+   * Multiplier from the species' modelled range: in range or no map → 1. Plants are
+   * penalised less because gardens and houseplants grow far outside native ranges.
+   */
+  rangeFactors: {
+    animal: { in: 1, near: 0.92, out: 0.75 },
+    plant: { in: 1, near: 0.97, out: 0.9 },
+  },
 } as const;
 
 export const CONFIDENCE_BANDS = {
@@ -46,6 +59,13 @@ export const UPLOAD = {
   maxDimension: 4096,
   minDimension: 64,
   acceptedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'] as const,
+} as const;
+
+/** Calls: short mono 16-bit WAV clips at BirdNET's sample rate, decoded on the device. */
+export const AUDIO = {
+  sampleRate: 48_000,
+  minSeconds: 3,
+  maxSeconds: 15,
 } as const;
 
 export const CLIENT_IMAGE = {

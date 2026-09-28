@@ -13,8 +13,11 @@ import {
   INaturalistObservationProvider,
   INaturalistTaxonPhotosProvider,
 } from './inaturalist/inaturalistProvider.js';
+import { BirdnetCallProvider } from './birdnet/birdnet.js';
+import { EbirdRecentProvider } from './ebird/ebird.js';
 import { isMockScenario } from './mock/fixtures.js';
 import { createMockProviders } from './mock/mockProviders.js';
+import { HuggingFaceRangeProvider } from './ranges/ranges.js';
 import { PlantNetIdentificationProvider } from './plantnet/plantnetProvider.js';
 import { WikipediaSafetyProvider } from '../safety/safety.js';
 import type { IdentificationProvider, ProviderSet } from './types.js';
@@ -63,6 +66,16 @@ export function createLiveProviders(env: ServerEnv, fetchImpl: typeof fetch = fe
     community: inat,
     safety: new WikipediaSafetyProvider(undefined, fetchImpl),
     signCandidates: inat,
+    flowering: inat,
+    audio:
+      env.hfToken && env.bioclipSpaceUrl
+        ? new BirdnetCallProvider(env.bioclipSpaceUrl, env.hfToken, fetchImpl)
+        : undefined,
+    ranges:
+      env.hfToken && env.rangesDataset
+        ? new HuggingFaceRangeProvider(env.rangesDataset, env.hfToken, fetchImpl)
+        : undefined,
+    recentBirds: env.ebirdApiKey ? new EbirdRecentProvider(env.ebirdApiKey) : undefined,
     mock: false,
   };
 }

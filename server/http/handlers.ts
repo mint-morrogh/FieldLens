@@ -7,6 +7,7 @@ import { logger } from '../lib/logger.js';
 import { RateLimiter, clientIdFromRequest } from '../lib/rateLimit.js';
 import { canAutoDetect, getProviders, supportedCategories } from '../providers/registry.js';
 import type { IdentificationInput, ProviderSet } from '../providers/types.js';
+import { getUsage } from '../usage/usage.js';
 import { assertContentLength, parseIdentifyForm } from '../validation/upload.js';
 
 const JSON_HEADERS = {
@@ -167,4 +168,10 @@ export function handleHealth(options: { env?: ServerEnv } = {}): Response {
     autoDetect: canAutoDetect(env),
   };
   return json(body);
+}
+
+/** Today's free-quota usage for the Settings page. Never exposes the API key. */
+export async function handleUsage(options: { env?: ServerEnv } = {}): Promise<Response> {
+  const env = options.env ?? readEnv();
+  return json(await getUsage(env), 200, { 'Cache-Control': 'no-store' });
 }

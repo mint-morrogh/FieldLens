@@ -164,7 +164,7 @@ export function LocationReadout() {
       : 'No location';
   return (
     <span
-      className="readout flex min-h-11 items-center gap-2 text-[0.72rem] text-ink-muted"
+      className="readout flex min-h-11 items-center gap-1.5 whitespace-nowrap text-[0.68rem] text-ink-muted"
       data-testid="viewfinder-readout"
       aria-label={on ? `Approximate location ${text}` : text}
     >
@@ -178,12 +178,12 @@ export function LocationReadout() {
  * The hero: a field viewfinder. The whole panel is the camera button, framed by the
  * same reticle and grid as the crop and analysis screens.
  */
-function Viewfinder({ onCapture }: { onCapture: () => void }) {
+function Viewfinder({ onOpen }: { onOpen: () => void }) {
   return (
     <button
       type="button"
-      onClick={onCapture}
-      aria-label="Take a Photo"
+      onClick={onOpen}
+      aria-label="Live identify"
       className="group relative isolate block w-full overflow-hidden rounded-[1.75rem] bg-toast text-left text-white shadow-[0_18px_40px_-18px_rgba(17,20,15,0.6)] ring-1 ring-white/5 transition-transform duration-200 active:scale-[0.99]"
       data-testid="viewfinder"
     >
@@ -211,10 +211,10 @@ function Viewfinder({ onCapture }: { onCapture: () => void }) {
           <span className="absolute inset-0 rounded-full border border-[#9fd08a]/20" />
           <span className="shutter-arc absolute inset-0 rounded-full" />
           <span className="shutter-button relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full text-[#10180f] transition-transform duration-200 ease-out group-hover:scale-105 group-active:scale-90">
-            <Icon name="camera" className="h-8 w-8" />
+            <Icon name="scan" className="h-8 w-8" />
           </span>
         </span>
-        <span className="mt-4 text-xl font-bold tracking-tight">Take a photo</span>
+        <span className="mt-4 text-xl font-bold tracking-tight">Live identify</span>
       </div>
     </button>
   );
@@ -250,22 +250,26 @@ export function HomeScreen() {
       {health?.mock && <DemoModePanel />}
 
       <div className="flex flex-col gap-3">
-        <Viewfinder onCapture={camera.open} />
+        {/* Live identify first, then a single photo, then photos already on the phone. */}
+        <Viewfinder onOpen={() => navigate({ name: 'live' })} />
+        <Button size="lg" className="min-h-14 text-lg" onClick={camera.open}>
+          <Icon name="camera" className="h-6 w-6" /> Take a photo
+        </Button>
         <div className="grid grid-cols-2 gap-3">
-          <Button
-            variant="secondary"
-            className="min-h-13 whitespace-nowrap !px-3 text-base"
-            onClick={() => navigate({ name: 'live' })}
-            data-testid="live-button"
-          >
-            <Icon name="scan" className="h-5 w-5" /> Live identify
-          </Button>
           <Button
             variant="secondary"
             className="min-h-13 whitespace-nowrap !px-3 text-base"
             onClick={picker.open}
           >
-            <Icon name="image" className="h-5 w-5" /> Choose photo
+            <Icon name="image" className="h-5 w-5" /> Upload photo
+          </Button>
+          <Button
+            variant="secondary"
+            className="min-h-13 whitespace-nowrap !px-3 text-base"
+            onClick={() => navigate({ name: 'listen' })}
+            data-testid="listen-button-home"
+          >
+            <Icon name="mic" className="h-5 w-5" /> Bird calls
           </Button>
         </div>
         {camera.input}
