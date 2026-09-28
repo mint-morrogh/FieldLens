@@ -438,17 +438,20 @@ export function WhereRecorded({
   info,
   userLocation,
   title,
+  uncertain = false,
 }: {
   info?: SpeciesInfo;
   userLocation?: ApproxLocation;
   title: string;
+  /** Low-confidence result: name the species the map is about. */
+  uncertain?: boolean;
 }) {
   const distribution = info?.distribution;
   if (!distribution || distribution.countries.length === 0) return null;
   return (
     <Card aria-labelledby="where-title" data-testid="where-recorded">
       <SectionTitle id="where-title" eyebrow="GBIF records">
-        Where it’s been recorded
+        {uncertain ? `Where ${title} has been recorded` : 'Where it’s been recorded'}
       </SectionTitle>
       <Suspense
         fallback={

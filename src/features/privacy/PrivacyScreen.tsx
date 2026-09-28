@@ -16,8 +16,13 @@ export function PrivacyScreen() {
           <li>
             When you ask for an identification, the cropped photo is sent to an identification
             provider: Pl@ntNet for plants, and FieldLens’s own BioCLIP 2 service (hosted on Hugging
-            Face) for insects, spiders, fungi and birds. Photo metadata such as camera details and
-            GPS tags is removed first.
+            Face) for everything else. Photo metadata such as camera details and GPS tags is removed
+            first.
+          </li>
+          <li>
+            Live identify analyses the camera view on your device (Google’s MediaPipe detector,
+            downloaded when you first open it). Video never leaves your phone: only a few still
+            frames, cropped to the box, are sent for identification, the same way as photos.
           </li>
           <li>
             Location is optional. If you allow it, an approximate position (rounded to about 1 km)

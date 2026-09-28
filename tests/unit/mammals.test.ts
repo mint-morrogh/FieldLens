@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { isValidFeature } from '../../shared/categories';
 import { identifyResponseSchema } from '../../shared/schemas';
 import { SIGNS } from '../../shared/config';
-import type { OrganismCandidate } from '../../shared/types';
+import { NOT_SURE, applyAnswers, contradicts } from '../../shared/questions';
+import type { IdentifyResponse, OrganismCandidate } from '../../shared/types';
+import { buildQuestions } from '../../server/facts/questions';
 import {
   formatActivity,
   formatDiet,
@@ -234,5 +236,62 @@ describe('photos of people', () => {
     expect(result.person).toBe(true);
     expect(result.candidates).toEqual([]);
     expect((await provider.detectCategory(input('auto'))).person).toBe(true);
+  });
+});
+
+describe('follow-up questions', () => {
+  const fox = candidate({
+    id: 'fox',
+    scientificName: 'Vulpes vulpes',
+    genus: 'Vulpes',
+    family: 'Canidae',
+    finalConfidence: 0.5,
+  });
+  const chipmunk = candidate({
+    id: 'chip',
+    scientificName: 'Tamias striatus',
+    genus: 'Tamias',
+    family: 'Sciuridae',
+    finalConfidence: 0.3,
+  });
+  const moose = candidate({
+    id: 'moose',
+    scientificName: 'Alces alces',
+    genus: 'Alces',
+    family: 'Cervidae',
+    finalConfidence: 0.1,
+  });
+
+  it('asks about size only when the likely matches differ, from sourced traits', () => {
+    const questions = buildQuestions('medium', [fox, chipmunk, moose]);
+    const size = questions.find((q) => q.id === 'size')!;
+    expect(size.fits.fox).toContain('m');
+    expect(size.fits.chip).toContain('s');
+    expect(size.fits.moose).toContain('xl');
+    expect(size.source).toContain('EltonTraits');
+    expect(buildQuestions('high', [fox, chipmunk])).toEqual([]);
+    // Two foxes can't be told apart by size: no question.
+    expect(buildQuestions('medium', [fox, { ...fox, id: 'fox2' }])).toEqual([]);
+    // Not torn: the runner-up is far behind, so nothing to ask.
+    expect(buildQuestions('medium', [fox, { ...chipmunk, finalConfidence: 0.08 }])).toEqual([]);
+  });
+
+  it('re-ranks without ever boosting, and "Not sure" changes nothing', () => {
+    const base = {
+      requestId: 'r',
+      category: 'mammal',
+      confidenceBand: 'medium',
+      candidates: [fox, chipmunk, moose],
+      questions: buildQuestions('medium', [fox, chipmunk, moose]),
+      speciesInfo: { scientificName: 'Vulpes vulpes' },
+    } as unknown as IdentifyResponse;
+    expect(applyAnswers(base, { size: NOT_SURE })).toBe(base);
+    const small = applyAnswers(base, { size: 's' });
+    expect(small.candidates[0].id).toBe('chip');
+    expect(small.candidates[0].finalConfidence).toBe(0.3);
+    expect(small.confidenceBand).toBe('low');
+    // Facts describe the old top match, so they're dropped when the top changes.
+    expect(small.speciesInfo).toBeUndefined();
+    expect(contradicts(fox, base.questions!, { size: 's' })).toBe(true);
   });
 });

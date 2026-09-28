@@ -140,7 +140,7 @@ function SpecimenBackdrop() {
           alt=""
           loading={i === 0 ? 'eager' : 'lazy'}
           decoding="async"
-          className={`specimen absolute inset-0 h-full w-full object-cover transition-opacity duration-[1600ms] ease-in-out ${
+          className={`specimen absolute inset-0 h-full w-full object-cover ${
             i === index ? 'specimen-active opacity-45' : 'opacity-0'
           }`}
         />
@@ -251,9 +251,19 @@ export function HomeScreen() {
 
       <div className="flex flex-col gap-3">
         <Viewfinder onCapture={camera.open} />
-        <Button variant="secondary" className="min-h-13 text-base" onClick={picker.open}>
-          <Icon name="image" className="h-5 w-5" /> Choose Existing Photo
-        </Button>
+        <div className="grid grid-cols-2 gap-3">
+          <Button
+            variant="secondary"
+            className="min-h-13 text-base"
+            onClick={() => navigate({ name: 'live' })}
+            data-testid="live-button"
+          >
+            <Icon name="scan" className="h-5 w-5" /> Live identify
+          </Button>
+          <Button variant="secondary" className="min-h-13 text-base" onClick={picker.open}>
+            <Icon name="image" className="h-5 w-5" /> Choose photo
+          </Button>
+        </div>
         {camera.input}
         {picker.input}
         {(camera.error ?? picker.error) && (

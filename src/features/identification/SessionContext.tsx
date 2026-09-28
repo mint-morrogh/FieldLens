@@ -87,7 +87,8 @@ type Action =
   | { type: 'submitting'; phase: Progress['phase']; fraction: number; restart?: boolean }
   | { type: 'stage'; event: StageEvent }
   | { type: 'result'; result: IdentifyResponse }
-  | { type: 'error'; error: ClientError };
+  | { type: 'error'; error: ClientError }
+  | { type: 'adopt'; image: SessionImage; result: IdentifyResponse; capturedAt: Date };
 
 function freshState(category: IdentifyTarget): SessionState {
   return {
@@ -172,11 +173,24 @@ export function sessionReducer(state: SessionState, action: Action): SessionStat
       };
     case 'error':
       return { ...state, step: 'error', error: action.error };
+    case 'adopt':
+      // A live-camera identification: the frame becomes the session's first photo.
+      return {
+        ...freshState('auto'),
+        step: 'result',
+        images: [action.image],
+        capturedAt: action.capturedAt,
+        photoSource: 'camera',
+        locationChoice: 'here',
+        result: action.result,
+      };
   }
 }
 
 type SessionApi = {
   state: SessionState;
+  /** Show a result identified from the live camera, as if it came from a photo. */
+  adoptResult: (image: SessionImage, result: IdentifyResponse, capturedAt: Date) => void;
   setCategory: (category: IdentifyTarget) => void;
   /** Start a fresh session with a newly taken or chosen photo. */
   startWithPhoto: (blob: Blob, source?: PhotoSource) => void;
@@ -204,6 +218,31 @@ const RECENT_PHOTO_MS = 3 * 60 * 60 * 1000;
 const RESULT_REVEAL_DELAY_MS = import.meta.env.MODE === 'test' ? 0 : 450;
 
 const SessionContext = createContext<SessionApi | null>(null);
+
+/**
+ * Save locally (thumbnail + result, never coordinates). Saved straight away so leaving the
+ * app quickly can't lose it, then updated with a thumbnail and a high-quality copy.
+ * Failure here must never affect the result.
+ */
+function saveToHistory(
+  observationId: string,
+  result: IdentifyResponse,
+  first: SessionImage | undefined,
+  capturedAt: Date,
+) {
+  if (result.candidates.length === 0 || !first) return;
+  void saveObservation(toRecord(observationId, result, undefined, capturedAt))
+    .then(() =>
+      Promise.all([
+        makeThumbnail(first.blob).catch(() => undefined),
+        makeDisplayCopy(first.original?.blob ?? first.blob).catch(() => undefined),
+      ]),
+    )
+    .then(([thumb, photo]) =>
+      saveObservation(toRecord(observationId, result, thumb, capturedAt, photo)),
+    )
+    .catch(() => undefined);
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   // Snap first: with nothing picked, the server works out what the photo shows.
@@ -295,23 +334,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Let the final checklist tick register before swapping to the result.
         await new Promise((r) => setTimeout(r, RESULT_REVEAL_DELAY_MS));
         dispatch({ type: 'result', result });
-        // Save locally (thumbnail + result, never coordinates). Failure here must not affect the result.
-        if (result.candidates.length > 0) {
-          const first = s.images[0];
-          // Save the result straight away (so leaving the app quickly can't lose it), then
-          // add the thumbnail and a high-quality copy once they're encoded.
-          void saveObservation(toRecord(s.observationId, result, undefined, s.capturedAt))
-            .then(() =>
-              Promise.all([
-                makeThumbnail(first.blob).catch(() => undefined),
-                makeDisplayCopy(first.original?.blob ?? first.blob).catch(() => undefined),
-              ]),
-            )
-            .then(([thumb, photo]) =>
-              saveObservation(toRecord(s.observationId, result, thumb, s.capturedAt, photo)),
-            )
-            .catch(() => undefined);
-        }
+        saveToHistory(s.observationId, result, s.images[0], s.capturedAt);
       } catch (error) {
         dispatch({
           type: 'error',
@@ -351,9 +374,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [submit],
   );
 
+  const adoptResult = useCallback(
+    (image: SessionImage, result: IdentifyResponse, capturedAt: Date) => {
+      dispatch({ type: 'adopt', image, result, capturedAt });
+      saveToHistory(result.requestId, result, image, capturedAt);
+    },
+    [],
+  );
+
   const api = useMemo<SessionApi>(
     () => ({
       state,
+      adoptResult,
       setCategory: (category) => dispatch({ type: 'setCategory', category }),
       startWithPhoto: (blob, source = 'camera') => {
         // Each new photo starts on Auto; "What is it?" is chosen on the crop screen.
@@ -375,7 +407,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       reset: () => dispatch({ type: 'reset', category: stateRef.current.category }),
       canAddMore: state.images.length < UPLOAD.maxImages,
     }),
-    [state, confirmCrop, submit],
+    [state, confirmCrop, submit, adoptResult],
   );
 
   return <SessionContext.Provider value={api}>{children}</SessionContext.Provider>;

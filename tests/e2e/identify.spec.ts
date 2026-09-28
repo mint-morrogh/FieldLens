@@ -238,6 +238,18 @@ test('recent identifications can be deleted from the home screen and restored', 
   await expect(page.getByTestId('recent-card')).toHaveCount(0);
   await page.getByTestId('undo-delete').getByRole('button', { name: 'Undo' }).click();
   await expect(page.getByTestId('recent-card')).toHaveCount(1);
+  // Undo really kept it: it survives a reload.
+  await page.reload();
+  await expect(page.getByTestId('recent-card')).toHaveCount(1);
+  // Without undo, it's gone for good once the toast times out.
+  await page
+    .getByTestId('recent-card')
+    .first()
+    .getByRole('button', { name: /Delete/ })
+    .click();
+  await expect(page.getByTestId('undo-delete')).toHaveCount(0, { timeout: 8000 });
+  await page.reload();
+  await expect(page.getByTestId('recent-card')).toHaveCount(0);
 });
 
 test('insects are identified with an experimental label', async ({ page }) => {

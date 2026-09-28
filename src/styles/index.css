@@ -201,94 +201,111 @@
 .fade-up {
   animation: fade-up 0.35s ease-out both;
 }
-/* Analysis: what the classifier does, phase by phase (see ClassifierVisual). */
+/* Analysis: the model's view of the photo (see ClassifierVisual). */
 .classifier-photo {
-  transition:
-    filter 1.4s ease,
-    transform 5s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition: filter 1s ease;
 }
 [data-phase='load'] .classifier-photo {
-  filter: blur(6px) brightness(0.7);
-  transform: scale(1.12);
+  filter: blur(4px) brightness(0.6);
 }
 [data-phase='scan'] .classifier-photo {
-  filter: grayscale(1) contrast(1.65) brightness(0.9);
-  transform: scale(1.08);
+  filter: brightness(0.62) saturate(0.7);
 }
 [data-phase='refine'] .classifier-photo {
-  filter: grayscale(0.35) contrast(1.15) saturate(0.9);
-  transform: scale(1.03);
+  filter: brightness(0.85);
 }
-[data-phase='done'] .classifier-photo {
-  filter: none;
-  transform: scale(1);
-}
-.classifier .scan-grid,
-.classifier-patches,
-.classifier-sweep,
-.classifier-loupe {
+.classifier-grid {
+  background-image:
+    linear-gradient(to right, rgba(214, 245, 199, 0.22) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(214, 245, 199, 0.22) 1px, transparent 1px);
   transition: opacity 0.8s ease;
 }
-[data-phase='refine'] .classifier-patches,
-[data-phase='done'] .classifier-patches,
-[data-phase='done'] .classifier-sweep,
-[data-phase='done'] .scan-grid {
+[data-phase='done'] .classifier-grid {
   opacity: 0;
 }
-.patch {
-  border: 1px solid transparent;
-  animation: patch-flash 2.6s ease-in-out infinite;
+/* Patches read left-to-right, top-to-bottom, as the transformer's token sequence. */
+.token {
+  animation: token 2.6s linear infinite;
 }
-@keyframes patch-flash {
-  0%,
-  62%,
+@keyframes token {
+  0% {
+    background: rgba(159, 208, 138, 0.55);
+  }
+  6%,
   100% {
-    background: transparent;
-    border-color: transparent;
-  }
-  74% {
-    background: rgba(159, 208, 138, 0.28);
-    border-color: rgba(214, 245, 199, 0.55);
+    background: rgba(159, 208, 138, 0);
   }
 }
-.classifier-loupe {
+.step-live {
+  animation: step-live 1.4s ease-in-out infinite;
+}
+@keyframes step-live {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Live identify: the focus box follows the subject smoothly. */
+.live-box {
   border: 2px solid #d6f5c7;
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.4),
-    0 0 24px rgba(159, 208, 138, 0.45);
+    0 0 0 9999px rgba(0, 0, 0, 0.28),
+    0 0 18px rgba(159, 208, 138, 0.5);
   transition:
-    left 0.7s cubic-bezier(0.65, 0, 0.35, 1),
-    top 0.7s cubic-bezier(0.65, 0, 0.35, 1),
-    opacity 0.8s ease;
+    left 0.15s linear,
+    top 0.15s linear,
+    width 0.15s linear,
+    height 0.15s linear,
+    border-color 0.3s ease;
 }
-.classifier-loupe img {
-  filter: contrast(1.2) saturate(1.2);
+.live-box-confirmed {
+  border-color: #9fd08a;
+  border-width: 3px;
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.45),
+    0 0 0 6px rgba(159, 208, 138, 0.35);
 }
-[data-phase='refine'] .classifier-loupe {
-  opacity: 0.6;
+.live-box-scan {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background: linear-gradient(
+    to bottom,
+    transparent 45%,
+    rgba(214, 245, 199, 0.45) 50%,
+    transparent 55%
+  );
+  background-size: 100% 200%;
+  animation: live-scan 1.2s linear infinite;
 }
-[data-phase='done'] .classifier-loupe {
-  opacity: 0;
-}
-.classifier-sweep {
-  animation-duration: 1.8s;
+@keyframes live-scan {
+  from {
+    background-position: 0 100%;
+  }
+  to {
+    background-position: 0 -100%;
+  }
 }
 
 /* Home viewfinder: instrument-style readouts. */
 .specimen {
   filter: saturate(0.85);
   transform: scale(1.04);
+  /* Fade out first; only reset the zoom once the photo is invisible. */
+  transition:
+    opacity 1.6s ease-in-out,
+    transform 0s linear 1.7s;
 }
 .specimen-active {
-  animation: specimen-drift 6.5s ease-out both;
-}
-@keyframes specimen-drift {
-  from {
-    transform: scale(1.04);
-  }
-  to {
-    transform: scale(1.14);
-  }
+  transform: scale(1.14);
+  transition:
+    opacity 1.6s ease-in-out,
+    transform 7s linear;
 }
 .shutter-button {
   background: radial-gradient(circle at 35% 28%, #d4f0c6 0%, #9fd08a 52%, #7cb76a 100%);
@@ -353,9 +370,10 @@
   animation: live-dot 2.4s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .patch,
+  .token,
+  .step-live,
   .classifier-photo,
-  .classifier-loupe,
+  .specimen,
   .specimen-active,
   .shutter-arc,
   .shutter-ripple,
@@ -367,5 +385,10 @@
   }
   .scan-line {
     display: none;
+  }
+  .specimen,
+  .specimen-active {
+    transition: none;
+    transform: none;
   }
 }

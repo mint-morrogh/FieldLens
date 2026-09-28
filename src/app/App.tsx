@@ -5,6 +5,7 @@ import { BRAND } from '../config/brand';
 import { HistoryScreen, ObservationScreen } from '../features/history/HistoryScreen';
 import { HomeScreen, LocationReadout } from '../features/identification/HomeScreen';
 import { IdentifyScreen } from '../features/identification/IdentifyScreen';
+import { LiveScreen } from '../features/live/LiveScreen';
 import { SessionProvider } from '../features/identification/SessionContext';
 import { LocationProvider } from '../features/location/LocationContext';
 import { PrivacyScreen } from '../features/privacy/PrivacyScreen';
@@ -34,6 +35,8 @@ function NavLink({
 
 function Screen({ route }: { route: Route }) {
   switch (route.name) {
+    case 'live':
+      return <LiveScreen />;
     case 'identify':
       return <IdentifyScreen />;
     case 'history':

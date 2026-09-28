@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { getCategory, getTarget } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
 import { CANDIDATES } from '../../../shared/config';
+import { NOT_SURE, applyAnswers, contradicts, type Answers } from '../../../shared/questions';
 import type {
   FeatureId,
+  FollowUpQuestion,
   GroupSummary,
   IdentifyResponse,
   IdentifyTarget,
@@ -11,7 +13,7 @@ import type {
   OrganismCategory,
 } from '../../../shared/types';
 import { Icon } from '../../components/Icon';
-import { Button, Card, Notice, SectionTitle } from '../../components/ui';
+import { Button, Card, ExternalLink, Notice, SectionTitle } from '../../components/ui';
 import { displayName } from '../../lib/format';
 import { ConfidenceMeter } from './ConfidenceMeter';
 import { CandidateThumb, Lightbox, ReferenceGallery, mergeImages } from './Gallery';
@@ -375,8 +377,67 @@ function ImproveIdentification({
   );
 }
 
+/** Optional multiple-choice questions that can separate the likely matches. */
+function FollowUpQuestions({
+  questions,
+  answers,
+  onAnswer,
+  ruledOut,
+}: {
+  questions: FollowUpQuestion[];
+  answers: Answers;
+  onAnswer: (id: FollowUpQuestion['id'], option: string) => void;
+  ruledOut: string[];
+}) {
+  return (
+    <Card aria-labelledby="questions-title" data-testid="follow-up-questions">
+      <SectionTitle id="questions-title" eyebrow="Optional">
+        Help narrow it down
+      </SectionTitle>
+      <div className="space-y-4">
+        {questions.map((q) => (
+          <fieldset key={q.id} className="min-w-0">
+            <legend className="mb-2 font-semibold">{q.prompt}</legend>
+            <div className="flex flex-wrap gap-2">
+              {[...q.options, { id: NOT_SURE, label: 'Not sure' }].map((o) => {
+                const selected = answers[q.id] === o.id;
+                return (
+                  <button
+                    key={o.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => onAnswer(q.id, o.id)}
+                    className={`min-h-10 rounded-full border px-3.5 text-[0.95rem] font-medium transition-colors ${
+                      selected
+                        ? 'border-moss bg-moss text-on-accent'
+                        : 'border-line bg-card text-ink hover:bg-moss-soft'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        ))}
+      </div>
+      {ruledOut.length > 0 && (
+        <p className="mt-4 text-[0.95rem] text-ink-soft" data-testid="ruled-out" role="status">
+          Less likely from your answers: {ruledOut.join(', ')}
+        </p>
+      )}
+      <p className="mt-3 text-xs text-ink-muted">
+        Compared with typical size and activity from{' '}
+        <ExternalLink href={questions[0].sourceUrl} className="!font-normal">
+          {questions[0].source}
+        </ExternalLink>
+      </p>
+    </Card>
+  );
+}
+
 export function ResultView({
-  result,
+  result: original,
   photoUrl,
   thumbnailUrl,
   userPhotos,
@@ -394,6 +455,17 @@ export function ResultView({
   /** Re-run the same photos as another category (offered when the photo doesn't match). */
   onSwitchCategory?: (category: OrganismCategory) => void;
 }) {
+  // Answers belong to one result; a new result starts with none.
+  const [answered, setAnswered] = useState<{ id: string; answers: Answers }>({
+    id: original.requestId,
+    answers: {},
+  });
+  const answers = answered.id === original.requestId ? answered.answers : {};
+  const result = applyAnswers(original, answers);
+  const questions = original.questions ?? [];
+  const ruledOut = original.candidates
+    .filter((c) => contradicts(c, questions, answers))
+    .map((c) => displayName(c));
   const category = getCategory(result.category);
   const [top, ...rest] = result.candidates;
   const band = result.confidenceBand;
@@ -463,6 +535,17 @@ export function ResultView({
         </Notice>
       )}
 
+      {questions.length > 0 && original.confidenceBand !== 'high' && (
+        <FollowUpQuestions
+          questions={questions}
+          answers={answers}
+          ruledOut={ruledOut}
+          onAnswer={(id, option) =>
+            setAnswered({ id: original.requestId, answers: { ...answers, [id]: option } })
+          }
+        />
+      )}
+
       {improve && band !== 'high' && <ImproveIdentification result={result} improve={improve} />}
 
       {top && result.safety && (
@@ -482,11 +565,12 @@ export function ResultView({
         <SpeciesFacts info={result.speciesInfo} status={result.sourceStatus.speciesInfo} />
       )}
 
-      {top && band !== 'low' && (
+      {top && (
         <WhereRecorded
           info={result.speciesInfo}
           userLocation={result.location.approx}
           title={displayName(top)}
+          uncertain={band === 'low'}
         />
       )}
 

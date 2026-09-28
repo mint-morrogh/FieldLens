@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { getTarget } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
 import type { IdentifyStage, StageEvent } from '../../../shared/types';
@@ -106,34 +105,31 @@ const STATE_TEXT: Record<RowState, string> = {
   skipped: 'skipped',
 };
 
-/** Where the attention loupe looks next (fractions of the photo; top-left of the loupe). */
-const LOUPE_STOPS: [number, number][] = [
-  [0.33, 0.3],
-  [0.08, 0.1],
-  [0.55, 0.12],
-  [0.58, 0.52],
-  [0.12, 0.55],
-  [0.36, 0.62],
-  [0.62, 0.3],
-  [0.2, 0.32],
-];
-const LOUPE = 0.34;
-const ZOOM = 2.2;
-const PATCH_COLS = 8;
-const PATCH_ROWS = 6;
+/** BioCLIP 2 (ViT-L/14), as configured in hf-space/app.py: checked against the model itself. */
+const BIOCLIP_SPEC = {
+  input: 224,
+  patch: 14,
+  grid: 16,
+  layers: 24,
+  dims: 768,
+  taxa: '867,455',
+};
 
 type Phase = 'load' | 'scan' | 'refine' | 'done';
 
 /**
- * A picture of what the classifier does, driven by the real stages: while the image model
- * runs, the photo turns to high-contrast grayscale, a patch grid lights up (vision
- * transformers read images as patches) and a loupe hops between regions; colour returns
- * while names and local records are checked; the reticle locks on when it's done.
+ * What the image model actually does, drawn over the photo and driven by the real stages:
+ * the photo is resized to 224 × 224, cut into a 16 × 16 grid of 14 px patches that are read
+ * in order as tokens, encoded into one 768-number embedding and compared with every taxon's
+ * text embedding. The numbers are the model's real configuration; the progress bar is the
+ * share of finished stages. Pl@ntNet doesn't publish its architecture, so plants get the
+ * same steps without BioCLIP's numbers.
  */
 function ClassifierVisual({
   url,
   phase,
   label,
+  bioclip,
   model,
   fraction,
   topGuess,
@@ -141,111 +137,96 @@ function ClassifierVisual({
   url: string;
   phase: Phase;
   label: string;
+  bioclip: boolean;
   model: string;
   fraction: number;
   topGuess?: string;
 }) {
-  const [stop, setStop] = useState(0);
-  const scanning = phase === 'scan' || phase === 'load';
-  useEffect(() => {
-    if (!scanning || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    const t = setInterval(() => setStop((i) => (i + 1) % LOUPE_STOPS.length), 950);
-    return () => clearInterval(t);
-  }, [scanning]);
-  const [lx, ly] = phase === 'done' ? [(1 - LOUPE) / 2, (1 - LOUPE) / 2] : LOUPE_STOPS[stop];
-  // Zoomed view inside the loupe, centred on the loupe's centre.
-  const zx = lx + LOUPE / 2 - LOUPE / (2 * ZOOM);
-  const zy = ly + LOUPE / 2 - LOUPE / (2 * ZOOM);
-  const scale = ZOOM / LOUPE;
+  const { grid, input, patch, layers, dims, taxa } = BIOCLIP_SPEC;
+  const steps: [string, string][] = bioclip
+    ? [
+        ['resize', `${input} × ${input} px`],
+        ['patches', `${grid} × ${grid} · ${patch} px`],
+        ['encode', `ViT-L/${patch} · ${layers} layers → ${dims}-d`],
+        ['compare', `cosine vs ${taxa} taxa`],
+      ]
+    : [
+        ['resize', 'model input'],
+        ['encode', 'image embedding'],
+        ['compare', 'species in the model'],
+      ];
+  const encoding = phase === 'scan' || phase === 'load';
 
   return (
-    <div
-      className={`classifier relative aspect-[4/3] w-full overflow-hidden bg-[#0d100c]`}
-      data-phase={phase}
-    >
-      <img
-        src={url}
-        alt="Photo being identified"
-        className="classifier-photo absolute inset-0 h-full w-full object-cover"
-      />
-      <div className="scan-grid absolute inset-0" aria-hidden />
-
-      {/* Patch tokens */}
-      <div
-        className="classifier-patches absolute inset-0 grid"
-        style={{
-          gridTemplateColumns: `repeat(${PATCH_COLS}, 1fr)`,
-          gridTemplateRows: `repeat(${PATCH_ROWS}, 1fr)`,
-        }}
-        aria-hidden
-      >
-        {Array.from({ length: PATCH_COLS * PATCH_ROWS }, (_, i) => (
-          <span
-            key={i}
-            className="patch"
-            style={{ animationDelay: `${((i * 37) % 23) * 0.11}s` }}
-          />
-        ))}
-      </div>
-
-      <div className="scan-line classifier-sweep" aria-hidden />
-
-      {/* Attention loupe */}
-      <div
-        className="classifier-loupe absolute overflow-hidden rounded-lg"
-        style={{
-          left: `${lx * 100}%`,
-          top: `${ly * 100}%`,
-          width: `${LOUPE * 100}%`,
-          height: `${LOUPE * 100}%`,
-        }}
-        aria-hidden
-      >
+    <div className="classifier bg-[#0d100c] text-white" data-phase={phase}>
+      <div className="relative mx-auto aspect-square w-full max-w-[26rem] overflow-hidden">
+        {/* The model sees a square resize of the crop; show exactly that. */}
         <img
           src={url}
-          alt=""
-          className="absolute max-w-none object-cover"
-          style={{
-            width: `${scale * 100}%`,
-            height: `${scale * 100}%`,
-            left: `${-zx * scale * 100}%`,
-            top: `${-zy * scale * 100}%`,
-          }}
+          alt="Photo being identified"
+          className="classifier-photo absolute inset-0 h-full w-full"
         />
-        <span className="readout absolute left-1.5 top-1 text-[0.55rem] text-[#d6f5c7]/90">
-          x{lx.toFixed(2).slice(1)} y{ly.toFixed(2).slice(1)}
-        </span>
-      </div>
-
-      {phase === 'done' && (
-        <div className="fade-up absolute inset-0 flex items-center justify-center" aria-hidden>
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#9fd08a] text-[#10180f] shadow-[0_0_0_8px_rgba(159,208,138,0.2)]">
-            <Icon name="check" className="h-9 w-9" />
-          </span>
-        </div>
-      )}
-
-      {/* Readouts */}
-      <div className="readout absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent px-3 pb-6 pt-2.5 text-[0.62rem] text-white/80">
-        <span className="flex items-center gap-1.5">
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${phase === 'done' ? 'bg-[#9fd08a]' : 'live-dot bg-[#9fd08a]'}`}
-          />
-          {phase === 'done' ? 'Complete' : phase === 'refine' ? 'Refining' : 'Classifying'}
-        </span>
-        <span>{model}</span>
-      </div>
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-3 pb-3 pt-8">
-        {topGuess && (
-          <p className="fade-up readout mb-1 truncate text-[0.62rem] text-[#d6f5c7]">
-            Leading match · <span className="normal-case tracking-normal">{topGuess}</span>
-          </p>
-        )}
-        <p className="text-sm font-semibold text-white">{label}</p>
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/15">
+        <div
+          className="classifier-grid absolute inset-0"
+          style={{ backgroundSize: `${100 / grid}% ${100 / grid}%` }}
+          aria-hidden
+        />
+        {encoding && (
           <div
-            className="h-full rounded-full bg-[#9fd08a] transition-[width] duration-500 ease-out"
-            style={{ width: `${Math.max(4, fraction * 100)}%` }}
+            className="absolute inset-0 grid"
+            style={{
+              gridTemplateColumns: `repeat(${grid}, 1fr)`,
+              gridTemplateRows: `repeat(${grid}, 1fr)`,
+            }}
+            aria-hidden
+          >
+            {Array.from({ length: grid * grid }, (_, i) => (
+              <span key={i} className="token" style={{ animationDelay: `${i * 9}ms` }} />
+            ))}
+          </div>
+        )}
+        {phase === 'done' && (
+          <div className="fade-up absolute inset-0 flex items-center justify-center" aria-hidden>
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#9fd08a] text-[#10180f]">
+              <Icon name="check" className="h-8 w-8" />
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-white/10 px-4 pb-4 pt-3">
+        <div className="readout flex items-center justify-between text-[0.62rem] text-white/55">
+          <span>{model}</span>
+          <span>{Math.round(fraction * 100)}%</span>
+        </div>
+        <ol className="readout mt-2 space-y-1 text-[0.66rem]" aria-hidden>
+          {steps.map(([k, v], i) => {
+            const done = !encoding;
+            return (
+              <li
+                key={k}
+                className={`flex justify-between gap-3 ${done ? 'text-white/80' : 'step-live text-white/80'}`}
+                style={done ? undefined : { animationDelay: `${i * 0.35}s` }}
+              >
+                <span>{k}</span>
+                <span className="truncate text-right text-white/50 normal-case tracking-normal">
+                  {v}
+                </span>
+              </li>
+            );
+          })}
+          {topGuess && (
+            <li className="fade-up flex justify-between gap-3 text-[#d6f5c7]">
+              <span>top-1</span>
+              <span className="truncate text-right normal-case tracking-normal">{topGuess}</span>
+            </li>
+          )}
+        </ol>
+        <p className="mt-3 text-sm font-semibold">{label}</p>
+        <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-white/15">
+          <div
+            className="h-full bg-[#9fd08a] transition-[width] duration-500 ease-out"
+            style={{ width: `${Math.max(3, fraction * 100)}%` }}
           />
         </div>
       </div>
@@ -279,6 +260,8 @@ export function AnalysisProgress() {
         : 'scan';
   const model =
     state.category === 'auto' ? 'Auto-detect' : (category.identificationSource ?? 'Image model');
+  // Plants go to Pl@ntNet, except under Auto, where BioCLIP 2 looks at the photo first.
+  const bioclip = state.category !== 'plant';
 
   return (
     <div className="space-y-4" aria-busy={!allDone} data-testid="analysis">
@@ -289,6 +272,7 @@ export function AnalysisProgress() {
             phase={phase}
             label={allDone ? 'Analysis complete' : `${active?.label ?? 'Working'}…`}
             model={model}
+            bioclip={bioclip}
             fraction={fraction}
             topGuess={
               progress.preview?.[0]

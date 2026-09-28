@@ -7,3 +7,4 @@ playwright-report
 test-results
 server/safety/tpptData.ts
 server/facts/mammalTraits.ts
+server/facts/birdTraits.ts

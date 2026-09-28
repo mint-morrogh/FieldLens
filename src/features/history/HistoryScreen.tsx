@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatPercent } from '../../../shared/confidence';
 import { navigate, routeHref } from '../../app/router';
 import { Icon } from '../../components/Icon';
@@ -10,7 +10,6 @@ import {
   deleteObservation,
   getObservation,
   listObservations,
-  saveObservation,
   type ObservationRecord,
 } from './historyStore';
 
@@ -136,27 +135,40 @@ function RecentCard({ record, onDelete }: { record: ObservationRecord; onDelete:
 }
 
 export function RecentObservations() {
-  const { records, reload } = useObservations(8);
+  const { records: stored, reload } = useObservations(8);
+  // Deleting only hides the card; it's removed from storage once the undo window passes.
+  // (Re-saving an already-deleted record fails on iOS Safari, whose stored photo blobs
+  // disappear with the record, so "undo" must never need to write it back.)
   const [undo, setUndo] = useState<ObservationRecord>();
+  const pending = useRef<ObservationRecord | undefined>(undefined);
+
+  const commit = useCallback(() => {
+    const record = pending.current;
+    pending.current = undefined;
+    if (record) void deleteObservation(record.id).then(reload);
+  }, [reload]);
 
   useEffect(() => {
     if (!undo) return;
-    const t = setTimeout(() => setUndo(undefined), 6000);
+    const t = setTimeout(() => {
+      commit();
+      setUndo(undefined);
+    }, 6000);
     return () => clearTimeout(t);
-  }, [undo]);
+  }, [undo, commit]);
+  // Leaving the page finishes any pending delete.
+  useEffect(() => () => commit(), [commit]);
 
-  if (!records) return null;
+  if (!stored) return null;
+  const records = stored.filter((r) => r.id !== undo?.id);
   const remove = (record: ObservationRecord) => {
-    void deleteObservation(record.id).then(() => {
-      setUndo(record);
-      reload();
-    });
+    commit(); // a second delete confirms the first
+    pending.current = record;
+    setUndo(record);
   };
   const restore = () => {
-    if (!undo) return;
-    const record = undo;
+    pending.current = undefined;
     setUndo(undefined);
-    void saveObservation(record).then(reload);
   };
 
   return (

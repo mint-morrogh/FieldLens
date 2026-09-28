@@ -7,6 +7,7 @@ import { useSyncExternalStore } from 'react';
 export type Route =
   | { name: 'home' }
   | { name: 'identify' }
+  | { name: 'live' }
   | { name: 'history' }
   | { name: 'observation'; id: string }
   | { name: 'privacy' };
@@ -14,6 +15,7 @@ export type Route =
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, '') || '/';
   if (path === '/identify') return { name: 'identify' };
+  if (path === '/live') return { name: 'live' };
   if (path === '/history') return { name: 'history' };
   if (path === '/privacy') return { name: 'privacy' };
   const obs = path.match(/^\/history\/([A-Za-z0-9_-]+)$/);

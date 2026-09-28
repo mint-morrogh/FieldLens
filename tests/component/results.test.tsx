@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ResultView, type ImproveProps } from '../../src/features/results/ResultView';
 import { INaturalistCard } from '../../src/features/results/sections';
 import { mockResult, mockTrackResult } from './fixtures';
+import { displayName } from '../../src/lib/format';
 
 const improve = (overrides: Partial<ImproveProps> = {}): ImproveProps => ({
   photos: [{ id: 'p1', url: 'blob:1', feature: 'leaf' }],
@@ -203,5 +204,34 @@ describe('ResultView for tracks and droppings', () => {
     expect(screen.getByRole('heading', { name: 'Wildlife safety' })).toBeInTheDocument();
     // Signs are always uncertain, so facts about one species stay hidden.
     expect(screen.queryByTestId('species-facts')).not.toBeInTheDocument();
+  });
+});
+
+describe('ResultView follow-up questions', () => {
+  it('asks only when offered, and an answer re-ranks the matches', async () => {
+    const base = await mockResult('medium');
+    const [first, second] = base.candidates;
+    const result = {
+      ...base,
+      questions: [
+        {
+          id: 'size' as const,
+          prompt: 'About how big was it?',
+          options: [
+            { id: 'small', label: 'Small' },
+            { id: 'big', label: 'Big' },
+          ],
+          fits: { [first.id]: ['big'], [second.id]: ['small'] },
+          source: 'EltonTraits 1.0 (Wilman et al. 2014)',
+          sourceUrl: 'https://doi.org/10.6084/m9.figshare.3559887.v1',
+        },
+      ],
+    };
+    render(<ResultView result={result} />);
+    const card = screen.getByTestId('follow-up-questions');
+    expect(within(card).getByRole('button', { name: 'Not sure' })).toBeInTheDocument();
+    within(card).getByRole('button', { name: 'Small' }).click();
+    expect(await screen.findByTestId('ruled-out')).toHaveTextContent(displayName(first));
+    expect(screen.getByTestId('result-headline')).toHaveTextContent(second.scientificName);
   });
 });

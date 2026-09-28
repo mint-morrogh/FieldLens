@@ -133,3 +133,27 @@ No invented numbers are shown.
 **Photo parts.** The crop sheet only asks "Which part?" once a type is chosen, and the row slides open. Bug gained From above, Side, Head, Wings and Web; Fish gained Whole fish, Head, Fins & tail and Markings. Tracks and droppings are offered under Mammal only.
 
 **Home.** Dim CC0 iNaturalist photos of living things cross-fade behind the camera button. The location readout moved to the top-left, and the Recognises list was removed.
+
+## Live identify, follow-up questions, the world map (2026-09-28)
+
+**Live identify.**
+
+- A second way in, next to Take a photo. Google's MediaPipe object detector (EfficientDet-Lite0, Apache 2.0) runs on the phone, loaded on first use from jsDelivr and Google's model storage.
+- It boxes animals, potted plants and people in the camera feed; everything else is framed by a centre box, because the detector's COCO classes don't include most wild plants, fungi or insects.
+- When the view holds still for about 0.9 s, that frame is cropped to the box and sent through the normal identification. The preview and result are drawn on the box.
+- A high-confidence result locks on and opens the results page, saved to history like a photo. Otherwise it keeps looking, with "See best match".
+- Video never leaves the phone. To protect the free Pl@ntNet and Hugging Face quotas, a live session sends at most 4 frames, 2.5 s apart. People are recognised on the device and never sent.
+
+**Follow-up questions.**
+
+- Asked only when the result is uncertain and the top match has a close runner-up (at least 35% of its score) that an answer would clearly separate from it.
+- Answers come from sourced traits only: EltonTraits body mass (size) and activity (time of day), for mammals and birds. Each question has "Not sure".
+- An answer down-weights contradicting matches (×0.3) and never boosts any.
+- If the top match changes, the facts, map and photos for the old top match are hidden.
+- Nothing is asked from unsourced "knowledge", such as smell.
+
+**World map.** The data was there for every group, but the map was hidden for low-confidence results, which is most fungi and many animals. It's now shown on every result; for uncertain ones the heading names the species it's about.
+
+**Analysis visual** now shows BioCLIP 2's real pipeline: resize to 224 × 224, a 16 × 16 grid of 14 px patches read in order as tokens, ViT-L/14 with 24 layers, a 768-d embedding, and cosine similarity against 867,455 taxa. Plants (Pl@ntNet) get the same steps without numbers.
+
+**Undo delete** now hides the card and deletes after the 6-second undo window, because re-saving a deleted record fails on iOS Safari.

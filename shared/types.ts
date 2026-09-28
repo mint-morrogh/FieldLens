@@ -234,11 +234,27 @@ export type IdentifyResponse = {
     likelihood?: number;
   };
   safety?: SafetyInfo;
+  /**
+   * Optional multiple-choice questions whose answers can separate the likely candidates
+   * (only when the result is uncertain and sourced traits differ between them).
+   */
+  questions?: FollowUpQuestion[];
   /** The photo shows a person (people aren't in FieldLens's field guide). */
   person?: boolean;
   /** Set when the photo shows tracks or droppings rather than the animal itself. */
   sign?: AnimalSign;
   mock?: boolean;
+};
+
+export type FollowUpQuestion = {
+  id: 'size' | 'time';
+  prompt: string;
+  /** "Not sure" is always offered by the UI in addition to these. */
+  options: { id: string; label: string }[];
+  /** Candidate id → the options consistent with that candidate's recorded traits. */
+  fits: Record<string, string[]>;
+  source: string;
+  sourceUrl: string;
 };
 
 /** Signs an animal leaves behind, identified with lower confidence than the animal itself. */

@@ -37,6 +37,7 @@ import type {
 import { WIKIPEDIA_SOURCE } from '../providers/wiki/wiki.js';
 import { DeterministicGeoReranker, type CandidateReranker } from '../ranking/reranker.js';
 import { ELTONTRAITS_SOURCE, ELTONTRAITS_URL, mammalTraitFacts } from '../facts/mammalFacts.js';
+import { buildQuestions } from '../facts/questions.js';
 import { SAFETY_CATEGORIES, buildSafety } from '../safety/safety.js';
 import { buildWildlifeSafety } from '../safety/wildlife.js';
 import { buildEvidence, buildGuidance } from './evidence.js';
@@ -654,6 +655,10 @@ export async function runIdentification(
     groupSummary: group ? { ...group, commonName: groupCommonName } : undefined,
     safety,
     sign,
+    questions: (() => {
+      const q = buildQuestions(band, ranked);
+      return q.length ? q : undefined;
+    })(),
     community,
     nearbySpecies,
     evidence,

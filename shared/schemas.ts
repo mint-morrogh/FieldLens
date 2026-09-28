@@ -200,6 +200,18 @@ export const identifyResponseSchema = z.object({
     .optional(),
   sign: z.enum(['track', 'scat']).optional(),
   person: z.boolean().optional(),
+  questions: z
+    .array(
+      z.object({
+        id: z.enum(['size', 'time']),
+        prompt: z.string(),
+        options: z.array(z.object({ id: z.string(), label: z.string() })),
+        fits: z.record(z.string(), z.array(z.string())),
+        source: z.string(),
+        sourceUrl: z.string(),
+      }),
+    )
+    .optional(),
   safety: z
     .object({
       kind: z.enum(['food', 'wildlife']).optional(),
