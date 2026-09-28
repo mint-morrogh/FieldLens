@@ -32,18 +32,24 @@ function shadeFor(count: number, max: number): string {
  * Slowly spinning orthographic globe with countries shaded by GBIF record counts.
  * Drag to rotate; respects prefers-reduced-motion (then it stays still).
  */
+export type GlobePin = { latitude: number; longitude: number; count: number };
+
 export default function Globe({
   distribution,
   userLocation,
+  pins,
   title,
 }: {
-  distribution: SpeciesDistribution;
+  /** Countries shaded by record count (species pages). */
+  distribution?: SpeciesDistribution;
   userLocation?: ApproxLocation;
+  /** Places to mark, e.g. where the journal's finds were made. */
+  pins?: GlobePin[];
   title: string;
 }) {
   const counts = useMemo(() => {
     const byNumeric = new Map<string, number>();
-    for (const c of distribution.countries) {
+    for (const c of distribution?.countries ?? []) {
       const n = ISO2_TO_NUMERIC[c.code];
       if (n) byNumeric.set(n, (byNumeric.get(n) ?? 0) + c.count);
     }
@@ -53,7 +59,8 @@ export default function Globe({
 
   // Start facing the user, or the country with the most records.
   const start = useMemo<[number, number]>(() => {
-    if (userLocation) return [-userLocation.longitude, -userLocation.latitude * 0.6];
+    const focus = userLocation ?? pins?.[0];
+    if (focus) return [-focus.longitude, -focus.latitude * 0.6];
     const topId = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
     const top = COUNTRIES.find((c) => c.id === topId);
     if (top) {
@@ -61,7 +68,7 @@ export default function Globe({
       if (Number.isFinite(lng)) return [-lng, -lat * 0.6];
     }
     return [0, -20];
-  }, [counts, userLocation]);
+  }, [counts, userLocation, pins]);
 
   const [rotation, setRotation] = useState<[number, number]>(start);
   const dragging = useRef<{ x: number; y: number; r: [number, number] } | null>(null);
@@ -98,8 +105,8 @@ export default function Globe({
     // Only draw the marker on the visible hemisphere.
     path({ type: 'Point', coordinates: [userLocation.longitude, userLocation.latitude] }) !== null;
 
-  const recorded = distribution.countries.length;
-  const topNames = distribution.countries
+  const recorded = distribution?.countries.length ?? 0;
+  const topNames = (distribution?.countries ?? [])
     .slice(0, 3)
     .map((c) => {
       const n = ISO2_TO_NUMERIC[c.code];
@@ -113,7 +120,11 @@ export default function Globe({
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         className="h-auto w-full max-w-[18rem] touch-none select-none"
         role="img"
-        aria-label={`Globe showing where ${title} has been recorded: ${recorded} countries, most in ${topNames}.`}
+        aria-label={
+          distribution
+            ? `Globe showing where ${title} has been recorded: ${recorded} countries, most in ${topNames}.`
+            : `Globe showing ${title}: ${pins?.length ?? 0} places.`
+        }
         onPointerDown={(e) => {
           (e.target as Element).setPointerCapture?.(e.pointerId);
           dragging.current = { x: e.clientX, y: e.clientY, r: rotation };
@@ -159,6 +170,18 @@ export default function Globe({
             </title>
           </path>
         ))}
+        {pins?.map((pin) => {
+          const coordinates: [number, number] = [pin.longitude, pin.latitude];
+          const xy = projection(coordinates);
+          if (!xy || path({ type: 'Point', coordinates }) === null) return null;
+          const r = 3 + Math.min(4, Math.log2(pin.count));
+          return (
+            <g key={`${pin.latitude},${pin.longitude}`} data-testid="globe-pin">
+              <circle cx={xy[0]} cy={xy[1]} r={r + 4} fill="#9fd08a" opacity={0.3} />
+              <circle cx={xy[0]} cy={xy[1]} r={r} fill="#4f8a44" stroke="#fff" strokeWidth={1.2} />
+            </g>
+          );
+        })}
         {markerVisible && marker && (
           <g>
             <circle cx={marker[0]} cy={marker[1]} r={7} fill="#8f3a24" opacity={0.25} />
@@ -174,18 +197,24 @@ export default function Globe({
         )}
         <path d={path({ type: 'Sphere' }) ?? ''} fill="url(#globe-shine)" pointerEvents="none" />
       </svg>
-      <figcaption className="mt-2 w-full text-center text-sm text-ink-muted">
-        Recorded in {recorded.toLocaleString('en-US')} {recorded === 1 ? 'country' : 'countries'} ·{' '}
-        {distribution.total.toLocaleString('en-US')} records
-        {userLocation ? ' · red dot = you' : ''}
-        <span className="mt-1 flex items-center justify-center gap-1" aria-hidden>
-          <span>fewer</span>
-          {SHADES.map((s) => (
-            <span key={s} className="inline-block h-2.5 w-4 rounded-sm" style={{ background: s }} />
-          ))}
-          <span>more</span>
-        </span>
-      </figcaption>
+      {distribution ? (
+        <figcaption className="mt-2 w-full text-center text-sm text-ink-muted">
+          Recorded in {recorded.toLocaleString('en-US')} {recorded === 1 ? 'country' : 'countries'}{' '}
+          · {distribution.total.toLocaleString('en-US')} records
+          {userLocation ? ' · red dot = you' : ''}
+          <span className="mt-1 flex items-center justify-center gap-1" aria-hidden>
+            <span>fewer</span>
+            {SHADES.map((s) => (
+              <span
+                key={s}
+                className="inline-block h-2.5 w-4 rounded-sm"
+                style={{ background: s }}
+              />
+            ))}
+            <span>more</span>
+          </span>
+        </figcaption>
+      ) : null}
     </figure>
   );
 }

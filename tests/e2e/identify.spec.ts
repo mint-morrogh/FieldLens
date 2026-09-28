@@ -134,23 +134,26 @@ test.describe('identification flow (mock API)', () => {
     await expect(page.getByTestId('inat-card')).toBeVisible();
   });
 
-  test('saved identifications reload from local history', async ({ page }) => {
+  test('saved identifications build the field journal', async ({ page }) => {
     await page.goto('/?mock=high');
     await choosePhoto(page);
+    await wherePhotoTaken(page, 'Near here');
     await identifySelection(page);
     // Saving (thumbnail + high-quality copy) happens in the background after the result.
     await expect(async () => {
       await page.goto('/#/history');
       await page.reload();
-      await expect(page.getByTestId('history-item').first()).toContainText('Red Maple', {
+      await expect(page.getByTestId('species-card').first()).toContainText('Red Maple', {
         timeout: 1000,
       });
     }).toPass({ timeout: 30_000 });
-    const item = page.getByTestId('history-item').first();
-    await item.getByRole('link').click();
+    await expect(page.getByTestId('rank-card')).toContainText('Observer');
+    await expect(page.getByTestId('rank-card')).toContainText('6 pts');
+    await expect(page.getByTestId('journal-filter')).toContainText('Plants');
+    await page.getByTestId('species-card').first().getByRole('link').click();
     await expect(page.getByTestId('result-headline')).toContainText('Acer rubrum');
     await page.getByRole('button', { name: 'Delete observation' }).click();
-    await expect(page.getByText('No identifications yet.')).toBeVisible();
+    await expect(page.getByText('Your journal is empty.', { exact: false })).toBeVisible();
   });
 });
 
@@ -202,7 +205,16 @@ test('photo first: "What is it?" is optional on the crop screen and starts on Au
     'aria-pressed',
     'true',
   );
-  for (const name of ['Plant', 'Fungus', 'Bug', 'Bird', 'Mammal', 'Reptile & amphibian', 'Fish']) {
+  for (const name of [
+    'Plant',
+    'Tree',
+    'Fungus',
+    'Bug',
+    'Bird',
+    'Mammal',
+    'Reptile & amphibian',
+    'Fish',
+  ]) {
     await expect(row.getByRole('button', { name, exact: true })).toBeVisible();
   }
   // Picking a plant shows plant parts; Auto hides them again.
@@ -323,6 +335,9 @@ test('parts only appear once a type is chosen, and Mammal offers tracks', async 
   const parts = page.getByTestId('crop-feature');
   // Auto: nothing to ask about yet.
   await expect(parts).toHaveCount(0);
+  await pickCategory(page, 'Tree');
+  await expect(parts).toContainText('Bark');
+  await expect(parts).toContainText('Cones, nuts & fruit');
   await pickCategory(page, 'Bug');
   await expect(parts).toContainText('Wings');
   await pickCategory(page, 'Fish');

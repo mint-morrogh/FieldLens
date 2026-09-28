@@ -157,3 +157,20 @@ No invented numbers are shown.
 **Analysis visual** now shows BioCLIP 2's real pipeline: resize to 224 × 224, a 16 × 16 grid of 14 px patches read in order as tokens, ViT-L/14 with 24 layers, a 768-d embedding, and cosine similarity against 867,455 taxa. Plants (Pl@ntNet) get the same steps without numbers.
 
 **Undo delete** now hides the card and deletes after the 6-second undo window, because re-saving a deleted record fails on iOS Safari.
+
+## Field Journal and naturalist rank (2026-09-28)
+
+History became the **Field Journal**, computed on the device from local history with nothing new stored:
+
+- one card per species, with sighting count, first-seen date, and an "Unconfirmed" tag for low-confidence finds;
+- filters for the seven picker groups;
+- a globe with a pin per ~11 km area where finds were made, parsed from the coarse location label history already kept, so older finds get pins too;
+- a collapsible list of all entries for deleting.
+
+**Rank:** 1 point per species identified with at least medium confidence, plus 5 for each group explored. Wanderer 0, Observer 5, Tracker 15, Field Naturalist 30, Naturalist 60, Master Naturalist 100, Field Scholar 175. It counts distinct species, not photos, so repeat photos can't farm points.
+
+**Rarity** was considered and left out. iNaturalist and GBIF record counts measure how often people bother to log something, not how rare it is: a common spruce can have almost no local records.
+
+**Live identify, revised.** Scanning is fully automatic: there's no button. While a frame is being identified, a glass tag shows what kind of organism it looks like (the auto-detect stage now streams the detected group), then the first name guess. A likely or very likely match appears in a frosted card over the camera with the name, up to three reference photos, **Clear** (keep scanning) and **Details** (full results page). Up to 8 frames per session.
+
+**Tree** is a picker choice alongside Plant and Fungus. It is still identified by Pl@ntNet, whose plant model covers trees, but offers tree parts: leaves or needles, bark, cones/nuts/fruit, flowers and catkins, twigs and buds, and whole tree. Parts Pl@ntNet has no organ for are sent as "auto".

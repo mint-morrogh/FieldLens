@@ -16,7 +16,7 @@ export type OrganismCategory =
   | 'other';
 
 /** Broader picker choices that the server narrows to a specific category. */
-export type CategoryGroupId = 'bug' | 'herp' | 'animal' | 'auto';
+export type CategoryGroupId = 'tree' | 'bug' | 'herp' | 'animal' | 'auto';
 
 /** What the user asked to identify: a specific category or a broader group. */
 export type IdentifyTarget = OrganismCategory | CategoryGroupId;
@@ -303,6 +303,8 @@ export type StageEvent = {
   status: 'active' | 'done' | 'skipped';
   /** After the visual step: the provider's first guesses, before any reranking. */
   preview?: { scientificName: string; commonName?: string; visualConfidence: number }[];
+  /** After automatic detection: what kind of organism it looks like, or that it's a person. */
+  detected?: OrganismCategory | 'person';
 };
 
 /** One line of the streamed (NDJSON) /api/identify response. */

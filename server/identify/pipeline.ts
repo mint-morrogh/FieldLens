@@ -224,7 +224,11 @@ export async function runIdentification(
         });
         return { category: 'plant', likelihood: 0 } as CategoryDetectionResult;
       });
-      stage({ stage: 'detect', status: 'done' });
+      stage({
+        stage: 'detect',
+        status: 'done',
+        detected: found.person ? 'person' : found.likelihood > 0 ? found.category : undefined,
+      });
       // A failed detection (likelihood 0) silently falls back to plants without a "detected" tag.
       if (found.likelihood > 0) {
         detection = { requested: 'auto', detected: found.category, likelihood: found.likelihood };
@@ -323,7 +327,13 @@ export async function runIdentification(
   const categoryId: OrganismCategory =
     identification.detectedCategory ??
     (isCategoryGroup(target) ? targetMembers(target)[0] : target);
-  if (!detection && isCategoryGroup(input.category) && input.category !== 'auto') {
+  // Tree only offers tree parts; there's nothing to report beyond "plant".
+  if (
+    !detection &&
+    isCategoryGroup(input.category) &&
+    input.category !== 'auto' &&
+    input.category !== 'tree'
+  ) {
     detection = { requested: input.category, detected: categoryId };
   }
   if (detection) detection = { ...detection, detected: categoryId };

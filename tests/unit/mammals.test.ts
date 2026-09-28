@@ -295,3 +295,15 @@ describe('follow-up questions', () => {
     expect(contradicts(fox, base.questions!, { size: 's' })).toBe(true);
   });
 });
+
+describe('tree choice', () => {
+  it('identifies trees as plants with Pl@ntNet, sending tree parts as organs', async () => {
+    const result = await runIdentification(input('tree', 'bark'), {
+      providers: createMockProviders('high'),
+    });
+    expect(result.category).toBe('plant');
+    expect(result.categoryDetection).toBeUndefined();
+    expect(isValidFeature('tree', 'twig')).toBe(true);
+    expect(isValidFeature('tree', 'cap')).toBe(false);
+  });
+});

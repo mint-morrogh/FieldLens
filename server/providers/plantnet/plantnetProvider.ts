@@ -177,7 +177,7 @@ export class PlantNetIdentificationProvider implements IdentificationProvider {
   ) {}
 
   supports(target: IdentifyTarget): boolean {
-    return target === 'plant';
+    return target === 'plant' || target === 'tree';
   }
 
   async identify(input: IdentificationInput): Promise<IdentificationResult> {

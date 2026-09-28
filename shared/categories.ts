@@ -450,6 +450,59 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
  * group to the specific category and the result says what it found.
  */
 export const GROUPS: Record<CategoryGroupId, CategoryDefinition> = {
+  // Trees are plants to Pl@ntNet; choosing Tree just offers tree-specific parts.
+  tree: {
+    id: 'tree',
+    label: 'Tree',
+    blurb: 'Trees & shrubs',
+    available: true,
+    identificationSource: 'Pl@ntNet',
+    members: ['plant'],
+    pluralNoun: 'trees',
+    gbifKingdom: 'Plantae',
+    inaturalistIconicTaxon: 'Plantae',
+    safetyNotice: EDIBILITY_NOTICE,
+    generalAdvice:
+      'A close photo of a leaf or a few needles, plus one of the bark, usually helps the most.',
+    features: [
+      {
+        id: 'leaf',
+        label: 'Leaves or needles',
+        followUpLabel: 'Add a leaf or needles photo',
+        advice: 'A close photo of a single leaf, or a few needles on the twig, would help.',
+      },
+      {
+        id: 'bark',
+        label: 'Bark',
+        followUpLabel: 'Add a bark photo',
+        advice: 'A close photo of the bark at chest height would help.',
+      },
+      {
+        id: 'fruit',
+        label: 'Cones, nuts & fruit',
+        followUpLabel: 'Add a cone or fruit photo',
+        advice: 'A photo of a cone, nut, seed or fruit would help.',
+      },
+      {
+        id: 'flower',
+        label: 'Flowers & catkins',
+        followUpLabel: 'Add a flower photo',
+        advice: 'A photo of the flowers or catkins would help.',
+      },
+      {
+        id: 'twig',
+        label: 'Twigs & buds',
+        followUpLabel: 'Add a twig photo',
+        advice: 'A close photo of a twig with its buds would help, especially in winter.',
+      },
+      {
+        id: 'habit',
+        label: 'Whole tree',
+        followUpLabel: 'Add a whole-tree photo',
+        advice: 'A photo of the whole tree, showing its shape, would help.',
+      },
+    ],
+  },
   bug: {
     id: 'bug',
     label: 'Bug',
@@ -587,6 +640,7 @@ export const GROUPS: Record<CategoryGroupId, CategoryDefinition> = {
  */
 export const CATEGORY_PICKER_ORDER: IdentifyTarget[] = [
   'plant',
+  'tree',
   'fungus',
   'bug',
   'bird',

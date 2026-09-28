@@ -92,7 +92,7 @@ export function App() {
                   href="#/history"
                   active={route.name === 'history' || route.name === 'observation'}
                 >
-                  <Icon name="history" className="h-5 w-5" /> History
+                  <Icon name="book" className="h-5 w-5" /> Journal
                 </NavLink>
                 <NavLink href="#/privacy" active={route.name === 'privacy'}>
                   <Icon name="info" className="h-5 w-5" /> About

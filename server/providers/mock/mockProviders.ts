@@ -94,7 +94,7 @@ export class MockIdentificationProvider implements IdentificationProvider {
     if (this.scenario === 'quota') throw new UpstreamError('Pl@ntNet', 'http', 429);
     if (this.scenario === 'network') throw new UpstreamError('Pl@ntNet', 'network');
     if (this.scenario === 'timeout') throw new UpstreamError('Pl@ntNet', 'timeout');
-    if (input.category !== 'plant') return this.identifyAnimal(input);
+    if (input.category !== 'plant' && input.category !== 'tree') return this.identifyAnimal(input);
     if (this.scenario === 'zero')
       return { provider: this.name, candidates: [], attribution: [MOCK_ATTRIBUTION] };
 
@@ -163,7 +163,9 @@ export class MockIdentificationProvider implements IdentificationProvider {
                 ? [MAMMAL_FIXTURES, 'mammal']
                 : [
                     AMPHIBIAN_FIXTURES,
-                    t === 'animal' || t === 'herp' || t === 'auto' ? 'amphibian' : t,
+                    t === 'animal' || t === 'herp' || t === 'auto' || t === 'tree'
+                      ? 'amphibian'
+                      : t,
                   ];
     const candidates = fixtures.map((s) => ({
       id: slugId('mock', s.scientificName),
