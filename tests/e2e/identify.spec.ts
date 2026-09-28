@@ -38,7 +38,6 @@ test.describe('identification flow (mock API)', () => {
     await expect(headline).toContainText('identification confidence');
     await expect(page.getByTestId('alternatives').getByTestId('candidate')).toHaveCount(2);
     await expect(page.getByTestId('why-this-match')).toContainText('Strong image-model match');
-    await expect(page.getByTestId('attribution')).toContainText('Demo mode');
     await expect(page.getByTestId('demo-banner')).toBeVisible();
     await expect(page.getByTestId('safety')).toBeVisible();
     await expect(page.getByTestId('safety')).toContainText('Never eat a wild plant');
@@ -109,7 +108,7 @@ test.describe('identification flow (mock API)', () => {
     await wherePhotoTaken(page, 'Near here');
     await identifySelection(page);
     await expect(page.getByTestId('result-headline')).toContainText('Location not used');
-    await expect(page.getByTestId('geo-evidence')).toContainText('Location not used');
+    await expect(page.getByTestId('geo-evidence')).toHaveCount(0);
     await expect(page.getByTestId('location-fix')).toContainText('Location wasn’t used');
     // Don't nag: no prompt card after reload.
     await page.goto('/');
@@ -196,7 +195,8 @@ test('photo first: "What is it?" is optional on the crop screen and starts on Au
   page,
 }) => {
   await page.goto('/?mock=high');
-  await expect(page.getByTestId('identifies')).toContainText('FieldLens works out what it is');
+  await expect(page.getByTestId('identifies')).toContainText('Recognises');
+  await expect(page.getByTestId('viewfinder')).toContainText('FieldLens works out what it is');
   await choosePhoto(page);
   const row = page.getByTestId('crop-category');
   await expect(row.getByRole('button', { name: 'Auto', exact: true })).toHaveAttribute(
@@ -393,7 +393,7 @@ test.describe('with location permission', () => {
 
   test('uses approximate location and shows the separate iNaturalist card', async ({ page }) => {
     await page.goto('/?mock=high');
-    await expect(page.getByTestId('location-status')).toContainText('Location: Ready');
+    await expect(page.getByTestId('viewfinder-readout')).toContainText('°N');
     await choosePhoto(page);
     await wherePhotoTaken(page, 'Near here');
     await identifySelection(page);
@@ -404,7 +404,6 @@ test.describe('with location permission', () => {
     const inat = page.getByTestId('inat-card');
     await expect(inat.getByRole('heading', { name: 'From iNaturalist' })).toBeVisible();
     await expect(inat).toContainText('observations within 25 km');
-    await expect(inat).toContainText('do not independently confirm this identification');
     await expect(inat.getByRole('link', { name: /View on iNaturalist/ })).toBeVisible();
     await expect(page.getByTestId('geo-evidence')).toContainText('within 5 km');
     await expect(page.getByTestId('nearby-species')).toContainText(

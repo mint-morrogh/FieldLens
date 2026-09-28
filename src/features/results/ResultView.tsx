@@ -22,7 +22,6 @@ import {
   GeographicEvidence,
   INaturalistCard,
   NearbySpeciesSection,
-  SourceAttribution,
   SpeciesFacts,
   WhereRecorded,
   WhyThisMatch,
@@ -362,9 +361,6 @@ function ImproveIdentification({
           <Icon name="refresh" className="h-5 w-5" /> Identify again with these photos
         </Button>
       )}
-      <p className="mt-3 text-sm text-ink-muted">
-        Only add photos of the same individual {category.id === 'plant' ? 'plant' : 'organism'}.
-      </p>
     </Card>
   );
 }
@@ -435,9 +431,6 @@ export function ResultView({
             <p className="font-semibold">
               Identify it as {categoryPhrase(result.categoryCheck.suggestedCategory)} instead?
             </p>
-            <p className="mt-1 text-sm text-ink-muted">
-              Uses the same photo — no need to retake it.
-            </p>
             <Button
               className="mt-3 w-full"
               onClick={() => onSwitchCategory(result.categoryCheck!.suggestedCategory!)}
@@ -471,7 +464,6 @@ export function ResultView({
       {top && (
         <Alternatives
           candidates={alternatives}
-          locationUsed={result.location.used && result.sourceStatus.occurrence === 'ok'}
           title={band === 'low' ? 'Possible matches in detail' : 'Other possible matches'}
         />
       )}
@@ -488,7 +480,7 @@ export function ResultView({
         />
       )}
 
-      {top && <GeographicEvidence candidate={top} result={result} />}
+      {top && result.location.used && <GeographicEvidence candidate={top} result={result} />}
 
       {top && (
         <INaturalistCard
@@ -510,8 +502,6 @@ export function ResultView({
           {result.safetyNotice}
         </Notice>
       )}
-
-      <SourceAttribution attribution={result.attribution} />
     </div>
   );
 }

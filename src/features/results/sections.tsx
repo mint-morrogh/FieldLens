@@ -2,7 +2,6 @@ import { Suspense, lazy } from 'react';
 import { formatPercent } from '../../../shared/confidence';
 import type {
   ApproxLocation,
-  Attribution,
   CommunityObservationSummary,
   IdentifyResponse,
   LicensedImage,
@@ -17,14 +16,6 @@ import { ConfidenceMeter } from './ConfidenceMeter';
 import { CandidateThumb } from './Gallery';
 import { MonthBars } from './MonthBars';
 
-export function geoSupportText(c: OrganismCandidate, locationUsed: boolean): string {
-  if (!locationUsed) return 'Location not used';
-  const nearest = c.occurrence?.radiusCounts.find((r) => r.count > 0);
-  if (!c.occurrence) return 'Local records not checked';
-  if (nearest) return `Recorded within ${nearest.radiusKm} km`;
-  return `No records within ${c.occurrence.radiusCounts.at(-1)?.radiusKm ?? 100} km`;
-}
-
 function ImageCredit({ image }: { image: LicensedImage }) {
   return (
     <span className="block text-[0.7rem] leading-tight text-ink-muted">
@@ -34,15 +25,7 @@ function ImageCredit({ image }: { image: LicensedImage }) {
   );
 }
 
-export function CandidateRow({
-  candidate,
-  rank,
-  locationUsed,
-}: {
-  candidate: OrganismCandidate;
-  rank: number;
-  locationUsed: boolean;
-}) {
+export function CandidateRow({ candidate, rank }: { candidate: OrganismCandidate; rank: number }) {
   const ref = candidate.referenceImages?.[0];
   return (
     <li className="flex gap-3 py-3" data-testid="candidate">
@@ -68,11 +51,6 @@ export function CandidateRow({
         <div className="mt-1.5">
           <ConfidenceMeter score={candidate.finalConfidence} compact label="confidence" />
         </div>
-        <p className="mt-1.5 text-sm text-ink-muted">
-          Image match {formatPercent(candidate.visualConfidence)} ·{' '}
-          {geoSupportText(candidate, locationUsed)}
-          {candidate.family ? ` · ${candidate.family}` : ''}
-        </p>
         {candidate.links.length > 0 && (
           <p className="mt-1 flex flex-wrap gap-x-3 text-sm">
             {candidate.links.slice(0, 2).map((l) => (
@@ -89,11 +67,9 @@ export function CandidateRow({
 
 export function Alternatives({
   candidates,
-  locationUsed,
   title = 'Other possible matches',
 }: {
   candidates: OrganismCandidate[];
-  locationUsed: boolean;
   title?: string;
 }) {
   if (candidates.length === 0) return null;
@@ -102,7 +78,7 @@ export function Alternatives({
       <SectionTitle id="alternatives-title">{title}</SectionTitle>
       <ol className="divide-y divide-line">
         {candidates.map((c, i) => (
-          <CandidateRow key={c.id} candidate={c} rank={i + 2} locationUsed={locationUsed} />
+          <CandidateRow key={c.id} candidate={c} rank={i + 2} />
         ))}
       </ol>
     </Card>
@@ -141,10 +117,6 @@ export function WhyThisMatch({ evidence }: { evidence: IdentifyResponse['evidenc
           </ul>
         </>
       )}
-      <p className="mt-4 text-sm text-ink-muted">
-        Confidence combines the image-model score with local GBIF records. Being common nearby can
-        lower a weak match’s rank but never raises it above the image evidence.
-      </p>
     </Card>
   );
 }
@@ -184,16 +156,6 @@ export function GeographicEvidence({
               </div>
             ))}
           </dl>
-          {candidate.geographicSupport !== undefined && (
-            <p className="mt-3 text-sm text-ink-muted">
-              Geographic support {formatPercent(candidate.geographicSupport)}
-              {candidate.seasonalSupport !== undefined
-                ? ` · Seasonal support ${formatPercent(candidate.seasonalSupport)}`
-                : ''}
-              . No nearby records doesn’t rule a species out — it may be under-recorded, cultivated,
-              or newly arrived.
-            </p>
-          )}
         </>
       ) : (
         <p className="text-ink-soft">No GBIF records could be matched to this name.</p>
@@ -423,10 +385,6 @@ export function INaturalistCard({
           </div>
         </>
       )}
-      <p className="mt-4 text-sm text-ink-soft">
-        iNaturalist observations provide local community context and do not independently confirm
-        this identification.
-      </p>
     </aside>
   );
 }
@@ -473,29 +431,6 @@ export function NearbySpeciesSection({
   );
 }
 
-export function SourceAttribution({ attribution }: { attribution: Attribution[] }) {
-  return (
-    <section
-      aria-labelledby="sources-title"
-      className="px-1 text-sm text-ink-muted"
-      data-testid="attribution"
-    >
-      <h2 id="sources-title" className="mb-1 font-bold uppercase tracking-wider">
-        Sources
-      </h2>
-      <ul className="space-y-0.5">
-        {attribution.map((a) => (
-          <li key={a.provider + a.text}>
-            <ExternalLink href={a.url} className="!font-normal">
-              {a.text}
-            </ExternalLink>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 const Globe = lazy(() => import('./Globe'));
 
 /** Worldwide distribution from GBIF on a slowly spinning globe (loaded on demand). */
@@ -522,17 +457,6 @@ export function WhereRecorded({
       >
         <Globe distribution={distribution} userLocation={userLocation} title={title} />
       </Suspense>
-      <p className="mt-3 text-sm text-ink-muted">
-        Countries shaded by the number of occurrence records on{' '}
-        {distribution.sourceUrl ? (
-          <ExternalLink href={distribution.sourceUrl} className="!font-normal">
-            GBIF
-          </ExternalLink>
-        ) : (
-          'GBIF'
-        )}
-        . Records reflect where people have looked as much as where it lives. Drag to spin.
-      </p>
     </Card>
   );
 }

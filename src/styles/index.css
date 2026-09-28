@@ -25,6 +25,7 @@
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, monospace;
   --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
 
   --radius-card: 1.25rem;
@@ -200,7 +201,31 @@
 .fade-up {
   animation: fade-up 0.35s ease-out both;
 }
+/* Home viewfinder: instrument-style readouts and a slow idle sweep. */
+.readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+@keyframes live-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  box-shadow: 0 0 8px rgba(159, 208, 138, 0.8);
+  animation: live-dot 2.4s ease-in-out infinite;
+}
+.scan-line-idle {
+  animation-duration: 6s;
+}
 @media (prefers-reduced-motion: reduce) {
+  .live-dot,
   .scan-line,
   .reticle,
   .fade-up {

@@ -161,18 +161,22 @@ export function RecentObservations() {
 
   return (
     <section aria-labelledby="recent-title">
-      <div className="mb-2 flex items-baseline justify-between">
-        <h2 id="recent-title" className="text-lg font-bold">
-          Recent Identifications
+      <div className="mb-3 flex items-center gap-3">
+        <h2
+          id="recent-title"
+          className="readout shrink-0 text-[0.7rem] font-semibold text-ink-muted"
+        >
+          Recent identifications
         </h2>
+        <span className="h-px flex-1 bg-line" aria-hidden />
         {records.length > 0 && (
-          <a href="#/history" className="min-h-11 py-2 font-semibold text-moss">
+          <a href="#/history" className="min-h-11 shrink-0 py-2 text-sm font-semibold text-moss">
             See all
           </a>
         )}
       </div>
       {records.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-line px-4 py-5 text-center text-ink-muted">
+        <p className="rounded-2xl border border-dashed border-line px-4 py-5 text-center text-[0.95rem] text-ink-muted">
           Your identifications will appear here. They’re stored only on this device.
         </p>
       ) : (

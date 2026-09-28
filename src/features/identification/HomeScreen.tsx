@@ -110,71 +110,109 @@ function DemoModePanel() {
   );
 }
 
-/** Decorative fern frond for the hero (purely visual). */
-function FernArt({ className }: { className?: string }) {
-  const leaflets = Array.from({ length: 9 }, (_, i) => i);
-  return (
-    <svg
-      viewBox="0 0 120 200"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <path d="M60 196C58 140 62 80 88 8" />
-      {leaflets.map((i) => {
-        const t = i / 9;
-        const x = 59 + t * 26;
-        const y = 180 - t * 165;
-        const len = 34 - t * 22;
-        return (
-          <g key={i}>
-            <path
-              d={`M${x} ${y}c-${len * 0.5} -2 -${len} -${len * 0.35} -${len * 1.05} -${len * 0.7}`}
-            />
-            <path
-              d={`M${x + 1.5} ${y - 6}c${len * 0.5} -2 ${len} -${len * 0.3} ${len * 1.1} -${len * 0.65}`}
-            />
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-const IDENTIFIES: { id: string; label: string }[] = [
+const RECOGNISES: { id: string; label: string }[] = [
   { id: 'plant', label: 'Plants' },
   { id: 'fungus', label: 'Fungi' },
-  { id: 'bug', label: 'Bugs' },
+  { id: 'bug', label: 'Insects & spiders' },
   { id: 'bird', label: 'Birds' },
   { id: 'mammal', label: 'Mammals' },
-  { id: 'herp', label: 'Reptiles' },
   { id: 'fish', label: 'Fish' },
+  // Longest label last, across both columns.
+  { id: 'herp', label: 'Reptiles & amphibians' },
 ];
+
+/** "46.2°N 63.1°W" — one decimal (~11 km); shown on the device only, never sent like this. */
+function coarseCoords(lat: number, lng: number) {
+  const f = (v: number, pos: string, neg: string) =>
+    `${Math.abs(v).toFixed(1)}°${v >= 0 ? pos : neg}`;
+  return `${f(lat, 'N', 'S')} ${f(lng, 'E', 'W')}`;
+}
+
+/**
+ * The hero: a field viewfinder. The whole panel is the camera button, framed by the
+ * same reticle and grid as the crop and analysis screens, with a small status readout.
+ */
+function Viewfinder({ onCapture }: { onCapture: () => void }) {
+  const { status, location } = useLocationState();
+  const readout =
+    status === 'granted'
+      ? location
+        ? coarseCoords(location.latitude, location.longitude)
+        : 'Location ready'
+      : status === 'requesting'
+        ? 'Locating…'
+        : 'No location';
+  return (
+    <button
+      type="button"
+      onClick={onCapture}
+      aria-label="Take a Photo"
+      className="group relative isolate block w-full overflow-hidden rounded-[1.75rem] bg-toast text-left text-white shadow-[0_18px_40px_-18px_rgba(17,20,15,0.6)] ring-1 ring-white/5 transition-transform duration-200 active:scale-[0.99]"
+      data-testid="viewfinder"
+    >
+      <div className="scan-grid absolute inset-0 -z-10 opacity-70" aria-hidden />
+      <div
+        className="absolute inset-0 -z-10 bg-[radial-gradient(120%_80%_at_50%_45%,rgba(159,208,138,0.16),transparent_60%)]"
+        aria-hidden
+      />
+      <div className="pointer-events-none absolute inset-0 -z-10 opacity-40" aria-hidden>
+        <div className="scan-line scan-line-idle" />
+      </div>
+      {(
+        [
+          'left-4 top-4 border-l-2 border-t-2 rounded-tl-lg',
+          'right-4 top-4 border-r-2 border-t-2 rounded-tr-lg',
+          'bottom-4 left-4 border-b-2 border-l-2 rounded-bl-lg',
+          'bottom-4 right-4 border-b-2 border-r-2 rounded-br-lg',
+        ] as const
+      ).map((c) => (
+        <span key={c} className={`reticle absolute h-7 w-7 border-[#9fd08a]/80 ${c}`} aria-hidden />
+      ))}
+
+      <div className="readout flex items-center justify-between px-14 pt-[1.35rem] text-[0.68rem] text-white/60">
+        <span className="flex items-center gap-1.5">
+          <span className="live-dot h-1.5 w-1.5 rounded-full bg-[#9fd08a]" />
+          Ready
+        </span>
+        <span data-testid="viewfinder-readout">{readout}</span>
+      </div>
+
+      <div className="flex flex-col items-center px-6 pb-9 pt-6 text-center">
+        <span className="relative flex h-24 w-24 items-center justify-center rounded-full border border-[#9fd08a]/40 transition-transform duration-200 group-hover:scale-105">
+          <span className="flex h-18 w-18 items-center justify-center rounded-full bg-[#9fd08a] text-[#10180f] shadow-[0_0_0_6px_rgba(159,208,138,0.12)]">
+            <Icon name="camera" className="h-8 w-8" />
+          </span>
+        </span>
+        <span className="mt-5 text-2xl font-bold tracking-tight">Take a photo</span>
+        <span className="mt-1 max-w-[17rem] text-[0.95rem] text-white/65 [text-wrap:balance]">
+          Snap anything living. FieldLens works out what it is.
+        </span>
+      </div>
+    </button>
+  );
+}
 
 export function HomeScreen() {
   const session = useSession();
   const health = useHealth();
+  const { status } = useLocationState();
   const start = (file: File, source: 'camera' | 'library') => {
     session.startWithPhoto(file, source);
     navigate({ name: 'identify' });
   };
   const camera = usePhotoPicker((f) => start(f, 'camera'), { capture: true });
   const picker = usePhotoPicker((f) => start(f, 'library'));
-  const covers = IDENTIFIES.filter(
+  const covers = RECOGNISES.filter(
     (c) => !health || c.id === 'plant' || health.autoDetect !== false,
   );
 
   return (
-    <div className="space-y-7">
-      <header className="relative -mx-4 overflow-hidden px-4 pb-2 pt-6">
-        <FernArt className="pointer-events-none absolute -right-6 -top-4 h-56 w-36 rotate-12 text-moss opacity-[0.13]" />
-        <h1 className="relative font-serif text-[2.6rem] font-bold leading-none tracking-tight text-moss-dark">
+    <div className="space-y-6">
+      <header className="pt-2">
+        <h1 className="font-serif text-[2.35rem] font-bold leading-none tracking-tight text-moss-dark">
           {BRAND.name}
         </h1>
-        <p className="relative mt-3 max-w-[20rem] text-xl leading-snug text-ink-soft [text-wrap:balance]">
+        <p className="mt-2 text-lg leading-snug text-ink-soft [text-wrap:balance]">
           {BRAND.tagline}
         </p>
       </header>
@@ -187,15 +225,9 @@ export function HomeScreen() {
       {health?.mock && <DemoModePanel />}
 
       <div className="flex flex-col gap-3">
-        <Button
-          size="lg"
-          className="min-h-16 text-xl shadow-[0_6px_16px_rgba(47,93,58,0.25)]"
-          onClick={camera.open}
-        >
-          <Icon name="camera" className="h-7 w-7" /> Take a Photo
-        </Button>
-        <Button size="lg" variant="secondary" className="min-h-14 text-lg" onClick={picker.open}>
-          <Icon name="image" className="h-6 w-6" /> Choose Existing Photo
+        <Viewfinder onCapture={camera.open} />
+        <Button variant="secondary" className="min-h-13 text-base" onClick={picker.open}>
+          <Icon name="image" className="h-5 w-5" /> Choose Existing Photo
         </Button>
         {camera.input}
         {picker.input}
@@ -206,28 +238,36 @@ export function HomeScreen() {
         )}
       </div>
 
-      <section aria-label="What FieldLens can identify" data-testid="identifies">
-        <p className="mb-2 text-sm text-ink-muted">
-          Just snap it — FieldLens works out what it is:
-        </p>
-        <ul className="-mx-2 grid grid-cols-7">
+      {status !== 'granted' && status !== 'requesting' && <LocationPanel />}
+
+      <section aria-labelledby="recognises-title" data-testid="identifies">
+        <div className="flex items-center gap-3">
+          <h2
+            id="recognises-title"
+            className="readout shrink-0 text-[0.7rem] font-semibold text-ink-muted"
+          >
+            Recognises
+          </h2>
+          <span className="h-px flex-1 bg-line" aria-hidden />
+        </div>
+        <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
           {covers.map((c) => (
-            <li key={c.id} className="flex min-w-0 flex-col items-center gap-1 text-center">
-              <span
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-moss-soft text-moss"
-                aria-hidden
-              >
-                <CategoryIcon id={c.id} className="h-5.5 w-5.5" />
-              </span>
-              <span className="w-full truncate text-[0.7rem] font-medium text-ink-soft">
-                {c.label}
-              </span>
+            <li
+              key={c.id}
+              className={`flex min-w-0 items-center gap-2 text-[0.95rem] text-ink-soft ${c.id === 'herp' ? 'col-span-2' : ''}`}
+            >
+              <CategoryIcon id={c.id} className="h-4.5 w-4.5 shrink-0 text-moss" />
+              {c.label}
             </li>
           ))}
         </ul>
+        {health?.autoDetect !== false && (
+          <p className="mt-3 text-sm text-ink-muted">
+            Mammal tracks and droppings too. You can say what it is on the next screen, or leave it
+            on Auto.
+          </p>
+        )}
       </section>
-
-      <LocationPanel />
 
       <RecentObservations />
     </div>

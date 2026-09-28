@@ -25,7 +25,7 @@ describe('ResultView', () => {
     // Confidence is conveyed in text, not only color.
     expect(headline).toHaveTextContent(/9\d% identification confidence · Very likely match/);
     expect(screen.getByRole('meter', { name: /identification confidence/ })).toBeInTheDocument();
-    expect(screen.getByTestId('attribution')).toHaveTextContent('Demo mode');
+    expect(screen.queryByTestId('attribution')).not.toBeInTheDocument();
     expect(screen.getByTestId('demo-banner')).toHaveTextContent('not a real identification');
     expect(screen.getByText(/safe to eat/)).toBeInTheDocument();
   });
@@ -97,7 +97,8 @@ describe('ResultView', () => {
   it('shows "Location not used" when location was declined', async () => {
     render(<ResultView result={await mockResult('high', false)} />);
     expect(screen.getByTestId('result-headline')).toHaveTextContent('Location not used');
-    expect(screen.getByTestId('geo-evidence')).toHaveTextContent('Location not used');
+    // Nothing to show without a location, so the card is left out.
+    expect(screen.queryByTestId('geo-evidence')).not.toBeInTheDocument();
     expect(screen.getByTestId('why-this-match')).toHaveTextContent('Location not used');
   });
 
@@ -167,14 +168,13 @@ describe('experimental and off-target results', () => {
 });
 
 describe('INaturalistCard', () => {
-  it('shows nearby counts, links and the independence disclaimer', async () => {
+  it('shows nearby counts and links', async () => {
     const result = await mockResult('high');
     render(<INaturalistCard summary={result.community} status="ok" locationUsed />);
     const card = screen.getByTestId('inat-card');
     expect(within(card).getByRole('heading', { name: 'From iNaturalist' })).toBeInTheDocument();
     expect(card).toHaveTextContent(/\d+ observations within 25 km/);
     expect(card).toHaveTextContent(/observed in the last 90 days/);
-    expect(card).toHaveTextContent('do not independently confirm this identification');
     expect(within(card).getByRole('link', { name: /View on iNaturalist/ })).toHaveAttribute(
       'target',
       '_blank',
