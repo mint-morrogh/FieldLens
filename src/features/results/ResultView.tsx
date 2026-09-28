@@ -280,7 +280,6 @@ function ImproveIdentification({
   const band = result.confidenceBand;
   const usedFeatures = new Set(improve.photos.map((p) => p.feature));
   const featureOptions = category.features.filter((f) => f.id !== 'other');
-  const suggested = new Set(result.guidance.map((g) => g.feature).filter(Boolean));
 
   return (
     <Card
@@ -330,7 +329,7 @@ function ImproveIdentification({
           {featureOptions.map((f) => (
             <Button
               key={f.id}
-              variant={suggested.has(f.id) ? 'primary' : 'secondary'}
+              variant="secondary"
               onClick={() => improve.onAddPhoto(f.id)}
               className="justify-start"
             >

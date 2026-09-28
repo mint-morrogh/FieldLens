@@ -196,7 +196,7 @@ test('photo first: "What is it?" is optional on the crop screen and starts on Au
 }) => {
   await page.goto('/?mock=high');
   await expect(page.getByTestId('identifies')).toContainText('Recognises');
-  await expect(page.getByTestId('viewfinder')).toContainText('FieldLens works out what it is');
+  await expect(page.getByTestId('viewfinder')).toContainText('Take a photo');
   await choosePhoto(page);
   const row = page.getByTestId('crop-category');
   await expect(row.getByRole('button', { name: 'Auto', exact: true })).toHaveAttribute(

@@ -1,6 +1,5 @@
 import { useHealth } from '../../app/health';
 import { navigate } from '../../app/router';
-import { CategoryIcon } from '../../components/CategoryIcon';
 import { Icon } from '../../components/Icon';
 import { Button, Notice } from '../../components/ui';
 import { BRAND } from '../../config/brand';
@@ -116,9 +115,8 @@ const RECOGNISES: { id: string; label: string }[] = [
   { id: 'bug', label: 'Insects & spiders' },
   { id: 'bird', label: 'Birds' },
   { id: 'mammal', label: 'Mammals' },
-  { id: 'fish', label: 'Fish' },
-  // Longest label last, across both columns.
   { id: 'herp', label: 'Reptiles & amphibians' },
+  { id: 'fish', label: 'Fish' },
 ];
 
 /** "46.2°N 63.1°W" — one decimal (~11 km); shown on the device only, never sent like this. */
@@ -155,9 +153,6 @@ function Viewfinder({ onCapture }: { onCapture: () => void }) {
         className="absolute inset-0 -z-10 bg-[radial-gradient(120%_80%_at_50%_45%,rgba(159,208,138,0.16),transparent_60%)]"
         aria-hidden
       />
-      <div className="pointer-events-none absolute inset-0 -z-10 opacity-40" aria-hidden>
-        <div className="scan-line scan-line-idle" />
-      </div>
       {(
         [
           'left-4 top-4 border-l-2 border-t-2 rounded-tl-lg',
@@ -177,16 +172,13 @@ function Viewfinder({ onCapture }: { onCapture: () => void }) {
         <span data-testid="viewfinder-readout">{readout}</span>
       </div>
 
-      <div className="flex flex-col items-center px-6 pb-9 pt-6 text-center">
+      <div className="flex flex-col items-center px-6 pb-10 pt-7 text-center">
         <span className="relative flex h-24 w-24 items-center justify-center rounded-full border border-[#9fd08a]/40 transition-transform duration-200 group-hover:scale-105">
           <span className="flex h-18 w-18 items-center justify-center rounded-full bg-[#9fd08a] text-[#10180f] shadow-[0_0_0_6px_rgba(159,208,138,0.12)]">
             <Icon name="camera" className="h-8 w-8" />
           </span>
         </span>
-        <span className="mt-5 text-2xl font-bold tracking-tight">Take a photo</span>
-        <span className="mt-1 max-w-[17rem] text-[0.95rem] text-white/65 [text-wrap:balance]">
-          Snap anything living. FieldLens works out what it is.
-        </span>
+        <span className="mt-4 text-xl font-bold tracking-tight">Take a photo</span>
       </div>
     </button>
   );
@@ -250,23 +242,14 @@ export function HomeScreen() {
           </h2>
           <span className="h-px flex-1 bg-line" aria-hidden />
         </div>
-        <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
+        <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[0.95rem] text-ink-soft">
           {covers.map((c) => (
-            <li
-              key={c.id}
-              className={`flex min-w-0 items-center gap-2 text-[0.95rem] text-ink-soft ${c.id === 'herp' ? 'col-span-2' : ''}`}
-            >
-              <CategoryIcon id={c.id} className="h-4.5 w-4.5 shrink-0 text-moss" />
+            <li key={c.id} className="flex items-center gap-2 whitespace-nowrap">
+              <span className="h-1.5 w-1.5 rounded-full bg-moss/70" aria-hidden />
               {c.label}
             </li>
           ))}
         </ul>
-        {health?.autoDetect !== false && (
-          <p className="mt-3 text-sm text-ink-muted">
-            Mammal tracks and droppings too. You can say what it is on the next screen, or leave it
-            on Auto.
-          </p>
-        )}
       </section>
 
       <RecentObservations />

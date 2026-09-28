@@ -201,7 +201,7 @@
 .fade-up {
   animation: fade-up 0.35s ease-out both;
 }
-/* Home viewfinder: instrument-style readouts and a slow idle sweep. */
+/* Home viewfinder: instrument-style readouts. */
 .readout {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -220,9 +220,6 @@
 .live-dot {
   box-shadow: 0 0 8px rgba(159, 208, 138, 0.8);
   animation: live-dot 2.4s ease-in-out infinite;
-}
-.scan-line-idle {
-  animation-duration: 6s;
 }
 @media (prefers-reduced-motion: reduce) {
   .live-dot,
