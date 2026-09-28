@@ -244,3 +244,24 @@ It isn't deployed for now, because:
 - it adds about 1 GB of memory to the Space.
 
 Revisit it if Fishial confirms the weights' licence, and after checking the thresholds on a fresh set of 100+ photos.
+
+## Live identify: tap, sharper frames, possible matches (2026-09-28)
+
+A bouquet in live mode never produced a result, although a photo of it did. Four causes:
+
+- **Small crops.** The camera was asked for about 1280×720, and the centre 60% square was sent: about 430 px, against up to 1600 px from the native camera in photo mode.
+- **No flower class.** The COCO detector has "vase" and "potted plant" but no "flower", so a bouquet got a blind centre box.
+- **Uncertain results were discarded.** Only medium or high results that two frames agreed on were shown. A mixed bouquet is uncertain by nature.
+- **No feedback.** Nothing said why it was waiting.
+
+Changes:
+
+- **Tap to identify.** Tapping the view picks the detector box under the finger, or a square around the tap (45% of the shorter side), and identifies at once: no stillness wait, no second frame. Where the browser supports ImageCapture (Chrome on Android), a tap takes a full-resolution still and crops it; elsewhere it falls back to the video frame.
+- **Sharper frames.** 1920×1080 video, and crops up to 1600 px, the same as photo mode.
+- **Possible matches.** Low-confidence results show as an amber "Possible … ?" card: from a tap straight away, and when scanning automatically, once two frames agree. The best match so far is always offered as "See best match".
+- **Detector hints.** A vase counts as flowers and a potted plant as a plant; both go straight to Pl@ntNet. Birds go to birds; cats, dogs and other COCO animals go to mammals. This skips server-side category detection, which is faster and saves the GPU quota. The tag on the box shows the group while it identifies ("Plant · identifying", then the name); under automatic detection it updates to what the server found, e.g. "Fungus".
+- **Tips.**
+  - "Several things in view: tap the one you mean" (more than one subject, or a bouquet).
+  - "Move closer, or tap it" (subject under 4% of the frame).
+  - "Not sure yet. Move closer, or tap one flower, leaf or animal" (after an uncertain result).
+- The scan limit rose from 12 to 15 frames per session, taps included.

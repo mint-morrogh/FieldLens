@@ -2,7 +2,7 @@ import type { ObjectDetector } from '@mediapipe/tasks-vision';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCategory } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
-import type { IdentifyResponse } from '../../../shared/types';
+import type { IdentifyResponse, IdentifyTarget } from '../../../shared/types';
 import { navigate } from '../../app/router';
 import { Icon } from '../../components/Icon';
 import { ClientError, identify } from '../../lib/api';
@@ -13,43 +13,58 @@ import { mergeImages } from '../results/Gallery';
 
 /**
  * Live identify: an on-device detector (MediaPipe EfficientDet-Lite0, COCO classes) boxes
- * animals and potted plants in the camera feed; anything else is framed by a centre box.
- * Scanning is automatic: when the view holds still, that frame is cropped to the box and
- * sent through the normal identification, and the match appears in a card over the camera.
- * Only still frames leave the phone, and only a few per session, so the free identification
- * quotas aren't burned by video.
+ * animals, potted plants and vases (bouquets) in the camera feed; anything else is framed by a
+ * centre box. Scanning is automatic: when the view holds still, that frame is cropped to the box
+ * and sent through the normal identification, and the match appears in a card over the camera.
+ * Tapping the view identifies whatever is under the finger straight away, with a full-resolution
+ * photo where the browser can take one. Only still frames leave the phone, and only a few per
+ * session, so the free identification quotas aren't burned by video.
  */
 const MEDIAPIPE_VERSION = '1.0.1';
 const WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
 const MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite';
-/** COCO classes worth boxing; everything else (cars, chairs…) is ignored. */
-const LIVING = new Set([
-  'person',
-  'bird',
-  'cat',
-  'dog',
-  'horse',
-  'sheep',
-  'cow',
-  'elephant',
-  'bear',
-  'zebra',
-  'giraffe',
-  'potted plant',
-]);
+/**
+ * COCO classes worth boxing, and what each says about the subject. The detector has no
+ * "flower" class: a bouquet shows up as a vase. A hint skips server-side category detection
+ * (faster, and it doesn't use the GPU quota); people are recognised here and never sent.
+ */
+type Hint = { category?: IdentifyTarget; label: string };
+const MAMMAL: Hint = { category: 'mammal', label: 'Mammal' };
+const HINTS: Record<string, Hint> = {
+  person: { label: 'Person' },
+  bird: { category: 'bird', label: 'Bird' },
+  cat: MAMMAL,
+  dog: MAMMAL,
+  horse: MAMMAL,
+  sheep: MAMMAL,
+  cow: MAMMAL,
+  elephant: MAMMAL,
+  bear: MAMMAL,
+  zebra: MAMMAL,
+  giraffe: MAMMAL,
+  'potted plant': { category: 'plant', label: 'Plant' },
+  vase: { category: 'plant', label: 'Flowers' },
+};
 const TICK_MS = 100;
 const STILL_FOR_MS = 900;
 const MOTION_THRESHOLD = 7;
-/** Frames sent per live session, to protect the free identification quotas. */
-const MAX_ATTEMPTS = 12;
+/** Frames sent per live session (scans and taps), to protect the free identification quotas. */
+const MAX_ATTEMPTS = 15;
 const COOLDOWN_MS = 2500;
 /**
- * A match is only shown once this many frames in a row agree on the species, so one odd
- * frame can't produce a confident-looking card. The follow-up frame is taken sooner.
+ * An automatic match is only shown once this many frames in a row agree on the species, so one
+ * odd frame can't produce a confident-looking card. The follow-up frame is taken sooner.
+ * A tap shows its result straight away: the person has said what they mean.
  */
 const VOTES_NEEDED = 2;
 const CONFIRM_COOLDOWN_MS = 500;
+/** Same size limit as photo mode: Pl@ntNet needs petal and leaf detail. */
+const CROP_MAX_EDGE = 1600;
+/** A tap with no detector box around it identifies a square this share of the shorter side. */
+const TAP_BOX = 0.45;
+/** A boxed subject smaller than this share of the frame is too far away to identify well. */
+const TOO_SMALL = 0.04;
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Status =
@@ -63,6 +78,8 @@ type Status =
   | 'exhausted'
   | 'error';
 type Found = { result: IdentifyResponse; frame: Blob; crop: Blob };
+type Focus = Rect & { hint?: Hint };
+type Tip = 'several' | 'closer' | 'unsure' | undefined;
 
 function newId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -92,6 +109,70 @@ async function grab(video: HTMLVideoElement, r: Rect, maxEdge: number): Promise<
   return toBlob(canvas);
 }
 
+/** Where a video rectangle appears on screen, as fractions of the element (object-fit: cover). */
+function toDisplay(video: HTMLVideoElement, r: Rect): Rect {
+  const cw = video.clientWidth || 1;
+  const ch = video.clientHeight || 1;
+  const scale = Math.max(cw / video.videoWidth, ch / video.videoHeight);
+  const ox = (cw - video.videoWidth * scale) / 2;
+  const oy = (ch - video.videoHeight * scale) / 2;
+  return {
+    x: (r.x * scale + ox) / cw,
+    y: (r.y * scale + oy) / ch,
+    w: (r.w * scale) / cw,
+    h: (r.h * scale) / ch,
+  };
+}
+
+/** The video pixel under a screen point. */
+function toVideo(video: HTMLVideoElement, clientX: number, clientY: number) {
+  const b = video.getBoundingClientRect();
+  const scale = Math.max(b.width / video.videoWidth, b.height / video.videoHeight);
+  return {
+    x: (clientX - b.left - (b.width - video.videoWidth * scale) / 2) / scale,
+    y: (clientY - b.top - (b.height - video.videoHeight * scale) / 2) / scale,
+  };
+}
+
+type ImageCaptureLike = { takePhoto(): Promise<Blob> };
+type ImageCaptureCtor = new (track: MediaStreamTrack) => ImageCaptureLike;
+
+/**
+ * A full-resolution still from the live camera (Chrome on Android), cropped to the region.
+ * The video is taken to be a centred crop of the photo's field of view. Returns undefined
+ * where the browser can't (iOS Safari), so the caller falls back to the video frame.
+ */
+async function photoCrop(
+  track: MediaStreamTrack | undefined,
+  video: HTMLVideoElement,
+  r: Rect,
+): Promise<Blob | undefined> {
+  const Ctor = (globalThis as { ImageCapture?: ImageCaptureCtor }).ImageCapture;
+  if (!track || !Ctor) return undefined;
+  try {
+    const blob = await Promise.race([
+      new Ctor(track).takePhoto(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('slow')), 3000)),
+    ]);
+    const bitmap = await createImageBitmap(blob);
+    const s = Math.min(bitmap.width / video.videoWidth, bitmap.height / video.videoHeight);
+    const ox = (bitmap.width - video.videoWidth * s) / 2;
+    const oy = (bitmap.height - video.videoHeight * s) / 2;
+    const src = { x: r.x * s + ox, y: r.y * s + oy, w: r.w * s, h: r.h * s };
+    const scale = Math.min(1, CROP_MAX_EDGE / Math.max(src.w, src.h));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(src.w * scale);
+    canvas.height = Math.round(src.h * scale);
+    canvas
+      .getContext('2d')!
+      .drawImage(bitmap, src.x, src.y, src.w, src.h, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return await toBlob(canvas);
+  } catch {
+    return undefined;
+  }
+}
+
 const GLASS = 'border border-white/15 bg-black/35 backdrop-blur-xl backdrop-saturate-150';
 
 /** The match, shown in a frosted card over the camera. */
@@ -107,14 +188,23 @@ function FoundCard({
   const { result } = found;
   const top = result.candidates[0];
   const images = mergeImages(top.referenceImages, result.speciesInfo?.images).slice(0, 3);
-  const band = result.confidenceBand === 'high' ? 'Very likely' : 'Likely';
+  const band =
+    result.confidenceBand === 'high'
+      ? 'Very likely'
+      : result.confidenceBand === 'medium'
+        ? 'Likely'
+        : 'Possible';
   return (
     <div className={`live-card rounded-[1.75rem] p-4 ${GLASS}`} data-testid="live-result">
       <p className="readout text-[0.62rem] text-white/60">
-        {getCategory(result.category).label} · {band} · {formatPercent(top.finalConfidence)}
+        {getCategory(result.category).label} ·{' '}
+        <span className={result.confidenceBand === 'low' ? 'text-[#f5c26b]' : undefined}>
+          {band}
+        </span>{' '}
+        · {formatPercent(top.finalConfidence)}
       </p>
       <p className="mt-1 text-2xl font-semibold leading-tight tracking-tight text-white">
-        {displayName(top)}
+        {result.confidenceBand === 'low' ? `${displayName(top)}?` : displayName(top)}
       </p>
       {top.commonName && <p className="sci text-white/70">{top.scientificName}</p>}
       {images.length > 0 && (
@@ -162,11 +252,19 @@ export function LiveScreen() {
   const [kind, setKind] = useState<string>();
   const [guess, setGuess] = useState<string>();
   const [found, setFound] = useState<Found>();
+  /** The best uncertain match so far, offered as "See best match". */
+  const [bestGuess, setBestGuess] = useState<Found>();
+  const [tip, setTip] = useState<Tip>();
 
   // Mutable loop state (read inside the interval without re-subscribing).
   const loop = useRef({
     detector: undefined as ObjectDetector | undefined,
-    focus: undefined as Rect | undefined,
+    track: undefined as MediaStreamTrack | undefined,
+    focus: undefined as Focus | undefined,
+    /** Detected boxes from the last tick, for taps. */
+    boxes: [] as Focus[],
+    /** A tapped subject: identified straight away, and held while it's analysed. */
+    tapped: undefined as Focus | undefined,
     focusIsPerson: false,
     lastLuma: undefined as Uint8ClampedArray | undefined,
     stillSince: 0,
@@ -175,6 +273,7 @@ export function LiveScreen() {
     paused: false,
     /** Frames agreeing so far on one species, and the most confident of them. */
     vote: undefined as { name: string; count: number; best: Found } | undefined,
+    best: undefined as Found | undefined,
     attempts: 0,
     nextAttemptAt: 0,
     done: false,
@@ -199,103 +298,155 @@ export function LiveScreen() {
     [session],
   );
 
+  const show = useCallback((f: Found) => {
+    const l = loop.current;
+    l.vote = undefined;
+    l.paused = true;
+    setFound(f);
+    setKind(getCategory(f.result.category).label);
+    setStatus('found');
+  }, []);
+
   const clear = useCallback(() => {
     const l = loop.current;
     setFound(undefined);
     setKind(undefined);
     setGuess(undefined);
+    setTip(undefined);
     l.paused = false;
     l.vote = undefined;
+    l.tapped = undefined;
     l.stillSince = 0;
     l.nextAttemptAt = performance.now() + 800;
     setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'aim');
   }, []);
 
-  const analyse = useCallback(async () => {
-    const video = videoRef.current;
-    const l = loop.current;
-    if (!video || !l.focus || l.busy || l.done || l.paused) return;
-    l.busy = true;
-    l.attempts += 1;
-    setStatus('analysing');
-    setKind(undefined);
-    setGuess(undefined);
-    try {
-      const pad = 0.15;
-      const f = l.focus;
+  const analyse = useCallback(
+    async (manual = false) => {
+      const video = videoRef.current;
+      const l = loop.current;
+      const f = manual ? l.tapped : l.focus;
+      if (!video || !f || l.busy || l.done || l.paused) return;
+      l.busy = true;
+      l.attempts += 1;
+      setStatus('analysing');
+      setTip(undefined);
+      setGuess(undefined);
+      // The detector's hint shows straight away; automatic detection may refine it below.
+      setKind(f.hint?.label);
+      try {
+        const pad = 0.15;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        const x = Math.max(0, f.x - f.w * pad);
+        const y = Math.max(0, f.y - f.h * pad);
+        const region = {
+          x,
+          y,
+          w: Math.min(vw - x, f.w * (1 + 2 * pad)),
+          h: Math.min(vh - y, f.h * (1 + 2 * pad)),
+        };
+        const frame = await grab(video, { x: 0, y: 0, w: vw, h: vh }, 2048);
+        const crop =
+          (manual ? await photoCrop(l.track, video, region) : undefined) ??
+          (await grab(video, region, CROP_MAX_EDGE));
+        const location = await current().catch(() => undefined);
+        const result = await identify(
+          {
+            observationId: newId(),
+            category: f.hint?.category ?? 'auto',
+            images: [{ blob: crop, feature: 'auto' }],
+            location,
+            capturedAt: new Date(),
+          },
+          {
+            onStage: (event) => {
+              if (event.detected) {
+                setKind(event.detected === 'person' ? 'Person' : getCategory(event.detected).label);
+              }
+              const top = event.preview?.[0];
+              if (top) setGuess(displayName(top));
+            },
+          },
+        );
+        if (l.done) return;
+        const top = result.candidates[0];
+        const latest: Found = { result, frame, crop };
+        if (result.person) {
+          setStatus('person');
+          setKind('Person');
+        } else if (!top || result.confidenceBand === 'none') {
+          l.vote = undefined;
+          setGuess(undefined);
+          setTip('unsure');
+          setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'aim');
+        } else {
+          setKind(getCategory(result.category).label);
+          if (!l.best || top.finalConfidence > l.best.result.candidates[0].finalConfidence) {
+            l.best = latest;
+            setBestGuess(latest);
+          }
+          const name = top.scientificName.toLowerCase();
+          const agrees = l.vote?.name === name;
+          const count = agrees ? l.vote!.count + 1 : 1;
+          const best =
+            agrees && l.vote!.best.result.candidates[0].finalConfidence >= top.finalConfidence
+              ? l.vote!.best
+              : latest;
+          if (manual || count >= VOTES_NEEDED) {
+            // Uncertain matches are shown too, marked "Possible".
+            show(manual ? latest : best);
+          } else {
+            // First sighting of this species: check another frame before showing it.
+            l.vote = { name, count, best };
+            setGuess(displayName(top));
+            if (result.confidenceBand === 'low') setTip('unsure');
+            setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'confirming');
+          }
+        }
+      } catch (e) {
+        setStatus('error');
+        setError(e instanceof ClientError ? e.message : 'Live identification failed.');
+      } finally {
+        l.busy = false;
+        l.tapped = undefined;
+        l.nextAttemptAt = performance.now() + (l.vote ? CONFIRM_COOLDOWN_MS : COOLDOWN_MS);
+        l.stillSince = 0;
+      }
+    },
+    [current, show],
+  );
+
+  /** Tap to identify: the detected box under the finger, else a square around the tap. */
+  const onTap = useCallback(
+    (e: React.PointerEvent) => {
+      const video = videoRef.current;
+      const l = loop.current;
+      if (!video || !video.videoWidth || l.busy || l.paused || l.done) return;
+      if (l.attempts >= MAX_ATTEMPTS) return;
+      const p = toVideo(video, e.clientX, e.clientY);
       const vw = video.videoWidth;
       const vh = video.videoHeight;
-      const x = Math.max(0, f.x - f.w * pad);
-      const y = Math.max(0, f.y - f.h * pad);
-      const region = {
-        x,
-        y,
-        w: Math.min(vw - x, f.w * (1 + 2 * pad)),
-        h: Math.min(vh - y, f.h * (1 + 2 * pad)),
-      };
-      const [crop, frame] = await Promise.all([
-        grab(video, region, 1280),
-        grab(video, { x: 0, y: 0, w: vw, h: vh }, 2048),
-      ]);
-      const location = await current().catch(() => undefined);
-      const result = await identify(
-        {
-          observationId: newId(),
-          category: 'auto',
-          images: [{ blob: crop, feature: 'auto' }],
-          location,
-          capturedAt: new Date(),
-        },
-        {
-          onStage: (event) => {
-            if (event.detected) {
-              setKind(event.detected === 'person' ? 'Person' : getCategory(event.detected).label);
-            }
-            const top = event.preview?.[0];
-            if (top) setGuess(displayName(top));
-          },
-        },
-      );
-      if (l.done) return;
-      const top = result.candidates[0];
-      if (result.person) {
-        setStatus('person');
-        setKind('Person');
-      } else if (top && result.confidenceBand !== 'low' && result.confidenceBand !== 'none') {
-        const name = top.scientificName.toLowerCase();
-        const current: Found = { result, frame, crop };
-        const agrees = l.vote?.name === name;
-        const count = agrees ? l.vote!.count + 1 : 1;
-        const best =
-          agrees && l.vote!.best.result.candidates[0].finalConfidence >= top.finalConfidence
-            ? l.vote!.best
-            : current;
-        setKind(getCategory(result.category).label);
-        if (count >= VOTES_NEEDED) {
-          l.vote = undefined;
-          l.paused = true;
-          setFound(best);
-          setStatus('found');
-        } else {
-          // First sighting of this species: check another frame before showing it.
-          l.vote = { name, count, best };
-          setGuess(displayName(top));
-          setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'confirming');
-        }
-      } else {
-        l.vote = undefined;
-        setGuess(undefined);
-        setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'aim');
-      }
-    } catch (e) {
-      setStatus('error');
-      setError(e instanceof ClientError ? e.message : 'Live identification failed.');
-    } finally {
-      l.busy = false;
-      l.nextAttemptAt = performance.now() + (l.vote ? CONFIRM_COOLDOWN_MS : COOLDOWN_MS);
-      l.stillSince = 0;
-    }
-  }, [current]);
+      const hit = l.boxes
+        .filter((b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h)
+        .sort((a, b) => a.w * a.h - b.w * b.h)[0];
+      const side = Math.min(vw, vh) * TAP_BOX;
+      const focus: Focus =
+        hit && hit.hint?.label !== 'Person'
+          ? hit
+          : {
+              x: Math.min(Math.max(0, p.x - side / 2), vw - side),
+              y: Math.min(Math.max(0, p.y - side / 2), vh - side),
+              w: side,
+              h: side,
+            };
+      l.tapped = focus;
+      l.vote = undefined;
+      setBox(toDisplay(video, focus));
+      void analyse(true);
+    },
+    [analyse],
+  );
 
   // Camera + detector setup.
   useEffect(() => {
@@ -304,11 +455,17 @@ export function LiveScreen() {
     const l = loop.current;
     (async () => {
       try {
+        // Ask for sharp frames: identification needs detail, not just a preview.
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } },
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
           audio: false,
         });
         if (cancelled) return;
+        l.track = stream.getVideoTracks()[0];
         const video = videoRef.current!;
         video.srcObject = stream;
         await video.play();
@@ -346,6 +503,7 @@ export function LiveScreen() {
       stream?.getTracks().forEach((t) => t.stop());
       l.detector?.close();
       l.detector = undefined;
+      l.track = undefined;
     };
   }, []);
 
@@ -370,9 +528,7 @@ export function LiveScreen() {
       const vw = video.videoWidth;
       const vh = video.videoHeight;
 
-      // 1. Where to look: the most prominent living thing, else the centre.
-      let focus = centreBox(vw, vh);
-      let subject: string | undefined;
+      // 1. Where to look: the most prominent living thing (or bouquet), else the centre.
       let detections: ReturnType<ObjectDetector['detectForVideo']>['detections'] = [];
       if (l.detector) {
         try {
@@ -384,23 +540,37 @@ export function LiveScreen() {
           l.detector = undefined;
         }
       }
-      if (detections.length) {
-        const best = detections
-          .map((d) => ({ b: d.boundingBox, c: d.categories[0] }))
-          .filter(({ b, c }) => b && c && LIVING.has(c.categoryName))
-          .map(({ b, c }) => ({
-            rect: { x: b!.originX, y: b!.originY, w: b!.width, h: b!.height },
-            c,
-          }))
-          .sort((a, b) => b.rect.w * b.rect.h * b.c.score - a.rect.w * a.rect.h * a.c.score)[0];
-        if (best) {
-          focus = best.rect;
-          subject = best.c.categoryName;
-        }
-      }
+      l.boxes = detections
+        .map((d) => ({ b: d.boundingBox, c: d.categories[0] }))
+        .filter(({ b, c }) => b && c && HINTS[c.categoryName])
+        .map(({ b, c }) => ({
+          x: b!.originX,
+          y: b!.originY,
+          w: b!.width,
+          h: b!.height,
+          hint: HINTS[c!.categoryName],
+          score: c!.score,
+        }))
+        .sort((a, b) => b.w * b.h * b.score - a.w * a.h * a.score);
+      const best = l.boxes[0];
+      const focus: Focus = l.tapped ?? best ?? centreBox(vw, vh);
       l.focus = focus;
-      l.focusIsPerson = subject === 'person';
-      setBox({ x: focus.x / vw, y: focus.y / vh, w: focus.w / vw, h: focus.h / vh });
+      l.focusIsPerson = focus.hint?.label === 'Person';
+      if (!l.busy) {
+        setBox(toDisplay(video, focus));
+        // While a match is being confirmed, keep the group the server found (e.g. "Fungus").
+        if (!l.vote) setKind(focus.hint?.label);
+        const subjects = l.boxes.filter((b) => b.hint?.label !== 'Person').length;
+        setTip((current) =>
+          subjects > 1 || focus.hint?.label === 'Flowers'
+            ? 'several'
+            : best && (best.w * best.h) / (vw * vh) < TOO_SMALL
+              ? 'closer'
+              : current === 'unsure'
+                ? current
+                : undefined,
+        );
+      }
 
       // 2. Is the view holding still?
       ctx.drawImage(video, 0, 0, probe.width, probe.height);
@@ -421,6 +591,7 @@ export function LiveScreen() {
         // A big move means a different subject: start the vote again.
         if (motion > MOTION_THRESHOLD * 3 && l.vote && !l.busy) {
           l.vote = undefined;
+          setTip(undefined);
           setStatus((st) => (st === 'confirming' ? 'aim' : st));
         }
       }
@@ -449,7 +620,7 @@ export function LiveScreen() {
 
   const message: Partial<Record<Status, string>> = {
     starting: 'Starting camera',
-    aim: 'Point at a plant, animal or mushroom',
+    aim: 'Point at a plant, animal or mushroom, or tap it',
     steady: 'Hold steady',
     analysing: guess ? `${guess}…` : kind ? `Looks like a ${kind.toLowerCase()}…` : 'Identifying…',
     confirming: guess ? `${guess}? Checking again…` : 'Checking again…',
@@ -457,7 +628,14 @@ export function LiveScreen() {
     exhausted: 'Scan limit reached for this session',
     error: error ?? 'Something went wrong',
   };
+  const tips: Record<NonNullable<Tip>, string> = {
+    several: 'Several things in view: tap the one you mean',
+    closer: 'Move closer, or tap it',
+    unsure: 'Not sure yet. Move closer, or tap one flower, leaf or animal',
+  };
   const scanning = status === 'analysing' || status === 'confirming';
+  const showTip =
+    tip && !found && status !== 'analysing' && status !== 'error' && status !== 'person';
 
   return (
     <div
@@ -471,12 +649,14 @@ export function LiveScreen() {
         className="absolute inset-0 h-full w-full object-cover"
         playsInline
         muted
-        aria-label="Camera view"
+        aria-label="Camera view. Tap something to identify it."
+        onPointerUp={onTap}
+        data-testid="live-video"
       />
 
       {box && status !== 'error' && !found && (
         <div
-          className={`live-focus absolute ${scanning ? 'live-focus-scanning' : ''}`}
+          className={`live-focus pointer-events-none absolute ${scanning ? 'live-focus-scanning' : ''}`}
           style={{
             left: `${box.x * 100}%`,
             top: `${box.y * 100}%`,
@@ -495,6 +675,8 @@ export function LiveScreen() {
               data-testid="live-kind"
             >
               {kind}
+              {scanning && <span className="text-white/60">·</span>}
+              {scanning && <span className="text-white/80">{guess ?? 'identifying'}</span>}
             </span>
           )}
         </div>
@@ -519,12 +701,20 @@ export function LiveScreen() {
         <span className="w-11" aria-hidden />
       </div>
 
-      {/* Bottom: status pill, or the match card */}
+      {/* Bottom: status pill and tips, or the match card */}
       <div className="safe-bottom absolute inset-x-0 bottom-0 px-4">
         {found ? (
           <FoundCard found={found} onClear={clear} onDetails={() => openDetails(found)} />
         ) : (
           <div className="flex flex-col items-center gap-3 pb-2">
+            {showTip && (
+              <p
+                className="fade-up max-w-xs text-center text-sm font-medium text-white [text-shadow:0_1px_6px_rgba(0,0,0,0.7)]"
+                data-testid="live-tip"
+              >
+                {tips[tip]}
+              </p>
+            )}
             <p
               className={`flex items-center gap-2 rounded-full px-4 py-2.5 text-[0.95rem] font-medium ${GLASS}`}
               role="status"
@@ -535,6 +725,16 @@ export function LiveScreen() {
               )}
               {message[status]}
             </p>
+            {bestGuess && !scanning && status !== 'error' && (
+              <button
+                type="button"
+                onClick={() => show(bestGuess)}
+                className={`min-h-11 rounded-full px-4 text-sm font-semibold ${GLASS}`}
+                data-testid="live-best"
+              >
+                See best match: {displayName(bestGuess.result.candidates[0])}
+              </button>
+            )}
             {(status === 'error' || status === 'exhausted') && (
               <button
                 type="button"

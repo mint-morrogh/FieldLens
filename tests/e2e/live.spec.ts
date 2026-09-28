@@ -55,3 +55,24 @@ test('can be closed back to the home screen', async ({ page }) => {
   await page.getByRole('button', { name: 'Close live identify' }).click();
   await expect(page.getByTestId('viewfinder')).toBeVisible();
 });
+
+test('tapping identifies what is under the finger straight away', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await page.getByRole('button', { name: 'Live identify' }).click();
+  // The focus box appears once the camera is running.
+  await expect(page.getByTestId('live-box')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('live-video').click({ position: { x: 120, y: 200 } });
+  const card = page.getByTestId('live-result');
+  await expect(card).toBeVisible({ timeout: 10_000 });
+  await expect(card).toContainText('Red Maple');
+  await expect(card).toContainText('Very likely');
+});
+
+test('uncertain matches are shown as possible, not hidden', async ({ page }) => {
+  await page.goto('/?mock=low');
+  await page.getByRole('button', { name: 'Live identify' }).click();
+  const card = page.getByTestId('live-result');
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await expect(card).toContainText('Possible');
+  await expect(card).toContainText('?');
+});
