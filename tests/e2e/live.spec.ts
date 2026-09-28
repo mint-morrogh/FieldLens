@@ -16,6 +16,16 @@ test.use({
   },
 });
 
+// The object detector is optional (a centre box is used without it). Block its download so
+// these tests don't depend on a CDN or a GPU: CI's headless Linux Chromium has neither
+// reliably, and the scanning flow is what's under test here.
+test.beforeEach(async ({ page }) => {
+  await page.route(
+    /cdn\.jsdelivr\.net\/npm\/@mediapipe|storage\.googleapis\.com\/mediapipe-models/,
+    (r) => r.abort(),
+  );
+});
+
 test('scans automatically and shows the match over the camera', async ({ page }) => {
   await page.goto('/?mock=high');
   await page.getByRole('button', { name: 'Live identify' }).click();

@@ -326,12 +326,15 @@ export function LiveScreen() {
       try {
         const { FilesetResolver, ObjectDetector } = await import('@mediapipe/tasks-vision');
         const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-        const detector = await ObjectDetector.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
-          runningMode: 'VIDEO',
-          scoreThreshold: 0.4,
-          maxResults: 5,
-        });
+        const create = (delegate: 'GPU' | 'CPU') =>
+          ObjectDetector.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: MODEL_URL, delegate },
+            runningMode: 'VIDEO',
+            scoreThreshold: 0.4,
+            maxResults: 5,
+          });
+        // Phones and browsers without usable WebGL can't run the GPU delegate.
+        const detector = await create('GPU').catch(() => create('CPU'));
         if (cancelled) detector.close();
         else l.detector = detector;
       } catch {
@@ -370,10 +373,20 @@ export function LiveScreen() {
       // 1. Where to look: the most prominent living thing, else the centre.
       let focus = centreBox(vw, vh);
       let subject: string | undefined;
+      let detections: ReturnType<ObjectDetector['detectForVideo']>['detections'] = [];
       if (l.detector) {
-        const best = l.detector
-          .detectForVideo(video, now)
-          .detections.map((d) => ({ b: d.boundingBox, c: d.categories[0] }))
+        try {
+          detections = l.detector.detectForVideo(video, now).detections;
+        } catch {
+          // A detector that fails while running (e.g. a lost GPU context) would stop every
+          // tick here; drop it and carry on with the centre box.
+          l.detector.close();
+          l.detector = undefined;
+        }
+      }
+      if (detections.length) {
+        const best = detections
+          .map((d) => ({ b: d.boundingBox, c: d.categories[0] }))
           .filter(({ b, c }) => b && c && LIVING.has(c.categoryName))
           .map(({ b, c }) => ({
             rect: { x: b!.originX, y: b!.originY, w: b!.width, h: b!.height },
