@@ -10,6 +10,7 @@ import type {
   GroupSummary,
   IdentifyResponse,
   IdentifyTarget,
+  LicensedImage,
   NearbySpeciesGroup,
   OccurrenceEvidence,
   OrganismCandidate,
@@ -38,9 +39,14 @@ import type {
 } from '../providers/types.js';
 import { WIKIPEDIA_SOURCE } from '../providers/wiki/wiki.js';
 import { DeterministicGeoReranker, type CandidateReranker } from '../ranking/reranker.js';
+import { ELEVATION_CATEGORIES, dayPhase } from '../ranking/context.js';
+import { ELEVATION_TIMEOUT_MS, OPEN_METEO_ATTRIBUTION } from '../providers/elevation/openMeteo.js';
 import { ELTONTRAITS_SOURCE, ELTONTRAITS_URL, mammalTraitFacts } from '../facts/mammalFacts.js';
+import { birdTraitFacts } from '../facts/birdFacts.js';
+import { buildDecidingView } from '../facts/decidingView.js';
 import { buildQuestions } from '../facts/questions.js';
-import { SAFETY_CATEGORIES, buildSafety } from '../safety/safety.js';
+import { SAFETY_CATEGORIES, buildSafety, dangerousLookalikes } from '../safety/safety.js';
+import { attachLookalikePhotos, fetchLookalikePhotos } from '../safety/lookalikePhotos.js';
 import { buildWildlifeSafety } from '../safety/wildlife.js';
 import { buildEvidence, buildGuidance } from './evidence.js';
 
@@ -173,6 +179,8 @@ function personResponse(
       community: 'skipped',
     },
     person: true,
+    requestedTarget: input.category,
+    features: input.images.map((i) => i.feature),
     mock: providers.mock || undefined,
   };
 }
@@ -203,6 +211,32 @@ export async function runIdentification(
   };
   const requestId = randomUUID();
   const started = Date.now();
+
+  // Ground elevation is looked up straight away (in parallel with identification) for groups
+  // where it can matter. Tightly time-boxed; a failure just means no elevation nudge.
+  const elevationTarget: IdentifyTarget = input.audio ? 'bird' : input.category;
+  const elevationMembers = targetMembers(elevationTarget);
+  const elevationTask =
+    input.location &&
+    providers.elevation &&
+    !signFor(input) &&
+    (elevationMembers.length === 0 ||
+      elevationMembers.some((c) => ELEVATION_CATEGORIES.includes(c)))
+      ? settle(
+          withDeadline(
+            providers.elevation.getElevation(input.location),
+            ELEVATION_TIMEOUT_MS + 250,
+            providers.elevation.name,
+          ),
+        ).then((r) => (r.ok ? r.value : undefined))
+      : Promise.resolve(undefined);
+  // Day, night or twilight where the photo was taken (undefined without a local hour).
+  const phase = dayPhase({
+    capturedAt: input.capturedAt,
+    localHour: input.localHour,
+    approximate: input.localHourApprox,
+    location: input.location,
+  });
 
   // 1. Resolve what to identify. "Not sure" asks a provider to detect the category first;
   //    groups ("bug", "animal") go to a provider that covers all their members.
@@ -340,7 +374,8 @@ export async function runIdentification(
   const categoryId: OrganismCategory =
     identification.detectedCategory ??
     (isCategoryGroup(target) ? targetMembers(target)[0] : target);
-  // Tree only offers tree parts; there's nothing to report beyond "plant".
+  // Tree only offers tree parts; there's nothing to report beyond "plant" (the choice itself
+  // is kept in `requestedTarget`).
   if (
     !detection &&
     isCategoryGroup(input.category) &&
@@ -400,6 +435,8 @@ export async function runIdentification(
       safetyNotice: category.safetyNotice,
       experimental: identification.experimental || undefined,
       categoryCheck: identification.categoryCheck,
+      requestedTarget: input.category,
+      features,
       categoryDetection: detection,
       sign,
       call: input.audio ? true : undefined,
@@ -429,13 +466,19 @@ export async function runIdentification(
     const flowering = providers.flowering;
     const floweringLookup = categoryId === 'plant' && features.includes('flower') && flowering;
     const birds = providers.recentBirds && candidates.some((c) => c.category === 'bird');
+    const elevation = await elevationTask;
     const [occurrence, floweringMonths, recentBirds, ranges] = await Promise.all([
       Promise.all(
         candidates.map((c) =>
           c.taxonKeys.gbif
             ? settle(
                 withDeadline(
-                  providers.occurrence.getOccurrenceEvidence(toIdentity(c), loc, input.capturedAt),
+                  providers.occurrence.getOccurrenceEvidence(
+                    toIdentity(c),
+                    loc,
+                    input.capturedAt,
+                    elevation && ELEVATION_CATEGORIES.includes(c.category) ? { elevation } : {},
+                  ),
                   STAGE_MS,
                   GBIF_SOURCE,
                 ),
@@ -510,6 +553,8 @@ export async function runIdentification(
         },
       };
     });
+    if (withOccurrence.some((c) => c.occurrence?.elevation))
+      attribution.push(OPEN_METEO_ATTRIBUTION);
     stage({ stage: 'occurrence', status: occurrenceStatus === 'ok' ? 'done' : 'skipped' });
   }
 
@@ -518,6 +563,7 @@ export async function runIdentification(
     candidates: withOccurrence,
     locationUsed: occurrenceStatus === 'ok',
     capturedAt: input.capturedAt,
+    context: { phase, approximateTime: input.localHourApprox, tilt: input.tilt },
   });
   const top = ranked[0];
   const topResolved = resolved[identification.candidates.findIndex((c) => c.id === top.id)];
@@ -551,6 +597,10 @@ export async function runIdentification(
     if (categoryId === 'mammal') {
       facts.push(
         ...mammalTraitFacts([top.scientificName, topResolved?.species, topResolved?.canonicalName]),
+      );
+    } else if (categoryId === 'bird') {
+      facts.push(
+        ...birdTraitFacts([top.scientificName, topResolved?.species, topResolved?.canonicalName]),
       );
     }
     const peak = peakMonthsFact(top.occurrence?.monthCounts);
@@ -642,6 +692,11 @@ export async function runIdentification(
         ).catch(() => [])
       : Promise.resolve([]);
 
+  // Reference photos of named look-alikes: tightly time-boxed, never fails the section.
+  const lookalikePhotosTask = SAFETY_CATEGORIES.includes(categoryId)
+    ? fetchLookalikePhotos(dangerousLookalikes(top), categoryId, providers.referencePhotos)
+    : Promise.resolve(new Map<string, LicensedImage>());
+
   const groupNameTask: Promise<string | undefined> =
     group && topResolved?.genusKey && providers.taxonomy.commonNameForKey
       ? withDeadline(
@@ -651,8 +706,21 @@ export async function runIdentification(
         ).catch(() => undefined)
       : Promise.resolve(undefined);
 
-  const [speciesResult, communityResult, nearbySpecies, groupCommonName, safetyText] =
-    await Promise.all([speciesInfoTask, communityTask, nearbyTask, groupNameTask, safetyTextTask]);
+  const [
+    speciesResult,
+    communityResult,
+    nearbySpecies,
+    groupCommonName,
+    safetyText,
+    lookalikePhotos,
+  ] = await Promise.all([
+    speciesInfoTask,
+    communityTask,
+    nearbyTask,
+    groupNameTask,
+    safetyTextTask,
+    lookalikePhotosTask,
+  ]);
   stage({ stage: 'enrich', status: 'done' });
   const community: CommunityObservationSummary | undefined = communityResult.ok
     ? communityResult.value
@@ -683,20 +751,23 @@ export async function runIdentification(
     });
   }
   const safety =
-    categoryId === 'mammal'
+    categoryId === 'mammal' || categoryId === 'reptile' || categoryId === 'amphibian'
       ? buildWildlifeSafety({ band, candidates: ranked, feature: sign ?? features[0] })
-      : buildSafety({
-          category: categoryId,
-          band,
-          candidates: ranked,
-          wikipedia: safetyText,
-          wikidataEdibility: speciesResult.edibility,
-          wikidataUrl: speciesResult.wikidataUrl,
-        });
+      : attachLookalikePhotos(
+          buildSafety({
+            category: categoryId,
+            band,
+            candidates: ranked,
+            wikipedia: safetyText,
+            wikidataEdibility: speciesResult.edibility,
+            wikidataUrl: speciesResult.wikidataUrl,
+          }),
+          lookalikePhotos,
+        );
   if (speciesResult.info?.facts.some((f) => f.source === ELTONTRAITS_SOURCE)) {
     attribution.push({
       provider: 'EltonTraits',
-      text: 'Mammal size, diet and activity from EltonTraits 1.0 (Wilman et al. 2014, CC0)',
+      text: `${categoryId === 'bird' ? 'Bird' : 'Mammal'} size, diet and activity from EltonTraits 1.0 (Wilman et al. 2014, CC0)`,
       url: ELTONTRAITS_URL,
     });
   }
@@ -729,6 +800,9 @@ export async function runIdentification(
     occurrenceStatus,
     community,
     call: !!input.audio,
+    capturedAt: input.capturedAt,
+    phase,
+    tilt: input.tilt,
   });
 
   logger.info('identify.done', {
@@ -751,9 +825,21 @@ export async function runIdentification(
     groupSummary: group ? { ...group, commonName: groupCommonName } : undefined,
     safety,
     sign,
-    questions: (() => {
+    ...(() => {
       const q = buildQuestions(band, ranked);
-      return q.length ? q : undefined;
+      const questions = q.length ? q : undefined;
+      // Photos only: a recording or a track has no "next angle" to ask for.
+      const decidingView =
+        input.audio || sign
+          ? undefined
+          : buildDecidingView({
+              category: categoryId,
+              band,
+              candidates: ranked,
+              features,
+              questions,
+            });
+      return { questions, decidingView };
     })(),
     community,
     nearbySpecies,
@@ -778,6 +864,8 @@ export async function runIdentification(
     safetyNotice: category.safetyNotice,
     experimental: identification.experimental || undefined,
     categoryCheck: identification.categoryCheck,
+    requestedTarget: input.category,
+    features,
     categoryDetection: detection,
     call: input.audio ? true : undefined,
     mock: providers.mock || undefined,

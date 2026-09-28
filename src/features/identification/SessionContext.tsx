@@ -18,14 +18,19 @@ import type {
   IdentifyStage,
   IdentifyTarget,
   StageEvent,
+  TiltBucket,
 } from '../../../shared/types';
-import { ClientError, identify } from '../../lib/api';
+import { ClientError, identify, type IdentifyRequest } from '../../lib/api';
 import { newId } from '../../lib/ids';
 import { readPhotoMetadata } from '../../lib/exif';
 import { cropAndEncode, makeDisplayCopy, makeThumbnail } from '../../lib/image';
+import { recordUse } from '../../lib/installPrompt';
+import { nextTilt, requestTiltPermission } from '../../lib/tilt';
 import type { Box } from '../crop/cropMath';
-import { saveObservation, toRecord } from '../history/historyStore';
+import { patchObservation, saveObservation, toRecord } from '../history/historyStore';
+import { isSharpEye, type Guess } from '../journal/fieldSkills';
 import { useLocationState } from '../location/LocationContext';
+import { takeFromQueue } from '../offline/queueStore';
 
 export type SessionImage = {
   id: string;
@@ -68,10 +73,17 @@ export type SessionState = {
   photoSource?: PhotoSource;
   /** Read on-device from the first library photo's EXIF; position already rounded to ~1 km. */
   photoMeta?: { location?: ApproxLocation; takenAt?: Date };
+  /** Which way the phone pointed as the first camera photo came back (never stored). */
+  tilt?: TiltBucket;
   progress: Progress;
   result?: IdentifyResponse;
   previousResult?: IdentifyResponse;
   error?: ClientError;
+  /** "Name it first": the result has been revealed (after a guess, or skipping it). */
+  revealed?: boolean;
+  guess?: Guess;
+  /** An added photo turned an uncertain identification into a confident one. */
+  sharpEye?: boolean;
 };
 
 type Action =
@@ -80,15 +92,23 @@ type Action =
   | { type: 'setPendingFeature'; feature: FeatureId }
   | { type: 'photo'; blob: Blob; url: string; source: PhotoSource }
   | { type: 'photoMeta'; meta: SessionState['photoMeta']; choice: LocationChoice }
+  | { type: 'tilt'; tilt: TiltBucket }
   | { type: 'setLocationChoice'; choice: LocationChoice }
   | { type: 'cancelCapture' }
   | { type: 'addImage'; image: SessionImage }
   | { type: 'removeImage'; id: string }
   | { type: 'submitting'; phase: Progress['phase']; fraction: number; restart?: boolean }
   | { type: 'stage'; event: StageEvent }
-  | { type: 'result'; result: IdentifyResponse }
+  | { type: 'result'; result: IdentifyResponse; sharpEye?: boolean }
   | { type: 'error'; error: ClientError }
-  | { type: 'adopt'; image: SessionImage; result: IdentifyResponse; capturedAt: Date };
+  | { type: 'reveal'; guess?: Guess }
+  | {
+      type: 'adopt';
+      images: SessionImage[];
+      result: IdentifyResponse;
+      capturedAt: Date;
+      sharpEye?: boolean;
+    };
 
 function freshState(category: IdentifyTarget): SessionState {
   return {
@@ -122,8 +142,14 @@ export function sessionReducer(state: SessionState, action: Action): SessionStat
         photoSource: first ? action.source : state.photoSource,
         locationChoice: first && action.source === 'camera' ? 'here' : state.locationChoice,
         photoMeta: first ? undefined : state.photoMeta,
+        tilt: first ? undefined : state.tilt,
       };
     }
+    case 'tilt':
+      // Only for the first camera photo, and only until it has been sent.
+      return state.photoSource === 'camera' && state.images.length === 0
+        ? { ...state, tilt: action.tilt }
+        : state;
     case 'photoMeta':
       return {
         ...state,
@@ -170,15 +196,30 @@ export function sessionReducer(state: SessionState, action: Action): SessionStat
         previousResult: state.result,
         result: action.result,
         error: undefined,
+        // Kept while later photos agree on the same, still confident, species.
+        sharpEye:
+          action.sharpEye ||
+          (!!state.sharpEye &&
+            ['high', 'medium'].includes(action.result.confidenceBand) &&
+            action.result.candidates[0]?.scientificName ===
+              state.result?.candidates[0]?.scientificName) ||
+          undefined,
       };
+    case 'reveal':
+      return { ...state, revealed: true, guess: action.guess ?? state.guess };
     case 'error':
       return { ...state, step: 'error', error: action.error };
     case 'adopt':
       // A live-camera identification: the frame becomes the session's first photo.
       return {
         ...freshState('auto'),
+        // Follow-up photos update the same journal entry the live result was saved as.
+        observationId: action.result.requestId,
         step: 'result',
-        images: [action.image],
+        // The name was already shown over the camera: nothing left to guess.
+        revealed: true,
+        sharpEye: action.sharpEye || undefined,
+        images: action.images,
         capturedAt: action.capturedAt,
         photoSource: 'camera',
         locationChoice: 'here',
@@ -189,8 +230,18 @@ export function sessionReducer(state: SessionState, action: Action): SessionStat
 
 type SessionApi = {
   state: SessionState;
-  /** Show a result identified from the live camera, as if it came from a photo. */
-  adoptResult: (image: SessionImage, result: IdentifyResponse, capturedAt: Date) => void;
+  /**
+   * Show a result identified from the live camera, as if it came from photos. `previous` is
+   * the live result the extra frames were added to, when the frames joined one identification.
+   */
+  adoptResult: (
+    images: SessionImage | SessionImage[],
+    result: IdentifyResponse,
+    capturedAt: Date,
+    previous?: IdentifyResponse,
+  ) => void;
+  /** "Name it first": show the result, with the guess made first (none when skipped). */
+  reveal: (guess?: Guess) => void;
   setCategory: (category: IdentifyTarget) => void;
   /** Start a fresh session with a newly taken or chosen photo. */
   startWithPhoto: (blob: Blob, source?: PhotoSource) => void;
@@ -207,6 +258,8 @@ type SessionApi = {
   ) => Promise<void>;
   reset: () => void;
   canAddMore: boolean;
+  /** The last identify request sent (or attempted), e.g. to save it for later when offline. */
+  lastRequest: () => IdentifyRequest | undefined;
 };
 
 /** The app's default: detect the group automatically (the server falls back to plants). */
@@ -222,26 +275,34 @@ const SessionContext = createContext<SessionApi | null>(null);
 /**
  * Save locally (thumbnail + result, never coordinates). Saved straight away so leaving the
  * app quickly can't lose it, then updated with a thumbnail and a high-quality copy.
- * Failure here must never affect the result.
+ * Failure here must never affect the result. Also used for photos from the offline queue.
+ * Resolves true once the first save has succeeded.
  */
-function saveToHistory(
+export function saveToHistory(
   observationId: string,
   result: IdentifyResponse,
-  first: SessionImage | undefined,
+  first: { blob: Blob; original?: { blob: Blob } } | undefined,
   capturedAt: Date,
-) {
-  if (result.candidates.length === 0 || !first) return;
-  void saveObservation(toRecord(observationId, result, undefined, capturedAt))
-    .then(() =>
-      Promise.all([
+): Promise<boolean> {
+  if (result.candidates.length === 0 || !first) return Promise.resolve(false);
+  const saved = saveObservation(toRecord(observationId, result, undefined, capturedAt));
+  void saved
+    .then(() => {
+      // A saved identification counts as a "use" for the home-screen install nudge.
+      recordUse();
+      return Promise.all([
         makeThumbnail(first.blob).catch(() => undefined),
         makeDisplayCopy(first.original?.blob ?? first.blob).catch(() => undefined),
-      ]),
-    )
+      ]);
+    })
     .then(([thumb, photo]) =>
       saveObservation(toRecord(observationId, result, thumb, capturedAt, photo)),
     )
     .catch(() => undefined);
+  return saved.then(
+    () => true,
+    () => false,
+  );
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -253,6 +314,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     stateRef.current = state;
   });
   const { current: currentLocation } = useLocationState();
+  const lastRequest = useRef<IdentifyRequest | undefined>(undefined);
 
   // Revoke object URLs when images leave the session.
   const urls = useRef(new Set<string>());
@@ -282,6 +344,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'photoMeta', meta: { location, takenAt: meta.takenAt }, choice });
   }, []);
 
+  /** The native camera hid the page while shooting: take the phone's next tilt reading. */
+  const readTilt = useCallback(() => {
+    void nextTilt().then((tilt) => tilt && dispatch({ type: 'tilt', tilt }));
+  }, []);
+
   /** `images` overrides state when called right after a dispatch that hasn't rendered yet. */
   const submit = useCallback(
     async (
@@ -304,6 +371,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'setLocationChoice', choice: options.locationChoice });
       }
       if (s.images.length === 0) return;
+      // Retrying a photo that was saved for later: this attempt takes over from the queue.
+      void takeFromQueue(s.observationId);
       dispatch({ type: 'submitting', phase: 'uploading', fraction: 0, restart: true });
       try {
         const location =
@@ -312,29 +381,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             : s.locationChoice === 'none'
               ? undefined
               : await currentLocation();
-        const result = await identify(
-          {
-            observationId: s.observationId,
-            category: s.category,
-            images: s.images.map((i) => ({ blob: i.blob, feature: i.feature })),
-            location,
-            locationSource: s.locationChoice === 'photo' && location ? 'photo' : undefined,
-            capturedAt: s.capturedAt,
-          },
-          {
-            onStage: (event) => dispatch({ type: 'stage', event }),
-            onUploadProgress: (fraction) =>
-              dispatch({
-                type: 'submitting',
-                phase: fraction >= 1 ? 'identifying' : 'uploading',
-                fraction,
-              }),
-          },
-        );
+        const request: IdentifyRequest = {
+          observationId: s.observationId,
+          category: s.category,
+          images: s.images.map((i) => ({ blob: i.blob, feature: i.feature })),
+          location,
+          locationSource: s.locationChoice === 'photo' && location ? 'photo' : undefined,
+          capturedAt: s.capturedAt,
+          // Local hour: the phone clock for camera photos, the EXIF date for library ones.
+          timeSource:
+            s.photoSource === 'camera' ? 'device' : s.photoMeta?.takenAt ? 'photo' : undefined,
+          tilt: s.photoSource === 'camera' ? s.tilt : undefined,
+        };
+        lastRequest.current = request;
+        const result = await identify(request, {
+          onStage: (event) => dispatch({ type: 'stage', event }),
+          onUploadProgress: (fraction) =>
+            dispatch({
+              type: 'submitting',
+              phase: fraction >= 1 ? 'identifying' : 'uploading',
+              fraction,
+            }),
+        });
         // Let the final checklist tick register before swapping to the result.
         await new Promise((r) => setTimeout(r, RESULT_REVEAL_DELAY_MS));
-        dispatch({ type: 'result', result });
+        const sharpEye = isSharpEye(stateRef.current.result, result);
+        dispatch({ type: 'result', result, sharpEye });
         saveToHistory(s.observationId, result, s.images[0], s.capturedAt);
+        if (sharpEye) void patchObservation(s.observationId, { sharpEye: true }).catch(() => {});
       } catch (error) {
         dispatch({
           type: 'error',
@@ -352,6 +426,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (box: Box, feature: FeatureId) => {
       const pending = stateRef.current.pending;
       if (!pending) return;
+      // iOS asks once for motion access (camera tilt), inside this tap; later photos use it.
+      if (stateRef.current.photoSource === 'camera') requestTiltPermission();
       dispatch({ type: 'submitting', phase: 'preparing', fraction: 0, restart: true });
       let image: SessionImage;
       try {
@@ -375,9 +451,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const adoptResult = useCallback(
-    (image: SessionImage, result: IdentifyResponse, capturedAt: Date) => {
-      dispatch({ type: 'adopt', image, result, capturedAt });
-      saveToHistory(result.requestId, result, image, capturedAt);
+    (
+      image: SessionImage | SessionImage[],
+      result: IdentifyResponse,
+      capturedAt: Date,
+      previous?: IdentifyResponse,
+    ) => {
+      const images = Array.isArray(image) ? image : [image];
+      const sharpEye = isSharpEye(previous, result);
+      dispatch({ type: 'adopt', images, result, capturedAt, sharpEye });
+      saveToHistory(result.requestId, result, images[0], capturedAt);
+      if (sharpEye) void patchObservation(result.requestId, { sharpEye: true }).catch(() => {});
     },
     [],
   );
@@ -386,18 +470,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     () => ({
       state,
       adoptResult,
+      reveal: (guess) => {
+        dispatch({ type: 'reveal', guess });
+        if (guess) {
+          void patchObservation(stateRef.current.observationId, { guess }).catch(() => {});
+        }
+      },
       setCategory: (category) => dispatch({ type: 'setCategory', category }),
       startWithPhoto: (blob, source = 'camera') => {
         // Each new photo starts on Auto; "What is it?" is chosen on the crop screen.
         dispatch({ type: 'reset', category: CLIENT_DEFAULT_TARGET });
         dispatch({ type: 'photo', blob, url: URL.createObjectURL(blob), source });
         if (source === 'library') void inspectLibraryPhoto(blob);
+        else readTilt();
       },
       startFollowUp: (feature) => dispatch({ type: 'setPendingFeature', feature }),
       photoSelected: (blob, source = 'camera') => {
         const first = stateRef.current.images.length === 0;
         dispatch({ type: 'photo', blob, url: URL.createObjectURL(blob), source });
         if (first && source === 'library') void inspectLibraryPhoto(blob);
+        else if (first) readTilt();
       },
       setLocationChoice: (choice) => dispatch({ type: 'setLocationChoice', choice }),
       cancelCapture: () => dispatch({ type: 'cancelCapture' }),
@@ -406,8 +498,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       submit,
       reset: () => dispatch({ type: 'reset', category: stateRef.current.category }),
       canAddMore: state.images.length < UPLOAD.maxImages,
+      lastRequest: () => lastRequest.current,
     }),
-    [state, confirmCrop, submit, adoptResult],
+    [state, confirmCrop, submit, adoptResult, inspectLibraryPhoto, readTilt],
   );
 
   return <SessionContext.Provider value={api}>{children}</SessionContext.Provider>;

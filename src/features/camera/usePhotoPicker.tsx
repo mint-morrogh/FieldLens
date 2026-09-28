@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type ReactElement } from 'react';
 import { ACCEPTED_INPUT, MAX_SOURCE_BYTES } from '../../lib/image';
+import { startTiltTracking } from '../../lib/tilt';
 
 /**
  * Hidden <input type=file> wrapper. With `capture`, phones open the native
@@ -11,10 +12,13 @@ export function usePhotoPicker(onPick: (file: File) => void, options: { capture?
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
 
+  const capture = !!options.capture;
   const open = useCallback(() => {
     setError(undefined);
+    // Listen for the phone's tilt so it can be read as the photo comes back (no prompt here).
+    if (capture) startTiltTracking();
     inputRef.current?.click();
-  }, []);
+  }, [capture]);
 
   const input: ReactElement = (
     <input

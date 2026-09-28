@@ -32,7 +32,13 @@ export function PrivacyScreen() {
           <li>
             Location is optional. If you allow it, an approximate position (rounded to about 1 km)
             is used to check which species are recorded nearby on GBIF, iNaturalist and eBird, and
-            which are expected there from iNaturalist’s range maps.
+            which are expected there from iNaturalist’s range maps. A coarser position (about 10 km)
+            is sent to Open-Meteo to look up the ground elevation.
+          </li>
+          <li>
+            With each identification, FieldLens also sends the local hour the photo was taken and,
+            for camera photos, whether the phone was pointing up, level or down. These only nudge
+            the ranking and are not kept.
           </li>
           <li>{BRAND.name} does not intentionally store your location or photos on its servers.</li>
           <li>
@@ -45,6 +51,14 @@ export function PrivacyScreen() {
             area label) stays in this browser’s local storage.
           </li>
           <li>
+            If you’re offline, a photo can be saved to identify later. Until it’s identified, this
+            browser keeps the cropped photo, an EXIF-free copy for your journal, when it was taken,
+            and the same approximate position (about 1 km) the identification would send. It’s sent
+            automatically once you’re back online, and then the saved copy and its position are
+            deleted; removing it from the list deletes it too. If you allow notifications, they’re
+            shown silently by your device and nothing extra is sent.
+          </li>
+          <li>
             External providers have their own privacy policies:{' '}
             <ExternalLink href="https://plantnet.org/en/privacy-policy/">Pl@ntNet</ExternalLink>,{' '}
             <ExternalLink href="https://www.gbif.org/terms/privacy-policy">GBIF</ExternalLink>,{' '}
@@ -52,6 +66,7 @@ export function PrivacyScreen() {
               iNaturalist
             </ExternalLink>
             , <ExternalLink href="https://www.birds.cornell.edu/home/privacy/">eBird</ExternalLink>,{' '}
+            <ExternalLink href="https://open-meteo.com/en/terms">Open-Meteo</ExternalLink>,{' '}
             <ExternalLink href="https://foundation.wikimedia.org/wiki/Policy:Privacy_policy">
               Wikimedia
             </ExternalLink>
@@ -117,7 +132,7 @@ export function PrivacyScreen() {
             <ExternalLink href="https://doi.org/10.6084/m9.figshare.3559887.v1">
               EltonTraits 1.0
             </ExternalLink>{' '}
-            (Wilman et al. 2014, CC0) — mammal size, diet and activity
+            (Wilman et al. 2014, CC0) — bird and mammal size, diet, activity and feeding height
           </li>
           <li>
             <ExternalLink href="https://doi.org/10.1111/ele.13898">AVONET</ExternalLink> (Tobias et
@@ -132,6 +147,12 @@ export function PrivacyScreen() {
           <li>
             <ExternalLink href="https://ebird.org/">eBird</ExternalLink> (Cornell Lab of
             Ornithology) — recent bird sightings
+          </li>
+          <li>
+            <ExternalLink href="https://open-meteo.com/en/docs/elevation-api">
+              Open-Meteo
+            </ExternalLink>{' '}
+            (Copernicus DEM GLO-90, CC BY 4.0) — ground elevation
           </li>
           <li>
             <ExternalLink href="https://github.com/birdnet-team/BirdNET-Analyzer">

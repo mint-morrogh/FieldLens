@@ -4,6 +4,7 @@ import { formatPercent } from '../../../shared/confidence';
 import { CANDIDATES } from '../../../shared/config';
 import { NOT_SURE, applyAnswers, contradicts, type Answers } from '../../../shared/questions';
 import type {
+  DecidingView,
   FeatureId,
   FollowUpQuestion,
   GroupSummary,
@@ -15,6 +16,7 @@ import type {
 import { Icon } from '../../components/Icon';
 import { Button, Card, ExternalLink, Notice, SectionTitle } from '../../components/ui';
 import { displayName } from '../../lib/format';
+import type { Guess } from '../journal/fieldSkills';
 import { ConfidenceMeter } from './ConfidenceMeter';
 import { CandidateThumb, Lightbox, ReferenceGallery, mergeImages } from './Gallery';
 import { PronounceButton } from './Pronounce';
@@ -57,6 +59,16 @@ export function categoryPhrase(id: IdentifyTarget): string {
   return `${/^[aeiou]/.test(label) ? 'an' : 'a'} ${label}`;
 }
 
+/** Pills (e.g. "Plant · detected") and the match-type label on one baseline-aligned row. */
+function Eyebrow({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+      {children}
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-moss">{text}</p>
+    </div>
+  );
+}
+
 function Headline({
   result,
   photoUrl,
@@ -90,6 +102,47 @@ function Headline({
     ? mergeImages(top.referenceImages, result.speciesInfo?.images).slice(0, 12)
     : [];
 
+  const pills = (
+    <>
+      {result.categoryDetection && result.candidates.length > 0 && (
+        <p
+          className="inline-flex items-center rounded-full bg-moss-soft px-2.5 py-0.5 text-xs font-bold uppercase tracking-[0.14em] text-moss-dark"
+          data-testid="detected-category"
+        >
+          {getCategory(result.categoryDetection.detected).label}
+          {result.categoryDetection.requested === 'auto'
+            ? (result.categoryDetection.likelihood ?? 1) < 0.5
+              ? ' · detected (unsure)'
+              : ' · detected'
+            : ''}
+        </p>
+      )}
+      {result.sign && result.candidates.length > 0 && (
+        <p
+          className="inline-flex items-center rounded-full bg-amber-soft px-2.5 py-0.5 text-xs font-bold uppercase tracking-[0.14em] text-ink"
+          data-testid="sign-pill"
+        >
+          From {result.sign === 'track' ? 'tracks' : 'droppings'}
+        </p>
+      )}
+    </>
+  );
+  const group0 = band === 'low' ? group : undefined;
+  /** The match-type label ("Likely match"), shown on one row with the pills above. */
+  const eyebrow =
+    result.person || (result.categoryCheck && !result.categoryCheck.matchesCategory)
+      ? undefined
+      : band === 'high'
+        ? 'Very likely match'
+        : band === 'medium'
+          ? 'Likely match'
+          : group0
+            ? group0.confidence >= 0.8
+              ? 'Almost certainly'
+              : 'Probably'
+            : undefined;
+  const hasPills = !!((result.categoryDetection || result.sign) && result.candidates.length > 0);
+
   return (
     <Card className="overflow-hidden !p-0" as="div">
       {image && (
@@ -121,27 +174,7 @@ function Headline({
         />
       )}
       <div className="p-5" data-testid="result-headline" data-band={band}>
-        {result.categoryDetection && result.candidates.length > 0 && (
-          <p
-            className="mb-2 mr-2 inline-flex items-center gap-1.5 rounded-full bg-moss-soft px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-moss-dark"
-            data-testid="detected-category"
-          >
-            {getCategory(result.categoryDetection.detected).label}
-            {result.categoryDetection.requested === 'auto'
-              ? (result.categoryDetection.likelihood ?? 1) < 0.5
-                ? ' · detected (unsure)'
-                : ' · detected'
-              : ''}
-          </p>
-        )}
-        {result.sign && result.candidates.length > 0 && (
-          <p
-            className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-amber-soft px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-ink"
-            data-testid="sign-pill"
-          >
-            From {result.sign === 'track' ? 'tracks' : 'droppings'}
-          </p>
-        )}
+        {!eyebrow && hasPills && <div className="mb-2 flex flex-wrap gap-2">{pills}</div>}
         {result.person ? (
           <div data-testid="person-result">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-moss">
@@ -180,9 +213,7 @@ function Headline({
           <>
             {group ? (
               <>
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-moss">
-                  {group.confidence >= 0.8 ? 'Almost certainly' : 'Probably'}
-                </p>
+                <Eyebrow text={eyebrow!}>{pills}</Eyebrow>
                 <h1
                   className="mt-1 font-serif text-3xl font-bold leading-tight"
                   data-testid="group-headline"
@@ -226,9 +257,7 @@ function Headline({
           </>
         ) : (
           <>
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-moss">
-              {band === 'high' ? 'Very likely match' : 'Likely match'}
-            </p>
+            <Eyebrow text={eyebrow!}>{pills}</Eyebrow>
             {/* The eyebrow above already says "Likely match"; balanced wrapping keeps long
                 names like "Coastal Sweetpepperbush" from splitting awkwardly on phones. */}
             <h1 className="mt-1 font-serif text-3xl font-bold leading-tight [overflow-wrap:anywhere] [text-wrap:balance]">
@@ -380,6 +409,81 @@ function ImproveIdentification({
   );
 }
 
+/** The one photo that would settle it, with a button that opens the camera for that part. */
+function DecidingViewCard({ view, improve }: { view: DecidingView; improve: ImproveProps }) {
+  return (
+    <Card aria-labelledby="deciding-title" data-testid="deciding-view" className="border-moss/40">
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-moss">The deciding angle</p>
+      <h2 id="deciding-title" className="mt-1 text-xl font-bold">
+        {view.prompt}
+      </h2>
+      <p className="mt-1 text-[0.95rem] text-ink-soft">{view.reason}</p>
+      {view.source && (
+        <p className="mt-1 text-xs text-ink-muted">
+          From{' '}
+          {view.sourceUrl ? (
+            <ExternalLink href={view.sourceUrl} className="!font-normal">
+              {view.source}
+            </ExternalLink>
+          ) : (
+            view.source
+          )}
+        </p>
+      )}
+      <Button className="mt-3 w-full" onClick={() => improve.onAddPhoto(view.feature)}>
+        <Icon name="plus" className="h-5 w-5" /> Add a photo
+      </Button>
+      {improve.onAddFromLibrary && (
+        <button
+          type="button"
+          onClick={() => improve.onAddFromLibrary?.(view.feature)}
+          className="mt-2 min-h-11 font-semibold text-moss underline underline-offset-4"
+        >
+          Or pick one from your library
+        </button>
+      )}
+    </Card>
+  );
+}
+
+/** Quiet notes on field skills: a guess that named it, or an added photo that settled it. */
+function SkillNotes({
+  guess,
+  sharpEye,
+  confident,
+}: {
+  guess?: Guess;
+  sharpEye?: boolean;
+  confident: boolean;
+}) {
+  const guessLine =
+    guess?.result === 'exact'
+      ? confident
+        ? 'You called it.'
+        : 'Your guess matches the top possibility.'
+      : guess?.result === 'close'
+        ? 'Close call: you had the genus.'
+        : guess?.result === 'group'
+          ? 'You had the right group.'
+          : undefined;
+  if (!guessLine && !sharpEye) return null;
+  return (
+    <div className="space-y-1 px-1 text-[0.95rem] text-ink-soft" data-testid="skill-notes">
+      {guessLine && (
+        <p className="flex items-center gap-1.5" data-testid="guess-note">
+          <Icon name="check" className="h-4 w-4 text-moss" /> {guessLine}
+        </p>
+      )}
+      {sharpEye && (
+        <p className="flex items-center gap-1.5" data-testid="sharp-eye-note">
+          <Icon name="check" className="h-4 w-4 text-moss" /> Sharp eye: your extra photo made this
+          confident.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Optional multiple-choice questions that can separate the likely matches. */
 function FollowUpQuestions({
   questions,
@@ -452,6 +556,8 @@ export function ResultView({
   improve,
   mixedOrganismWarning,
   onSwitchCategory,
+  guess,
+  sharpEye,
 }: {
   result: IdentifyResponse;
   photoUrl?: string;
@@ -462,6 +568,10 @@ export function ResultView({
   mixedOrganismWarning?: boolean;
   /** Re-run the same photos as another category (offered when the photo doesn't match). */
   onSwitchCategory?: (category: OrganismCategory) => void;
+  /** "Name it first": the guess made before this result was shown. */
+  guess?: Guess;
+  /** An added photo turned an uncertain identification into this confident one. */
+  sharpEye?: boolean;
 }) {
   // Answers belong to one result; a new result starts with none.
   const [answered, setAnswered] = useState<{ id: string; answers: Answers }>({
@@ -514,6 +624,12 @@ export function ResultView({
         userPhotos={userPhotos}
       />
 
+      <SkillNotes
+        guess={guess}
+        sharpEye={sharpEye}
+        confident={original.confidenceBand === 'high' || original.confidenceBand === 'medium'}
+      />
+
       {result.categoryCheck?.suggestedCategory &&
         getCategory(result.categoryCheck.suggestedCategory).available &&
         onSwitchCategory && (
@@ -541,6 +657,10 @@ export function ResultView({
         <Notice tone="warn">
           Local GBIF records are temporarily unavailable, so confidence is based on the photo alone.
         </Notice>
+      )}
+
+      {improve?.canAddMore && original.decidingView && original.confidenceBand !== 'high' && (
+        <DecidingViewCard view={original.decidingView} improve={improve} />
       )}
 
       {questions.length > 0 && original.confidenceBand !== 'high' && (

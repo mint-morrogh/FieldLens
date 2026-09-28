@@ -76,3 +76,11 @@ test('uncertain matches are shown as possible, not hidden', async ({ page }) => 
   await expect(card).toContainText('Possible');
   await expect(card).toContainText('?');
 });
+
+test('data saver runs live mode light, with a quiet indicator', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('fieldlens.settings.dataSaver', 'true'));
+  await page.goto('/?mock=high');
+  await page.getByRole('button', { name: 'Live identify' }).click();
+  await expect(page.getByTestId('live-light')).toContainText('Data saver');
+  await expect(page.getByTestId('live-result')).toBeVisible({ timeout: 20_000 });
+});

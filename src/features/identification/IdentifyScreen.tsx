@@ -6,12 +6,15 @@ import { navigate } from '../../app/router';
 import { Icon } from '../../components/Icon';
 import { Button, Card, Notice } from '../../components/ui';
 import type { ClientError, ClientErrorCode } from '../../lib/api';
+import { useSetting } from '../../lib/settings';
 import { useOnline } from '../../lib/useOnline';
 import { usePhotoPicker } from '../camera/usePhotoPicker';
 import { CropEditor } from '../crop/CropEditor';
 import { ResultView } from '../results/ResultView';
 import { LocationFixCard } from '../location/LocationFixCard';
+import { SaveForLater } from '../offline/OfflineQueue';
 import { AnalysisProgress } from './AnalysisProgress';
+import { NameItFirst } from './NameItFirst';
 import { useSession } from './SessionContext';
 
 type ErrorCopy = { title: string; body?: string; retry: boolean };
@@ -94,6 +97,8 @@ function ErrorState({ error }: { error: ClientError }) {
           )}
         </div>
       </div>
+      {/* No signal: keep the photo on the device and identify it once back online. */}
+      <SaveForLater error={error} />
       <div className="flex flex-col gap-2">
         {copy.retry && session.state.images.length > 0 && (
           <Button
@@ -119,6 +124,7 @@ export function IdentifyScreen() {
   const session = useSession();
   const health = useHealth();
   const { state } = session;
+  const nameItFirst = useSetting('nameItFirst');
   // Follow-up photos: the native camera by default, the library as an alternative.
   const camera = usePhotoPicker((f) => session.photoSelected(f, 'camera'), { capture: true });
   const library = usePhotoPicker((f) => session.photoSelected(f, 'library'));
@@ -183,6 +189,21 @@ export function IdentifyScreen() {
       !!top?.family &&
       prevTop.family !== top.family &&
       result.imagesSubmitted > (state.previousResult?.imagesSubmitted ?? 0);
+    // Name it first: guess before the first result of a session is shown (skippable).
+    const guessable =
+      !!top &&
+      result.confidenceBand !== 'none' &&
+      !result.person &&
+      result.categoryCheck?.matchesCategory !== false;
+    if (nameItFirst && guessable && !state.revealed && !state.previousResult) {
+      return (
+        <NameItFirst
+          result={result}
+          photoUrl={state.images[0]?.url}
+          onDone={(guess) => session.reveal(guess)}
+        />
+      );
+    }
     return (
       <>
         {!result.location.used &&
@@ -213,6 +234,8 @@ export function IdentifyScreen() {
           photoUrl={state.images[0]?.url}
           userPhotos={state.images.map((i) => i.original?.url ?? i.url)}
           mixedOrganismWarning={mixed}
+          guess={state.guess}
+          sharpEye={state.sharpEye}
           onSwitchCategory={(category) => void session.submit(undefined, { category })}
           improve={
             result.call

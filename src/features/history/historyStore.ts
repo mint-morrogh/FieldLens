@@ -8,6 +8,9 @@
  */
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { ConfidenceBand, IdentifyResponse, OrganismCategory } from '../../../shared/types';
+import { reloadSettings } from '../../lib/settings';
+import type { Guess } from '../journal/fieldSkills';
+import type { QueuedIdentification } from '../offline/queueTypes';
 
 export const HISTORY_SCHEMA_VERSION = 1;
 
@@ -30,6 +33,10 @@ export type ObservationRecord = {
   locationLabel?: string;
   /** Snapshot of the result for re-display, with coordinates stripped. */
   result: IdentifyResponse;
+  /** "Name it first": what was guessed before the result was shown, and how it compared. */
+  guess?: Guess;
+  /** An added photo turned an uncertain identification into a confident one. */
+  sharpEye?: true;
   // Reserved for the personal field guide: favorites, collections, notes.
   favorite?: boolean;
   collections?: string[];
@@ -42,18 +49,37 @@ interface FieldLensDB extends DBSchema {
     value: ObservationRecord;
     indexes: { byCreatedAt: string; byScientificName: string; byCategory: string };
   };
+  /** Photos saved without signal, waiting to be identified (v2). See features/offline. */
+  queue: {
+    key: string;
+    value: QueuedIdentification;
+    indexes: { byQueuedAt: string };
+  };
 }
 
 const DB_NAME = 'fieldlens';
+/** 1: observations. 2: the offline queue (existing observations are untouched). */
+const DB_VERSION = 2;
 let dbPromise: Promise<IDBPDatabase<FieldLensDB>> | undefined;
 
-function db() {
-  dbPromise ??= openDB<FieldLensDB>(DB_NAME, 1, {
-    upgrade(database) {
-      const store = database.createObjectStore('observations', { keyPath: 'id' });
-      store.createIndex('byCreatedAt', 'createdAt');
-      store.createIndex('byScientificName', 'top.scientificName');
-      store.createIndex('byCategory', 'category');
+export function db() {
+  dbPromise ??= openDB<FieldLensDB>(DB_NAME, DB_VERSION, {
+    upgrade(database, oldVersion) {
+      if (oldVersion < 1) {
+        const store = database.createObjectStore('observations', { keyPath: 'id' });
+        store.createIndex('byCreatedAt', 'createdAt');
+        store.createIndex('byScientificName', 'top.scientificName');
+        store.createIndex('byCategory', 'category');
+      }
+      if (oldVersion < 2) {
+        const queue = database.createObjectStore('queue', { keyPath: 'id' });
+        queue.createIndex('byQueuedAt', 'queuedAt');
+      }
+    },
+    // Another tab opened a newer version: close so its upgrade isn't blocked.
+    blocking() {
+      void dbPromise?.then((d) => d.close());
+      dbPromise = undefined;
     },
   });
   return dbPromise;
@@ -100,8 +126,21 @@ export function toRecord(
   };
 }
 
+type Extras = Pick<ObservationRecord, 'guess' | 'sharpEye'>;
+/**
+ * Guesses and sharp-eye marks made this session, by observation. Every later save of the same
+ * observation (the thumbnail pass, a follow-up photo) keeps them.
+ */
+const extrasById = new Map<string, Extras>();
+
 export async function saveObservation(record: ObservationRecord): Promise<void> {
-  await (await db()).put('observations', { ...record, result: stripLocation(record.result) });
+  await (
+    await db()
+  ).put('observations', {
+    ...record,
+    ...extrasById.get(record.id),
+    result: stripLocation(record.result),
+  });
 }
 
 export async function listObservations(limit?: number): Promise<ObservationRecord[]> {
@@ -116,6 +155,16 @@ export async function listObservations(limit?: number): Promise<ObservationRecor
     cursor = await cursor.continue();
   }
   return out;
+}
+
+/** Merge fields into a saved observation (no-op when it isn't saved). */
+export async function patchObservation(id: string, patch: Extras): Promise<void> {
+  extrasById.set(id, { ...extrasById.get(id), ...patch });
+  const database = await db();
+  const tx = database.transaction('observations', 'readwrite');
+  const record = await tx.store.get(id);
+  if (record) await tx.store.put({ ...record, ...patch });
+  await tx.done;
 }
 
 export async function getObservation(id: string): Promise<ObservationRecord | undefined> {
@@ -133,10 +182,16 @@ export async function clearObservations(): Promise<void> {
 /** Removes every piece of FieldLens data stored in this browser. */
 export async function clearAllLocalData(): Promise<void> {
   await clearObservations().catch(() => undefined);
+  // Photos waiting for signal, with their ~1 km positions.
+  await db()
+    .then((d) => d.clear('queue'))
+    .catch(() => undefined);
   try {
     for (const key of Object.keys(localStorage))
       if (key.startsWith('fieldlens.')) localStorage.removeItem(key);
   } catch {
     /* storage unavailable */
   }
+  // Settings are fieldlens.* keys too: back to their defaults.
+  reloadSettings();
 }

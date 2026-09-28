@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from 'react';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
@@ -44,6 +44,8 @@ export function Card({
   'aria-labelledby'?: string;
   'aria-label'?: string;
   'data-testid'?: string;
+  'data-cover'?: string;
+  style?: CSSProperties;
 }) {
   return (
     <As

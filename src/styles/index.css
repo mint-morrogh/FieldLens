@@ -22,6 +22,21 @@
   --color-on-accent: #ffffff;
   /* Toasts and dark photo backdrops stay dark in both themes. */
   --color-toast: #1b1f1a;
+  /* Naturalist ranks (see src/features/journal/rankTheme.ts): a field-journal palette. */
+  --color-rank-slate: #4f5a66;
+  --color-rank-slate-soft: #e6e9ec;
+  --color-rank-moss: #2f5d3a;
+  --color-rank-moss-soft: #e2ebdc;
+  --color-rank-lichen: #245d5a;
+  --color-rank-lichen-soft: #dcebe8;
+  --color-rank-rust: #8f3a24;
+  --color-rank-rust-soft: #f5e1d8;
+  --color-rank-blue: #264a75;
+  --color-rank-blue-soft: #dee6f1;
+  --color-rank-heather: #633b68;
+  --color-rank-heather-soft: #eee1ee;
+  --color-rank-gold: #735610;
+  --color-rank-gold-soft: #f3e9cc;
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -70,6 +85,20 @@
     --globe-grid: rgba(159, 208, 138, 0.1);
     --globe-edge: #34443c;
     --skeleton-shine: #262c23;
+    --color-rank-slate: #aab4bf;
+    --color-rank-slate-soft: #22272c;
+    --color-rank-moss: #9fd08a;
+    --color-rank-moss-soft: #223322;
+    --color-rank-lichen: #86cfc6;
+    --color-rank-lichen-soft: #1a2d2b;
+    --color-rank-rust: #ee8f74;
+    --color-rank-rust-soft: #3a211a;
+    --color-rank-blue: #9dbde6;
+    --color-rank-blue-soft: #1c2533;
+    --color-rank-heather: #d2a9d7;
+    --color-rank-heather-soft: #2d2030;
+    --color-rank-gold: #e6c65f;
+    --color-rank-gold-soft: #2f2914;
   }
 }
 
@@ -431,4 +460,113 @@
     transition: none;
     transform: none;
   }
+}
+
+/* Rank-up moment: an ink stamp pressed onto the page (see RankUpMoment). Silent. */
+.rank-up {
+  animation: rank-up-fade 0.25s ease-out both;
+}
+.rank-up-stamp {
+  animation: rank-stamp 0.7s cubic-bezier(0.2, 0.8, 0.3, 1.1) 0.15s both;
+}
+.rank-up-ink {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--rank-accent) 26%, transparent) 0%,
+    transparent 70%
+  );
+  animation: rank-ink 0.9s ease-out 0.5s both;
+}
+.rank-up-text {
+  animation: fade-up 0.4s ease-out 0.75s both;
+}
+@keyframes rank-up-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rank-stamp {
+  0% {
+    opacity: 0;
+    transform: scale(1.8) rotate(-12deg);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(0.94) rotate(2deg);
+  }
+  75% {
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes rank-ink {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+/* Reduced motion: the overlay only fades in; the stamp and text are simply there. */
+@media (prefers-reduced-motion: reduce) {
+  .rank-up-stamp,
+  .rank-up-text {
+    animation: none;
+  }
+  .rank-up-ink {
+    display: none;
+  }
+}
+
+/* Journal cover per rank: a band in the rank colour and a faint pattern. Set the
+   rankTheme() style (--rank-accent) and data-cover on the element. */
+.rank-cover {
+  --rank-line: color-mix(in srgb, var(--rank-accent, var(--color-moss)) 11%, transparent);
+  box-shadow: inset 0 3px 0 var(--rank-accent, var(--color-moss));
+}
+.rank-cover[data-cover='dots'] {
+  background-image: radial-gradient(circle, var(--rank-line) 1.2px, transparent 1.6px);
+  background-size: 14px 14px;
+}
+.rank-cover[data-cover='ruled'] {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 21px,
+    var(--rank-line) 21px 22px
+  );
+}
+.rank-cover[data-cover='grid'] {
+  background-image:
+    linear-gradient(to right, var(--rank-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rank-line) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.rank-cover[data-cover='contour'] {
+  background-image: repeating-radial-gradient(
+    circle at 88% 0%,
+    transparent 0 14px,
+    var(--rank-line) 14px 15px
+  );
+}
+.rank-cover[data-cover='hatch'] {
+  background-image: repeating-linear-gradient(45deg, transparent 0 9px, var(--rank-line) 9px 10px);
+}
+.rank-cover[data-cover='gilt'] {
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--rank-accent) 9%, transparent),
+    transparent 45%
+  );
+  box-shadow:
+    inset 0 3px 0 var(--rank-accent),
+    inset 0 0 0 6px var(--color-card),
+    inset 0 0 0 7px color-mix(in srgb, var(--rank-accent) 45%, transparent);
 }

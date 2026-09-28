@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { handleHealth, handleIdentify, handleUsage } from './handlers.js';
+import { handleNearbyFamilies, handleWhatsOut } from './nearbyHandlers.js';
 
 /**
  * Connect-style middleware that serves /api/* from the same handlers Vercel
@@ -16,6 +17,10 @@ export function apiMiddleware() {
       response = handleHealth();
     } else if (url.pathname === '/api/usage') {
       response = await handleUsage();
+    } else if (url.pathname === '/api/whats-out') {
+      response = await handleWhatsOut(await toRequest(req, url));
+    } else if (url.pathname === '/api/nearby-families') {
+      response = await handleNearbyFamilies(await toRequest(req, url));
     } else if (url.pathname === '/api/identify') {
       const headers = new Headers();
       for (const [k, v] of Object.entries(req.headers)) {
@@ -52,4 +57,23 @@ export function apiMiddleware() {
     }
     res.end();
   };
+}
+
+/** A small buffered Web Request for the JSON endpoints (not for streamed uploads). */
+async function toRequest(req: IncomingMessage, url: URL): Promise<Request> {
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (typeof v === 'string') headers.set(k, v);
+    else if (Array.isArray(v)) headers.set(k, v.join(', '));
+  }
+  if (!headers.has('x-forwarded-for') && req.socket.remoteAddress)
+    headers.set('x-forwarded-for', req.socket.remoteAddress);
+  const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
+  let body: string | undefined;
+  if (hasBody) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    body = Buffer.concat(chunks).toString('utf8');
+  }
+  return new Request(url, { method: req.method, headers, body });
 }

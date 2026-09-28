@@ -3,6 +3,8 @@ import { CATEGORIES } from '../../../shared/categories.js';
 import { locationCacheKey } from '../../../shared/geo.js';
 import type {
   ApproxLocation,
+  ElevationEvidence,
+  ElevationSample,
   NearbySpeciesGroup,
   OccurrenceEvidence,
   SpeciesFact,
@@ -151,6 +153,18 @@ export function parseMonthFacet(result: GbifOccurrenceSearch): number[] | undefi
   return months;
 }
 
+/** Metres either side of the local terrain's range that still count as "this elevation". */
+export const ELEVATION_MARGIN_M = 250;
+/** GBIF range filter that matches every record carrying an elevation. */
+const ANY_ELEVATION = '-1000,9000';
+
+export function elevationBand(site: ElevationSample): [number, number] {
+  return [
+    Math.max(-500, site.minM - ELEVATION_MARGIN_M),
+    Math.min(8900, site.maxM + ELEVATION_MARGIN_M),
+  ];
+}
+
 export class GbifOccurrenceProvider implements OccurrenceProvider {
   readonly name = GBIF_SOURCE;
   constructor(
@@ -161,6 +175,8 @@ export class GbifOccurrenceProvider implements OccurrenceProvider {
   async getOccurrenceEvidence(
     taxon: TaxonIdentity,
     location: ApproxLocation,
+    _date?: Date,
+    options: { elevation?: ElevationSample } = {},
   ): Promise<OccurrenceEvidence> {
     if (!taxon.gbifKey) throw new Error('GBIF key required for occurrence search');
     const radii = [...this.radiiKm].sort((a, b) => a - b);
@@ -175,11 +191,47 @@ export class GbifOccurrenceProvider implements OccurrenceProvider {
       ),
     );
     const radiusCounts = radii.map((radiusKm, i) => ({ radiusKm, count: results[i].count }));
+    const elevation =
+      options.elevation && results[results.length - 1].count > 0
+        ? await this.elevationEvidence(taxon.gbifKey, location, widest, options.elevation).catch(
+            () => undefined,
+          )
+        : undefined;
     return {
       source: GBIF_SOURCE,
       radiusCounts,
       nearestRadiusKm: radiusCounts.find((r) => r.count > 0)?.radiusKm,
       monthCounts: parseMonthFacet(results[results.length - 1]),
+      ...(elevation && { elevation }),
+    };
+  }
+
+  /**
+   * GBIF can't facet on elevation, so two counts within the widest radius: records that carry
+   * an elevation at all, and those inside the band around the site's terrain. Many records
+   * (most iNaturalist and eBird ones) have no elevation, so this is often too sparse to use.
+   */
+  private async elevationEvidence(
+    taxonKey: number,
+    location: ApproxLocation,
+    radiusKm: number,
+    site: ElevationSample,
+  ): Promise<ElevationEvidence> {
+    const bandM = elevationBand(site);
+    const [all, inBand] = await Promise.all(
+      [ANY_ELEVATION, `${bandM[0]},${bandM[1]}`].map((elevation) =>
+        this.client.occurrenceCount({
+          taxonKey,
+          geoDistance: geoDistance(location, radiusKm),
+          elevation,
+        }),
+      ),
+    );
+    return {
+      site,
+      bandM,
+      recordsWithElevation: all.count,
+      recordsInBand: Math.min(inBand.count, all.count),
     };
   }
 }

@@ -11,6 +11,7 @@ import type {
   IdentifyResponse,
   IdentifyTarget,
   StageEvent,
+  TiltBucket,
 } from '../../shared/types';
 import { getMockScenario } from './mockScenario';
 
@@ -37,7 +38,20 @@ export type IdentifyRequest = {
   /** "photo" when the position came from the photo's own GPS rather than the device. */
   locationSource?: 'photo';
   capturedAt: Date;
+  /**
+   * Where `capturedAt` came from, so the local hour can be sent: "device" = the phone clock
+   * at capture (camera, live, calls); "photo" = an EXIF date, whose time zone is unknown, so
+   * the hour is marked approximate. Omitted when the capture time isn't known.
+   */
+  timeSource?: 'device' | 'photo';
+  /** Which way the camera pointed when the photo was taken (camera photos only). */
+  tilt?: TiltBucket;
 };
+
+/** Wall-clock hour of a date on this device, e.g. 21.5 for 9:30 pm. */
+export function localHourOf(date: Date): number {
+  return Math.round((date.getHours() + date.getMinutes() / 60) * 100) / 100;
+}
 
 export type IdentifyOptions = {
   onUploadProgress?: (fraction: number) => void;
@@ -54,6 +68,11 @@ export function buildIdentifyForm(
   form.append('category', req.category);
   form.append('observationId', req.observationId);
   form.append('capturedAt', req.capturedAt.toISOString());
+  if (req.timeSource && !Number.isNaN(req.capturedAt.getTime())) {
+    form.append('localHour', String(localHourOf(req.capturedAt)));
+    if (req.timeSource === 'photo') form.append('localHourApprox', '1');
+  }
+  if (req.tilt) form.append('tilt', req.tilt);
   req.images.forEach((img, i) => {
     form.append('images', img.blob, `photo-${i + 1}.jpg`);
     form.append('features', img.feature);

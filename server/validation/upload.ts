@@ -101,6 +101,14 @@ const fieldsSchema = z.object({
   longitude: z.coerce.number().optional(),
   capturedAt: z.string().max(40).optional(),
   locationSource: z.enum(['device', 'photo']).optional(),
+  // Context hints from newer clients: optional, and dropped (not rejected) when malformed.
+  localHour: z.coerce.number().min(0).max(24).optional().catch(undefined),
+  localHourApprox: z
+    .enum(['1', 'true', '0', 'false'])
+    .transform((v) => v === '1' || v === 'true')
+    .optional()
+    .catch(undefined),
+  tilt: z.enum(['up', 'level', 'down']).optional().catch(undefined),
   mockScenario: z
     .string()
     .regex(/^[a-z0-9-]{1,32}$/)
@@ -173,6 +181,9 @@ export async function parseIdentifyForm(
     capturedAt: stringField(form, 'capturedAt'),
     mockScenario: stringField(form, 'mockScenario'),
     locationSource: stringField(form, 'locationSource'),
+    localHour: stringField(form, 'localHour'),
+    localHourApprox: stringField(form, 'localHourApprox'),
+    tilt: stringField(form, 'tilt'),
   });
   if (!parsed.success) throw new ApiError('invalid_request', 'Some request fields were invalid.');
   const fields = parsed.data;
@@ -250,6 +261,11 @@ export async function parseIdentifyForm(
     location,
     locationSource: location ? (fields.locationSource ?? 'device') : undefined,
     capturedAt,
+    ...(fields.localHour !== undefined && {
+      localHour: fields.localHour,
+      localHourApprox: fields.localHourApprox ?? false,
+    }),
+    ...(fields.tilt && { tilt: fields.tilt }),
     mockScenario: fields.mockScenario,
     ...(audio && { audio }),
   };

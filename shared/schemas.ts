@@ -38,7 +38,17 @@ const occurrenceEvidence = z.object({
   floweringMonthCounts: z.array(z.number()).optional(),
   recentlyReported: z.boolean().optional(),
   range: z.enum(['in', 'near', 'out']).optional(),
+  elevation: z
+    .object({
+      site: z.object({ centerM: z.number(), minM: z.number(), maxM: z.number() }),
+      bandM: z.tuple([z.number(), z.number()]),
+      recordsWithElevation: z.number(),
+      recordsInBand: z.number(),
+    })
+    .optional(),
 });
+
+const nudge = z.number().min(0).max(1).optional();
 
 export const organismCandidateSchema = z.object({
   id: z.string(),
@@ -62,6 +72,7 @@ export const organismCandidateSchema = z.object({
   geographicSupport: score.optional(),
   seasonalSupport: score.optional(),
   finalConfidence: score,
+  nudges: z.object({ timeOfDay: nudge, season: nudge, elevation: nudge, tilt: nudge }).optional(),
   occurrence: occurrenceEvidence.optional(),
   source: z.object({
     identification: z.string(),
@@ -194,6 +205,8 @@ export const identifyResponseSchema = z.object({
       suggestedGroup: z.string().optional(),
     })
     .optional(),
+  requestedTarget: z.string().refine(isIdentifyTarget).optional(),
+  features: z.array(z.string()).optional(),
   categoryDetection: z
     .object({
       requested: z.string().refine(isIdentifyTarget),
@@ -216,6 +229,15 @@ export const identifyResponseSchema = z.object({
       }),
     )
     .optional(),
+  decidingView: z
+    .object({
+      feature: z.string(),
+      prompt: z.string(),
+      reason: z.string(),
+      source: z.string().optional(),
+      sourceUrl: z.string().optional(),
+    })
+    .optional(),
   safety: z
     .object({
       kind: z.enum(['food', 'wildlife']).optional(),
@@ -227,6 +249,7 @@ export const identifyResponseSchema = z.object({
           basis: z.enum(['species', 'genus']).optional(),
           severity: z.enum(['deadly', 'toxic', 'skin', 'caution']).optional(),
           quote: z.boolean().optional(),
+          photo: licensedImage.optional(),
           source: z.string(),
           sourceUrl: z.string().optional(),
           license: z.string().optional(),

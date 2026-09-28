@@ -10,6 +10,7 @@ import type {
 } from '../../../shared/types.js';
 import { cached, sharedCache, type Cache } from '../../cache/cache.js';
 import { fetchJson } from '../../lib/http.js';
+import type { ReferencePhotoProvider } from '../../safety/lookalikePhotos.js';
 import type {
   CommunityObservationProvider,
   FloweringProvider,
@@ -41,6 +42,7 @@ type INatTaxon = {
   preferred_common_name?: string;
   observations_count?: number;
   iconic_taxon_name?: string;
+  default_photo?: INatPhoto | null;
 };
 type INatObservation = {
   id: number;
@@ -297,7 +299,7 @@ export function coarsenPlace(place: string): string {
  * any organism group, so future animal/fungus providers get galleries for free.
  * Only openly licensed photos are returned, each with its attribution.
  */
-export class INaturalistTaxonPhotosProvider implements SpeciesInfoProvider {
+export class INaturalistTaxonPhotosProvider implements SpeciesInfoProvider, ReferencePhotoProvider {
   readonly name = INAT_SOURCE;
 
   constructor(
@@ -307,10 +309,8 @@ export class INaturalistTaxonPhotosProvider implements SpeciesInfoProvider {
     private readonly maxPhotos = 8,
   ) {}
 
-  async getSpeciesInfo(taxon: TaxonIdentity): Promise<SpeciesInfoPart> {
-    const inatTaxon = await this.observations.resolveTaxon(taxon);
-    if (!inatTaxon) return { source: INAT_SOURCE };
-    const url = `${API}/taxa/${inatTaxon.id}`;
+  private async taxonPhotos(id: number): Promise<INatPhoto[]> {
+    const url = `${API}/taxa/${id}`;
     const detail = await cached(this.cache, `inat:${url}`, CACHE_TTL_MS.speciesInfo, () =>
       fetchJson<{ results: { taxon_photos?: { photo: INatPhoto }[] }[] }>(url, {
         service: INAT_SOURCE,
@@ -318,11 +318,32 @@ export class INaturalistTaxonPhotosProvider implements SpeciesInfoProvider {
         fetchImpl: this.fetchImpl,
       }),
     );
+    return (detail.results[0]?.taxon_photos ?? []).map((tp) => tp.photo);
+  }
+
+  async getSpeciesInfo(taxon: TaxonIdentity): Promise<SpeciesInfoPart> {
+    const inatTaxon = await this.observations.resolveTaxon(taxon);
+    if (!inatTaxon) return { source: INAT_SOURCE };
     const taxonUrl = `${SITE}/taxa/${inatTaxon.id}`;
-    const images = (detail.results[0]?.taxon_photos ?? [])
-      .map((tp) => licensedPhoto(tp.photo, taxonUrl, 'medium'))
+    const images = (await this.taxonPhotos(inatTaxon.id))
+      .map((photo) => licensedPhoto(photo, taxonUrl, 'medium'))
       .filter((img): img is LicensedImage => !!img)
       .slice(0, this.maxPhotos);
     return { source: INAT_SOURCE, images };
+  }
+
+  /**
+   * One openly licensed photo of a taxon (e.g. a look-alike named in a safety warning):
+   * the taxon's default photo when it is openly licensed, otherwise its first licensed photo.
+   */
+  async getReferencePhoto(taxon: TaxonIdentity): Promise<LicensedImage | undefined> {
+    const inatTaxon = await this.observations.resolveTaxon(taxon);
+    if (!inatTaxon) return undefined;
+    const taxonUrl = `${SITE}/taxa/${inatTaxon.id}`;
+    const preferred = licensedPhoto(inatTaxon.default_photo ?? undefined, taxonUrl, 'small');
+    if (preferred) return preferred;
+    return (await this.taxonPhotos(inatTaxon.id))
+      .map((photo) => licensedPhoto(photo, taxonUrl, 'small'))
+      .find((img): img is LicensedImage => !!img);
   }
 }

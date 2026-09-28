@@ -6,7 +6,9 @@
   "functions": {
     "api/identify.ts": { "maxDuration": 30 },
     "api/health.ts": { "maxDuration": 5 },
-    "api/usage.ts": { "maxDuration": 10 }
+    "api/usage.ts": { "maxDuration": 10 },
+    "api/nearby-families.ts": { "maxDuration": 15 },
+    "api/whats-out.ts": { "maxDuration": 15 }
   },
   "headers": [
     {
@@ -16,7 +18,7 @@
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         {
           "key": "Permissions-Policy",
-          "value": "camera=(self), geolocation=(self), microphone=()"
+          "value": "camera=(self), geolocation=(self), microphone=(self)"
         },
         { "key": "X-Frame-Options", "value": "DENY" }
       ]

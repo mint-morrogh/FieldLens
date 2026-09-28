@@ -38,6 +38,19 @@ export default defineConfig(({ mode }) => {
 
   return {
     define: { __BUILD_ID__: JSON.stringify(buildId) },
+    build: {
+      rolldownOptions: {
+        output: {
+          // Keep third-party code in its own long-lived chunk so the app chunk stays small
+          // and app updates don't re-download React and zod.
+          codeSplitting: {
+            groups: [
+              { name: 'vendor', test: /node_modules[\\/](react|react-dom|scheduler|zod|idb)[\\/]/ },
+            ],
+          },
+        },
+      },
+    },
     plugins: [
       react(),
       tailwindcss(),
@@ -72,6 +85,8 @@ export default defineConfig(({ mode }) => {
           navigateFallbackDenylist: [/^\/api\//],
           // Never cache API responses or third-party data in the service worker.
           runtimeCaching: [],
+          // Opens an observation when an offline-queue notification is tapped.
+          importScripts: ['sw-notifications.js'],
         },
       }),
     ],

@@ -12,6 +12,8 @@ import type {
 import { Icon } from '../../components/Icon';
 import { Card, ExternalLink, Notice, SectionTitle } from '../../components/ui';
 import { displayName, formatCount, formatDate, plural } from '../../lib/format';
+import { useSetting } from '../../lib/settings';
+import { formatDistance, localizeMeasurements } from '../../lib/units';
 import { ConfidenceMeter } from './ConfidenceMeter';
 import { CandidateThumb } from './Gallery';
 import { MonthBars } from './MonthBars';
@@ -129,6 +131,7 @@ export function GeographicEvidence({
   result: IdentifyResponse;
 }) {
   const status = result.sourceStatus.occurrence;
+  const units = useSetting('units');
   return (
     <Card aria-labelledby="geo-title" data-testid="geo-evidence">
       <SectionTitle id="geo-title" eyebrow="GBIF records">
@@ -151,7 +154,9 @@ export function GeographicEvidence({
           <dl className="grid grid-cols-3 gap-2 text-center">
             {candidate.occurrence.radiusCounts.map((r) => (
               <div key={r.radiusKm} className="rounded-xl bg-paper-deep px-2 py-2">
-                <dt className="text-sm text-ink-muted">within {r.radiusKm} km</dt>
+                <dt className="text-sm text-ink-muted">
+                  within {formatDistance(r.radiusKm, units)}
+                </dt>
                 <dd className="text-xl font-bold tabular-nums">{formatCount(r.count)}</dd>
               </div>
             ))}
@@ -171,6 +176,7 @@ export function SpeciesFacts({
   info?: SpeciesInfo;
   status: IdentifyResponse['sourceStatus']['speciesInfo'];
 }) {
+  const units = useSetting('units');
   const ranks: [string, string | undefined][] = info
     ? [
         ['Kingdom', info.taxonomy.kingdom],
@@ -221,7 +227,7 @@ export function SpeciesFacts({
             <div key={f.label}>
               <dt className="text-sm text-ink-muted">{f.label}</dt>
               <dd className="font-medium">
-                {f.value}{' '}
+                {localizeMeasurements(f.value, units)}{' '}
                 <span className="text-xs font-normal text-ink-muted">
                   (
                   {f.sourceUrl ? (
@@ -267,6 +273,7 @@ export function INaturalistCard({
   status: IdentifyResponse['sourceStatus']['community'];
   locationUsed: boolean;
 }) {
+  const units = useSetting('units');
   return (
     <aside
       aria-labelledby="inat-title"
@@ -292,7 +299,9 @@ export function INaturalistCard({
           {locationUsed && summary.nearbyCount !== undefined ? (
             <div className="space-y-1">
               <p className="text-xl font-bold text-ink">
-                {plural(summary.nearbyCount, 'observation')} within {summary.radiusKm} km
+                {plural(summary.nearbyCount, 'observation')}
+                {summary.radiusKm !== undefined &&
+                  ` within ${formatDistance(summary.radiusKm, units)}`}
               </p>
               {summary.recentCount !== undefined && (
                 <p className="text-ink-soft">
@@ -396,6 +405,7 @@ export function NearbySpeciesSection({
   group?: NearbySpeciesGroup;
   pluralNoun: string;
 }) {
+  const units = useSetting('units');
   if (!group || group.species.length === 0) return null;
   return (
     <Card aria-labelledby="nearby-title" data-testid="nearby-species">
@@ -404,7 +414,7 @@ export function NearbySpeciesSection({
       </SectionTitle>
       <p className="mb-2 text-sm text-ink-muted">
         These are not alternative identifications — they are related species with GBIF records
-        within {group.radiusKm} km.
+        within {formatDistance(group.radiusKm, units)}.
       </p>
       <ul className="divide-y divide-line">
         {group.species.map((s) => (

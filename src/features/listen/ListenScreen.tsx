@@ -119,6 +119,7 @@ export function ListenScreen() {
             audio: wav,
             location,
             capturedAt,
+            timeSource: 'device',
           },
           {
             onStage: (event) => {

@@ -1,11 +1,14 @@
+import { useState } from 'react';
 import type {
   ConfidenceBand,
+  LicensedImage,
   OrganismCategory,
   SafetyInfo,
   SafetyStatement,
 } from '../../../shared/types';
 import { Icon } from '../../components/Icon';
 import { ExternalLink } from '../../components/ui';
+import { Lightbox, credit } from './Gallery';
 
 const KIND_LABEL: Record<SafetyStatement['kind'], string> = {
   toxic: 'Toxic',
@@ -14,7 +17,42 @@ const KIND_LABEL: Record<SafetyStatement['kind'], string> = {
   edible: 'Reported use as food',
 };
 
+/** Small, secondary reference photo of a look-alike; tap to enlarge. */
+function LookalikeThumb({
+  photo,
+  name,
+  onError,
+}: {
+  photo: LicensedImage;
+  name: string;
+  onError: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="block h-16 w-16 shrink-0 self-start overflow-hidden rounded-lg"
+        data-testid="lookalike-photo"
+      >
+        <img
+          src={photo.url}
+          alt={`Reference photo of ${name}`}
+          loading="lazy"
+          onError={onError}
+          className="h-full w-full object-cover"
+        />
+      </button>
+      {open && <Lightbox images={[photo]} index={0} title={name} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 function Statement({ s }: { s: SafetyStatement }) {
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const photo = s.kind === 'lookalike' && !photoFailed ? s.photo : undefined;
+  const name = s.subject ?? 'look-alike';
   const tone =
     s.kind === 'edible'
       ? 'border-moss/30 bg-moss-soft/50'
@@ -22,23 +60,44 @@ function Statement({ s }: { s: SafetyStatement }) {
         ? 'border-rust/30 bg-rust-soft/60'
         : 'border-amber/30 bg-amber-soft/50';
   return (
-    <li className={`rounded-xl border px-3 py-2.5 ${tone}`} data-kind={s.kind}>
-      <p className="text-xs font-bold uppercase tracking-wide text-ink-muted">
-        {KIND_LABEL[s.kind]}
-        {s.subject ? ` · ${s.kind === 'lookalike' ? '' : 'possible match: '}${s.subject}` : ''}
-        {s.basis === 'genus' ? ' · genus-level' : ''}
-      </p>
-      <p className="mt-0.5 text-[0.95rem] text-ink">{s.quote ? `“${s.text}”` : s.text}</p>
-      <p className="mt-1 text-xs text-ink-muted">
-        {s.sourceUrl ? (
-          <ExternalLink href={s.sourceUrl} className="!font-normal">
-            {s.source}
-          </ExternalLink>
-        ) : (
-          s.source
+    <li className={`flex gap-3 rounded-xl border px-3 py-2.5 ${tone}`} data-kind={s.kind}>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-bold uppercase tracking-wide text-ink-muted">
+          {KIND_LABEL[s.kind]}
+          {s.subject ? ` · ${s.kind === 'lookalike' ? '' : 'possible match: '}${s.subject}` : ''}
+          {s.basis === 'genus' ? ' · genus-level' : ''}
+        </p>
+        <p className="mt-0.5 text-[0.95rem] text-ink">{s.quote ? `“${s.text}”` : s.text}</p>
+        <p className="mt-1 text-xs text-ink-muted">
+          {s.sourceUrl ? (
+            <ExternalLink href={s.sourceUrl} className="!font-normal">
+              {s.source}
+            </ExternalLink>
+          ) : (
+            s.source
+          )}
+          {s.license ? ` · ${s.license}` : ''}
+        </p>
+        {photo && (
+          <p className="mt-0.5 text-[0.7rem] text-ink-muted" data-testid="lookalike-credit">
+            Photo of {name}: {credit(photo)}
+            {photo.sourceUrl && (
+              <>
+                {' · '}
+                <a
+                  href={photo.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  source<span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              </>
+            )}
+          </p>
         )}
-        {s.license ? ` · ${s.license}` : ''}
-      </p>
+      </div>
+      {photo && <LookalikeThumb photo={photo} name={name} onError={() => setPhotoFailed(true)} />}
     </li>
   );
 }

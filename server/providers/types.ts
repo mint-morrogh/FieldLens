@@ -4,6 +4,7 @@ import type {
   Attribution,
   CategoryCheck,
   CommunityObservationSummary,
+  ElevationSample,
   FeatureId,
   IdentifyTarget,
   NearbySpeciesGroup,
@@ -14,8 +15,10 @@ import type {
   SpeciesInfo,
   TaxonIdentity,
   TaxonomyRanks,
+  TiltBucket,
 } from '../../shared/types.js';
 import type { SafetyTextProvider } from '../safety/safety.js';
+import type { ReferencePhotoProvider } from '../safety/lookalikePhotos.js';
 
 export type InputImage = {
   data: Uint8Array;
@@ -37,6 +40,15 @@ export type IdentificationInput = {
   /** Where the position came from: the device now, or the photo's own GPS. */
   locationSource?: 'device' | 'photo';
   capturedAt: Date;
+  /**
+   * Wall-clock hour (0–24, fractional) where the photo was taken: the phone clock for camera
+   * photos, the EXIF date for library photos. Absent when unknown.
+   */
+  localHour?: number;
+  /** The hour is only approximate (EXIF time zone unknown), so `capturedAt` isn't a trusted instant. */
+  localHourApprox?: boolean;
+  /** Which way the camera pointed (camera photos only). */
+  tilt?: TiltBucket;
   /** Only honoured by mock providers. */
   mockScenario?: string;
   /** Tracks or droppings: rank `signCandidates` instead of the whole Tree of Life. */
@@ -56,7 +68,7 @@ export interface SignCandidateProvider {
 /** Candidate as returned by a visual provider, before geographic reranking. */
 export type ProviderCandidate = Omit<
   OrganismCandidate,
-  'finalConfidence' | 'geographicSupport' | 'seasonalSupport' | 'occurrence'
+  'finalConfidence' | 'geographicSupport' | 'seasonalSupport' | 'occurrence' | 'nudges'
 >;
 
 export type IdentificationResult = {
@@ -115,7 +127,15 @@ export interface OccurrenceProvider {
     taxon: TaxonIdentity,
     location: ApproxLocation,
     date: Date,
+    /** With the site's elevation, also count nearby records at a similar elevation. */
+    options?: { elevation?: ElevationSample },
   ): Promise<OccurrenceEvidence>;
+}
+
+export interface ElevationProvider {
+  readonly name: string;
+  /** Ground elevation around a location; undefined when it can't be looked up. */
+  getElevation(location: ApproxLocation): Promise<ElevationSample | undefined>;
 }
 
 export interface NearbySpeciesProvider {
@@ -185,6 +205,8 @@ export type ProviderSet = {
   community: CommunityObservationProvider;
   /** Quoted edibility/toxicity sentences for plants and fungi (optional). */
   safety?: SafetyTextProvider;
+  /** One openly licensed reference photo per named look-alike in safety warnings (optional). */
+  referencePhotos?: ReferencePhotoProvider;
   /** Candidate species for tracks and droppings (optional). */
   signCandidates?: SignCandidateProvider;
   /** When plants flower locally, for photos of flowers (optional). */
@@ -195,5 +217,7 @@ export type ProviderSet = {
   audio?: IdentificationProvider;
   /** Modelled species ranges (optional). */
   ranges?: RangeProvider;
+  /** Ground elevation from a terrain model (optional). */
+  elevation?: ElevationProvider;
   mock: boolean;
 };

@@ -15,6 +15,7 @@ import {
 } from './inaturalist/inaturalistProvider.js';
 import { BirdnetCallProvider } from './birdnet/birdnet.js';
 import { EbirdRecentProvider } from './ebird/ebird.js';
+import { OpenMeteoElevationProvider } from './elevation/openMeteo.js';
 import { isMockScenario } from './mock/fixtures.js';
 import { createMockProviders } from './mock/mockProviders.js';
 import { HuggingFaceRangeProvider } from './ranges/ranges.js';
@@ -51,6 +52,7 @@ export function createLiveProviders(env: ServerEnv, fetchImpl: typeof fetch = fe
   }
 
   const inat = new INaturalistObservationProvider(undefined, fetchImpl);
+  const inatPhotos = new INaturalistTaxonPhotosProvider(inat, undefined, fetchImpl);
   const gbif = new GbifClient(undefined, fetchImpl);
   return {
     identification,
@@ -61,10 +63,11 @@ export function createLiveProviders(env: ServerEnv, fetchImpl: typeof fetch = fe
       new GbifSpeciesInfoProvider(gbif),
       new WikidataSpeciesInfoProvider(undefined, fetchImpl),
       new WikipediaSpeciesSummaryProvider(undefined, fetchImpl),
-      new INaturalistTaxonPhotosProvider(inat, undefined, fetchImpl),
+      inatPhotos,
     ],
     community: inat,
     safety: new WikipediaSafetyProvider(undefined, fetchImpl),
+    referencePhotos: inatPhotos,
     signCandidates: inat,
     flowering: inat,
     audio:
@@ -76,6 +79,7 @@ export function createLiveProviders(env: ServerEnv, fetchImpl: typeof fetch = fe
         ? new HuggingFaceRangeProvider(env.rangesDataset, env.hfToken, fetchImpl)
         : undefined,
     recentBirds: env.ebirdApiKey ? new EbirdRecentProvider(env.ebirdApiKey) : undefined,
+    elevation: new OpenMeteoElevationProvider(undefined, fetchImpl),
     mock: false,
   };
 }

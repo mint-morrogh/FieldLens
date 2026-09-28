@@ -1,10 +1,11 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ResultView, type ImproveProps } from '../../src/features/results/ResultView';
 import { INaturalistCard } from '../../src/features/results/sections';
 import { mockResult, mockTrackResult } from './fixtures';
 import { displayName } from '../../src/lib/format';
+import { setSetting } from '../../src/lib/settings';
 
 const improve = (overrides: Partial<ImproveProps> = {}): ImproveProps => ({
   photos: [{ id: 'p1', url: 'blob:1', feature: 'leaf' }],
@@ -170,6 +171,7 @@ describe('experimental and off-target results', () => {
 
 describe('INaturalistCard', () => {
   it('shows nearby counts and links', async () => {
+    setSetting('units', 'metric');
     const result = await mockResult('high');
     render(<INaturalistCard summary={result.community} status="ok" locationUsed />);
     const card = screen.getByTestId('inat-card');
@@ -180,6 +182,10 @@ describe('INaturalistCard', () => {
       'target',
       '_blank',
     );
+    // Settings → Units: imperial shows miles.
+    act(() => setSetting('units', 'imperial'));
+    expect(card).toHaveTextContent(/\d+ observations within 16 mi/);
+    act(() => setSetting('units', 'metric'));
   });
   it('shows an unavailable state without breaking', () => {
     render(<INaturalistCard status="unavailable" locationUsed />);

@@ -332,6 +332,45 @@ describe('pipeline with groups', () => {
     expect(bug.category).toBe('insect');
     expect(bug.experimental).toBe(true);
   });
+  it('records the chosen target and photographed parts on every response', async () => {
+    const { identifyResponseSchema } = await import('../../shared/schemas');
+    const providers = createMockProviders('high');
+    const tree = await runIdentification(
+      {
+        ...input('tree'),
+        images: [
+          { data: JPEG, mimeType: 'image/jpeg', feature: 'bark' },
+          { data: JPEG, mimeType: 'image/jpeg', feature: 'auto' },
+        ],
+      },
+      { providers },
+    );
+    expect(tree.category).toBe('plant');
+    expect(tree.categoryDetection).toBeUndefined();
+    expect(tree.requestedTarget).toBe('tree');
+    expect(tree.features).toEqual(['bark', 'auto']);
+    expect(identifyResponseSchema.safeParse(tree).success).toBe(true);
+    for (const target of ['auto', 'animal', 'plant'] as const) {
+      const result = await runIdentification(input(target), { providers });
+      expect(result.requestedTarget).toBe(target);
+      expect(result.features).toEqual(['auto']);
+    }
+    // Empty results and "person" answers carry them too.
+    const zero = await runIdentification(input('plant'), {
+      providers: createMockProviders('zero'),
+    });
+    expect(zero.candidates).toHaveLength(0);
+    expect(zero.requestedTarget).toBe('plant');
+    const person = await runIdentification(input('auto'), {
+      providers: createMockProviders('person'),
+    });
+    expect(person.person).toBe(true);
+    expect(person.requestedTarget).toBe('auto');
+    expect(person.features).toEqual(['auto']);
+    expect(identifyResponseSchema.safeParse({ ...tree, requestedTarget: 'dragon' }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe('response schema accepts every picker choice', () => {

@@ -4,10 +4,13 @@ import { Icon } from '../../components/Icon';
 import { Button, Notice } from '../../components/ui';
 import { BRAND } from '../../config/brand';
 import { MOCK_SCENARIO_OPTIONS, getMockScenario, setMockScenario } from '../../lib/mockScenario';
+import { useSetting } from '../../lib/settings';
 import { useEffect, useState } from 'react';
 import { usePhotoPicker } from '../camera/usePhotoPicker';
 import { RecentObservations } from '../history/HistoryScreen';
+import { WhatsOutCard } from '../journal/WhatsOutCard';
 import { useLocationState } from '../location/LocationContext';
+import { QueueIndicator, useQueueIdentifiedCount } from '../offline/OfflineQueue';
 import { useSession } from './SessionContext';
 
 const PILL = 'inline-flex min-h-10 items-center gap-2 rounded-full border px-3.5 text-[0.95rem]';
@@ -178,12 +181,13 @@ export function LocationReadout() {
  * The hero: a field viewfinder. The whole panel is the camera button, framed by the
  * same reticle and grid as the crop and analysis screens.
  */
-function Viewfinder({ onOpen }: { onOpen: () => void }) {
+function Viewfinder({ onOpen, photo = false }: { onOpen: () => void; photo?: boolean }) {
+  const label = photo ? 'Take a photo' : 'Live identify';
   return (
     <button
       type="button"
       onClick={onOpen}
-      aria-label="Live identify"
+      aria-label={label}
       className="group relative isolate block w-full overflow-hidden rounded-[1.75rem] bg-toast text-left text-white shadow-[0_18px_40px_-18px_rgba(17,20,15,0.6)] ring-1 ring-white/5 transition-transform duration-200 active:scale-[0.99]"
       data-testid="viewfinder"
     >
@@ -212,10 +216,12 @@ function Viewfinder({ onOpen }: { onOpen: () => void }) {
           <span className="shutter-arc absolute inset-0 rounded-full" />
           {/* The button is the play icon itself: a green disc with the triangle cut out. */}
           <span className="shutter-glow relative transition-transform duration-200 ease-out group-hover:scale-105 group-active:scale-90">
-            <span className="shutter-button shutter-play block h-[4.5rem] w-[4.5rem]" />
+            <span
+              className={`shutter-button block h-[4.5rem] w-[4.5rem] ${photo ? 'rounded-full' : 'shutter-play'}`}
+            />
           </span>
         </span>
-        <span className="mt-4 text-xl font-bold tracking-tight">Live identify</span>
+        <span className="mt-4 text-xl font-bold tracking-tight">{label}</span>
       </div>
     </button>
   );
@@ -231,6 +237,9 @@ export function HomeScreen() {
   };
   const camera = usePhotoPicker((f) => start(f, 'camera'), { capture: true });
   const picker = usePhotoPicker((f) => start(f, 'library'));
+  const photoFirst = useSetting('defaultCameraMode') === 'photo';
+  // Reload recent finds when a photo saved without signal gets identified.
+  const queueIdentified = useQueueIdentifiedCount();
 
   return (
     <div className="space-y-6">
@@ -252,10 +261,26 @@ export function HomeScreen() {
 
       <div className="flex flex-col gap-3">
         {/* Live identify first, then a single photo, then photos already on the phone. */}
-        <Viewfinder onOpen={() => navigate({ name: 'live' })} />
-        <Button size="lg" className="min-h-14 text-lg" onClick={camera.open}>
-          <Icon name="photo" className="h-6 w-6" /> Take a photo
-        </Button>
+        {/* Settings → Default camera mode picks which of the two is the hero. */}
+        {photoFirst ? (
+          <>
+            <Viewfinder photo onOpen={camera.open} />
+            <Button
+              size="lg"
+              className="min-h-14 text-lg"
+              onClick={() => navigate({ name: 'live' })}
+            >
+              <Icon name="scan" className="h-6 w-6" /> Live identify
+            </Button>
+          </>
+        ) : (
+          <>
+            <Viewfinder onOpen={() => navigate({ name: 'live' })} />
+            <Button size="lg" className="min-h-14 text-lg" onClick={camera.open}>
+              <Icon name="photo" className="h-6 w-6" /> Take a photo
+            </Button>
+          </>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Button
             variant="secondary"
@@ -282,9 +307,14 @@ export function HomeScreen() {
         )}
       </div>
 
+      {/* Photos saved without signal: "2 photos waiting for signal". */}
+      <QueueIndicator />
+
       {status !== 'granted' && status !== 'requesting' && <LocationPanel />}
 
-      <RecentObservations />
+      <WhatsOutCard />
+
+      <RecentObservations key={queueIdentified} />
     </div>
   );
 }

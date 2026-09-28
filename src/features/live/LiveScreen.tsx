@@ -2,14 +2,29 @@ import type { ObjectDetector } from '@mediapipe/tasks-vision';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCategory } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
-import type { IdentifyResponse, IdentifyTarget } from '../../../shared/types';
+import { UPLOAD } from '../../../shared/config';
+import type {
+  DecidingView,
+  FeatureId,
+  IdentifyResponse,
+  IdentifyTarget,
+} from '../../../shared/types';
 import { navigate } from '../../app/router';
 import { Icon } from '../../components/Icon';
 import { ClientError, identify } from '../../lib/api';
 import { displayName } from '../../lib/format';
+import { currentTilt, startTiltTracking } from '../../lib/tilt';
+import { useSetting } from '../../lib/settings';
 import { useSession } from '../identification/SessionContext';
 import { useLocationState } from '../location/LocationContext';
 import { mergeImages } from '../results/Gallery';
+import {
+  framePolicy,
+  lightLabel,
+  smoothLatency,
+  watchBattery,
+  type FramePolicy,
+} from './framePolicy';
 
 /**
  * Live identify: an on-device detector (MediaPipe EfficientDet-Lite0, COCO classes) boxes
@@ -46,12 +61,13 @@ const HINTS: Record<string, Hint> = {
   'potted plant': { category: 'plant', label: 'Plant' },
   vase: { category: 'plant', label: 'Flowers' },
 };
-const TICK_MS = 100;
+/**
+ * The loop's tick, the frames sent per live session (scans and taps, to protect the free
+ * identification quotas), the cooldown between scans and the upload size all come from
+ * `framePolicy`: lighter on low battery, when the phone runs warm, and with data saver on.
+ */
 const STILL_FOR_MS = 900;
 const MOTION_THRESHOLD = 7;
-/** Frames sent per live session (scans and taps), to protect the free identification quotas. */
-const MAX_ATTEMPTS = 15;
-const COOLDOWN_MS = 2500;
 /**
  * An automatic match is only shown once this many frames in a row agree on the species, so one
  * odd frame can't produce a confident-looking card. The follow-up frame is taken sooner.
@@ -59,8 +75,6 @@ const COOLDOWN_MS = 2500;
  */
 const VOTES_NEEDED = 2;
 const CONFIRM_COOLDOWN_MS = 500;
-/** Same size limit as photo mode: Pl@ntNet needs petal and leaf detail. */
-const CROP_MAX_EDGE = 1600;
 /** A tap with no detector box around it identifies a square this share of the shorter side. */
 const TAP_BOX = 0.45;
 /** A boxed subject smaller than this share of the frame is too far away to identify well. */
@@ -77,7 +91,26 @@ type Status =
   | 'person'
   | 'exhausted'
   | 'error';
-type Found = { result: IdentifyResponse; frame: Blob; crop: Blob };
+type LiveCrop = { blob: Blob; feature: FeatureId };
+/**
+ * `crops` is set when several frames were identified together (the deciding angle), with
+ * `previous` the result they were added to.
+ */
+type Found = {
+  result: IdentifyResponse;
+  frame: Blob;
+  crop: Blob;
+  crops?: LiveCrop[];
+  previous?: IdentifyResponse;
+};
+/** The deciding angle being shot: the next frame is identified together with these crops. */
+type Join = {
+  crops: LiveCrop[];
+  frame: Blob;
+  category: IdentifyTarget;
+  previous: IdentifyResponse;
+  view: DecidingView;
+};
 type Focus = Rect & { hint?: Hint };
 type Tip = 'several' | 'closer' | 'unsure' | undefined;
 
@@ -100,13 +133,18 @@ function toBlob(canvas: HTMLCanvasElement, quality = 0.88): Promise<Blob> {
 }
 
 /** Draw part of the video to a JPEG no larger than `maxEdge` on its long side. */
-async function grab(video: HTMLVideoElement, r: Rect, maxEdge: number): Promise<Blob> {
+async function grab(
+  video: HTMLVideoElement,
+  r: Rect,
+  maxEdge: number,
+  quality?: number,
+): Promise<Blob> {
   const scale = Math.min(1, maxEdge / Math.max(r.w, r.h));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(r.w * scale);
   canvas.height = Math.round(r.h * scale);
   canvas.getContext('2d')!.drawImage(video, r.x, r.y, r.w, r.h, 0, 0, canvas.width, canvas.height);
-  return toBlob(canvas);
+  return toBlob(canvas, quality);
 }
 
 /** Where a video rectangle appears on screen, as fractions of the element (object-fit: cover). */
@@ -146,6 +184,8 @@ async function photoCrop(
   track: MediaStreamTrack | undefined,
   video: HTMLVideoElement,
   r: Rect,
+  maxEdge: number,
+  quality?: number,
 ): Promise<Blob | undefined> {
   const Ctor = (globalThis as { ImageCapture?: ImageCaptureCtor }).ImageCapture;
   if (!track || !Ctor) return undefined;
@@ -159,7 +199,7 @@ async function photoCrop(
     const ox = (bitmap.width - video.videoWidth * s) / 2;
     const oy = (bitmap.height - video.videoHeight * s) / 2;
     const src = { x: r.x * s + ox, y: r.y * s + oy, w: r.w * s, h: r.h * s };
-    const scale = Math.min(1, CROP_MAX_EDGE / Math.max(src.w, src.h));
+    const scale = Math.min(1, maxEdge / Math.max(src.w, src.h));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(src.w * scale);
     canvas.height = Math.round(src.h * scale);
@@ -167,7 +207,7 @@ async function photoCrop(
       .getContext('2d')!
       .drawImage(bitmap, src.x, src.y, src.w, src.h, 0, 0, canvas.width, canvas.height);
     bitmap.close();
-    return await toBlob(canvas);
+    return await toBlob(canvas, quality);
   } catch {
     return undefined;
   }
@@ -180,10 +220,13 @@ function FoundCard({
   found,
   onClear,
   onDetails,
+  onDecide,
 }: {
   found: Found;
   onClear: () => void;
   onDetails: () => void;
+  /** Shoot the deciding angle next (offered when the result names one). */
+  onDecide?: (view: DecidingView) => void;
 }) {
   const { result } = found;
   const top = result.candidates[0];
@@ -220,6 +263,19 @@ function FoundCard({
           ))}
         </ul>
       )}
+      {onDecide && result.decidingView && result.confidenceBand !== 'high' && (
+        <div className="mt-3 rounded-2xl bg-white/10 p-3" data-testid="live-deciding">
+          <p className="font-semibold text-white">{result.decidingView.prompt}</p>
+          <p className="mt-0.5 text-sm text-white/70">{result.decidingView.reason}</p>
+          <button
+            type="button"
+            onClick={() => onDecide(result.decidingView!)}
+            className="mt-2 min-h-11 w-full rounded-xl bg-white/20 font-semibold text-white active:bg-white/30"
+          >
+            Show it to the camera
+          </button>
+        </div>
+      )}
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button
           type="button"
@@ -255,6 +311,11 @@ export function LiveScreen() {
   /** The best uncertain match so far, offered as "See best match". */
   const [bestGuess, setBestGuess] = useState<Found>();
   const [tip, setTip] = useState<Tip>();
+  /** The deciding angle asked for: shown over the camera until the next frame is identified. */
+  const [deciding, setDeciding] = useState<DecidingView>();
+  /** Why live mode is running light ("Low battery · Data saver"), shown quietly in the top bar. */
+  const [light, setLight] = useState<string>();
+  const dataSaver = useSetting('dataSaver');
 
   // Mutable loop state (read inside the interval without re-subscribing).
   const loop = useRef({
@@ -274,24 +335,60 @@ export function LiveScreen() {
     /** Frames agreeing so far on one species, and the most confident of them. */
     vote: undefined as { name: string; count: number; best: Found } | undefined,
     best: undefined as Found | undefined,
+    /** Set while shooting the deciding angle: the next frame joins this identification. */
+    join: undefined as Join | undefined,
     attempts: 0,
     nextAttemptAt: 0,
     done: false,
+    policy: framePolicy({ dataSaver }) as FramePolicy,
+    battery: undefined as { level: number; charging: boolean } | undefined,
+    /** Smoothed time the loop's work takes per tick (detector and stillness check). */
+    workMs: undefined as number | undefined,
+    dataSaver,
   });
 
+  /** Re-decide the frame rate and upload size; updates the indicator when it changes. */
+  const updatePolicy = useCallback(() => {
+    const l = loop.current;
+    l.policy = framePolicy({
+      batteryLevel: l.battery?.level,
+      charging: l.battery?.charging,
+      detectorMs: l.workMs,
+      wasWarm: l.policy.warm,
+      dataSaver: l.dataSaver,
+    });
+    setLight(lightLabel(l.policy.reasons));
+  }, []);
+
+  useEffect(() => {
+    loop.current.dataSaver = dataSaver;
+    updatePolicy();
+  }, [dataSaver, updatePolicy]);
+
+  useEffect(
+    () =>
+      watchBattery((b) => {
+        loop.current.battery = b;
+        updatePolicy();
+      }),
+    [updatePolicy],
+  );
+
   const openDetails = useCallback(
-    ({ result, frame, crop }: Found) => {
+    ({ result, frame, crop, crops, previous }: Found) => {
       loop.current.done = true;
+      const all = crops ?? [{ blob: crop, feature: 'auto' }];
       session.adoptResult(
-        {
+        all.map((c, i) => ({
           id: newId(),
-          blob: crop,
-          url: URL.createObjectURL(crop),
-          feature: 'auto',
-          original: { blob: frame, url: URL.createObjectURL(frame) },
-        },
+          blob: c.blob,
+          url: URL.createObjectURL(c.blob),
+          feature: c.feature,
+          original: i === 0 ? { blob: frame, url: URL.createObjectURL(frame) } : undefined,
+        })),
         result,
         new Date(),
+        previous,
       );
       navigate({ name: 'identify' }, { replace: true });
     },
@@ -318,7 +415,28 @@ export function LiveScreen() {
     l.tapped = undefined;
     l.stillSince = 0;
     l.nextAttemptAt = performance.now() + 800;
-    setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'aim');
+    setStatus(l.attempts >= l.policy.maxAttempts ? 'exhausted' : 'aim');
+  }, []);
+
+  /** Ask for the deciding angle: clear the card, and send the next frame with this one. */
+  const decide = useCallback(
+    (f: Found, view: DecidingView) => {
+      loop.current.join = {
+        crops: f.crops ?? [{ blob: f.crop, feature: 'auto' }],
+        frame: f.frame,
+        category: f.result.category,
+        previous: f.result,
+        view,
+      };
+      setDeciding(view);
+      clear();
+    },
+    [clear],
+  );
+
+  const cancelDecide = useCallback(() => {
+    loop.current.join = undefined;
+    setDeciding(undefined);
   }, []);
 
   const analyse = useCallback(
@@ -346,18 +464,26 @@ export function LiveScreen() {
           w: Math.min(vw - x, f.w * (1 + 2 * pad)),
           h: Math.min(vh - y, f.h * (1 + 2 * pad)),
         };
-        const frame = await grab(video, { x: 0, y: 0, w: vw, h: vh }, 2048);
+        const { cropMaxEdge, frameMaxEdge, quality } = l.policy;
+        const frame = await grab(video, { x: 0, y: 0, w: vw, h: vh }, frameMaxEdge, quality);
         const crop =
-          (manual ? await photoCrop(l.track, video, region) : undefined) ??
-          (await grab(video, region, CROP_MAX_EDGE));
+          (manual ? await photoCrop(l.track, video, region, cropMaxEdge, quality) : undefined) ??
+          (await grab(video, region, cropMaxEdge, quality));
         const location = await current().catch(() => undefined);
+        // Shooting the deciding angle: this frame is added to the earlier one(s).
+        const join = l.join;
+        const crops: LiveCrop[] = join
+          ? [...join.crops, { blob: crop, feature: join.view.feature }]
+          : [{ blob: crop, feature: 'auto' }];
         const result = await identify(
           {
             observationId: newId(),
-            category: f.hint?.category ?? 'auto',
-            images: [{ blob: crop, feature: 'auto' }],
+            category: join?.category ?? f.hint?.category ?? 'auto',
+            images: crops,
             location,
             capturedAt: new Date(),
+            timeSource: 'device',
+            tilt: currentTilt(),
           },
           {
             onStage: (event) => {
@@ -371,15 +497,23 @@ export function LiveScreen() {
         );
         if (l.done) return;
         const top = result.candidates[0];
-        const latest: Found = { result, frame, crop };
-        if (result.person) {
+        const latest: Found = join
+          ? { result, frame: join.frame, crop, crops, previous: join.previous }
+          : { result, frame, crop };
+        if (join && top && result.confidenceBand !== 'none' && !result.person) {
+          // Several photos of one subject: show it straight away, no second frame needed.
+          l.join = undefined;
+          setDeciding(undefined);
+          setKind(getCategory(result.category).label);
+          show(latest);
+        } else if (result.person) {
           setStatus('person');
           setKind('Person');
         } else if (!top || result.confidenceBand === 'none') {
           l.vote = undefined;
           setGuess(undefined);
           setTip('unsure');
-          setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'aim');
+          setStatus(l.attempts >= l.policy.maxAttempts ? 'exhausted' : 'aim');
         } else {
           setKind(getCategory(result.category).label);
           if (!l.best || top.finalConfidence > l.best.result.candidates[0].finalConfidence) {
@@ -401,7 +535,7 @@ export function LiveScreen() {
             l.vote = { name, count, best };
             setGuess(displayName(top));
             if (result.confidenceBand === 'low') setTip('unsure');
-            setStatus(l.attempts >= MAX_ATTEMPTS ? 'exhausted' : 'confirming');
+            setStatus(l.attempts >= l.policy.maxAttempts ? 'exhausted' : 'confirming');
           }
         }
       } catch (e) {
@@ -410,7 +544,7 @@ export function LiveScreen() {
       } finally {
         l.busy = false;
         l.tapped = undefined;
-        l.nextAttemptAt = performance.now() + (l.vote ? CONFIRM_COOLDOWN_MS : COOLDOWN_MS);
+        l.nextAttemptAt = performance.now() + (l.vote ? CONFIRM_COOLDOWN_MS : l.policy.cooldownMs);
         l.stillSince = 0;
       }
     },
@@ -423,7 +557,7 @@ export function LiveScreen() {
       const video = videoRef.current;
       const l = loop.current;
       if (!video || !video.videoWidth || l.busy || l.paused || l.done) return;
-      if (l.attempts >= MAX_ATTEMPTS) return;
+      if (l.attempts >= l.policy.maxAttempts) return;
       const p = toVideo(video, e.clientX, e.clientY);
       const vw = video.videoWidth;
       const vh = video.videoHeight;
@@ -456,6 +590,7 @@ export function LiveScreen() {
     (async () => {
       try {
         // Ask for sharp frames: identification needs detail, not just a preview.
+        startTiltTracking();
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
@@ -513,7 +648,8 @@ export function LiveScreen() {
     probe.width = 32;
     probe.height = 24;
     const ctx = probe.getContext('2d', { willReadFrequently: true })!;
-    const t = setInterval(() => {
+    /** One pass of the loop; false when there was nothing to do (hidden, paused…). */
+    const tick = (): boolean => {
       const video = videoRef.current;
       const l = loop.current;
       if (
@@ -523,7 +659,7 @@ export function LiveScreen() {
         l.paused ||
         document.visibilityState !== 'visible'
       )
-        return;
+        return false;
       const now = performance.now();
       const vw = video.videoWidth;
       const vh = video.videoHeight;
@@ -600,9 +736,9 @@ export function LiveScreen() {
       if (l.focusIsPerson && !l.busy) {
         setStatus('person');
         setKind('Person');
-        return;
+        return true;
       }
-      if (l.busy || l.attempts >= MAX_ATTEMPTS || now < l.nextAttemptAt) return;
+      if (l.busy || l.attempts >= l.policy.maxAttempts || now < l.nextAttemptAt) return true;
       const still = l.stillSince && now - l.stillSince;
       setStatus((s) =>
         s === 'error' || s === 'exhausted' || s === 'confirming'
@@ -614,9 +750,23 @@ export function LiveScreen() {
               : s,
       );
       if (still && still >= STILL_FOR_MS) void analyse();
-    }, TICK_MS);
-    return () => clearInterval(t);
-  }, [analyse]);
+      return true;
+    };
+    // A timeout chain rather than an interval, so the policy can stretch the tick: the time
+    // each pass takes is measured, and a rising time (a warm, throttled phone) backs it off.
+    let t: ReturnType<typeof setTimeout>;
+    const run = () => {
+      const l = loop.current;
+      const started = performance.now();
+      if (tick()) {
+        l.workMs = smoothLatency(l.workMs, performance.now() - started);
+        updatePolicy();
+      }
+      t = setTimeout(run, loop.current.policy.tickMs);
+    };
+    t = setTimeout(run, loop.current.policy.tickMs);
+    return () => clearTimeout(t);
+  }, [analyse, updatePolicy]);
 
   const message: Partial<Record<Status, string>> = {
     starting: 'Starting camera',
@@ -692,22 +842,64 @@ export function LiveScreen() {
         >
           <Icon name="close" className="h-5 w-5" />
         </button>
-        <span
-          className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-semibold ${GLASS}`}
-        >
-          <span className="live-dot h-2 w-2 rounded-full bg-[#ff5a3c]" />
-          Live
-        </span>
+        <div className="relative flex flex-col items-center">
+          <span
+            className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-semibold ${GLASS}`}
+          >
+            <span className="live-dot h-2 w-2 rounded-full bg-[#ff5a3c]" />
+            Live
+          </span>
+          {light && (
+            <span
+              className="readout absolute top-full mt-1.5 flex items-center gap-1.5 whitespace-nowrap text-[0.62rem] text-white/70 [text-shadow:0_1px_4px_rgba(0,0,0,0.7)]"
+              data-testid="live-light"
+              title="Scanning fewer frames to save battery, heat or data"
+            >
+              <Icon name="leaf" className="h-3 w-3" />
+              {light}
+            </span>
+          )}
+        </div>
         <span className="w-11" aria-hidden />
       </div>
 
       {/* Bottom: status pill and tips, or the match card */}
       <div className="safe-bottom absolute inset-x-0 bottom-0 px-4">
         {found ? (
-          <FoundCard found={found} onClear={clear} onDetails={() => openDetails(found)} />
+          <FoundCard
+            found={found}
+            onClear={clear}
+            onDetails={() => openDetails(found)}
+            onDecide={
+              // With the session's frames used up, clear() shows the scan limit instead.
+              (found.crops?.length ?? 1) < UPLOAD.maxImages
+                ? (view) => decide(found, view)
+                : undefined
+            }
+          />
         ) : (
           <div className="flex flex-col items-center gap-3 pb-2">
-            {showTip && (
+            {deciding && status !== 'error' && status !== 'exhausted' && (
+              <div
+                className={`fade-up flex max-w-sm items-center gap-3 rounded-2xl px-4 py-2.5 ${GLASS}`}
+                data-testid="live-deciding-hint"
+              >
+                <p className="text-[0.95rem] font-semibold text-white">
+                  {deciding.prompt}
+                  <span className="block text-xs font-normal text-white/70">
+                    The next frame is added to this identification
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  onClick={cancelDecide}
+                  className="min-h-11 shrink-0 rounded-xl px-2 text-sm font-semibold text-white/80"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {showTip && !deciding && (
               <p
                 className="fade-up max-w-xs text-center text-sm font-medium text-white [text-shadow:0_1px_6px_rgba(0,0,0,0.7)]"
                 data-testid="live-tip"

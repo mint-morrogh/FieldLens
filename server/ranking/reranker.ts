@@ -1,12 +1,28 @@
 import { RANKING } from '../../shared/config.js';
-import type { OccurrenceEvidence, OrganismCandidate } from '../../shared/types.js';
+import type {
+  ContextNudges,
+  DayPhase,
+  OccurrenceEvidence,
+  OrganismCandidate,
+  TiltBucket,
+} from '../../shared/types.js';
 import type { ProviderCandidate } from '../providers/types.js';
+import { elevationFactor, tiltFit, tiltTieBreak, timeOfDayFactor } from './context.js';
+
+export type RankingContext = {
+  /** Day, night or twilight at the capture place and time. */
+  phase?: DayPhase;
+  /** The capture hour is approximate (library photo), so time of day counts for less. */
+  approximateTime?: boolean;
+  tilt?: TiltBucket;
+};
 
 export type RerankInput = {
   candidates: (ProviderCandidate & { occurrence?: OccurrenceEvidence })[];
   /** Whether location was available AND occurrence evidence could be looked up. */
   locationUsed: boolean;
   capturedAt: Date;
+  context?: RankingContext;
 };
 
 export type RerankedCandidate = OrganismCandidate;
@@ -63,6 +79,32 @@ export function seasonalSupport(
 }
 
 /**
+ * Seasonal support from local month distributions only (not eBird's recent reports):
+ * flowering records for photos of flowers when there are enough, otherwise all records.
+ */
+export function monthSeasonSupport(
+  occurrence: OccurrenceEvidence | undefined,
+  capturedAt: Date,
+  config: RankingConfig = RANKING,
+): { support: number; basis: 'flowering' | 'records' } | undefined {
+  const flowering = seasonalSupport(occurrence?.floweringMonthCounts, capturedAt, config);
+  if (flowering !== undefined) return { support: flowering, basis: 'flowering' };
+  const records = seasonalSupport(occurrence?.monthCounts, capturedAt, config);
+  return records !== undefined ? { support: records, basis: 'records' } : undefined;
+}
+
+/** Extra multiplier for out-of-season matches: 1 in season, down to 1 − maxPenalty at zero support. */
+export function outOfSeasonFactor(
+  support: number | undefined,
+  config: RankingConfig = RANKING,
+): number | undefined {
+  if (support === undefined) return undefined;
+  const { threshold, maxPenalty } = config.outOfSeason;
+  if (support >= threshold) return 1;
+  return 1 - maxPenalty * (1 - support / threshold);
+}
+
+/**
  * finalConfidence = visual × adjustment, where
  *   adjustment = (wV + wG·geo + wS·season) / (wV + wG + wS)
  * over the factors that are actually available.
@@ -102,6 +144,7 @@ export class DeterministicGeoReranker implements CandidateReranker {
   constructor(private readonly config: RankingConfig = RANKING) {}
 
   async rerank(input: RerankInput): Promise<RerankedCandidate[]> {
+    const ctx = input.context ?? {};
     const scored = input.candidates.map((candidate, originalIndex) => {
       const visual = clamp01(candidate.visualConfidence);
       const geo =
@@ -128,6 +171,23 @@ export class DeterministicGeoReranker implements CandidateReranker {
       const rangeFactor = range
         ? this.config.rangeFactors[candidate.category === 'plant' ? 'plant' : 'animal'][range]
         : 1;
+      // Soft context nudges, each capped and each absent when there's no data for it.
+      const nudges: ContextNudges = {};
+      const seasonFactor =
+        geo !== undefined
+          ? outOfSeasonFactor(
+              monthSeasonSupport(candidate.occurrence, input.capturedAt, this.config)?.support,
+              this.config,
+            )
+          : undefined;
+      if (seasonFactor !== undefined && seasonFactor < 1) nudges.season = seasonFactor;
+      const timeFactor = timeOfDayFactor(candidate, ctx.phase, ctx.approximateTime);
+      if (timeFactor !== undefined && timeFactor < 1) nudges.timeOfDay = timeFactor;
+      const elevation = elevationFactor(
+        candidate.category,
+        geo !== undefined ? candidate.occurrence?.elevation : undefined,
+      );
+      if (elevation !== undefined && elevation < 1) nudges.elevation = elevation;
       const finalConfidence =
         computeFinalConfidence(
           visual,
@@ -135,16 +195,38 @@ export class DeterministicGeoReranker implements CandidateReranker {
           season,
           this.config,
           recent !== undefined ? this.config.weightsWithRecentSightings : undefined,
-        ) * rangeFactor;
+        ) *
+        rangeFactor *
+        (nudges.season ?? 1) *
+        (nudges.timeOfDay ?? 1) *
+        (nudges.elevation ?? 1);
       const result: RerankedCandidate = {
         ...candidate,
         visualConfidence: visual,
         geographicSupport: geo,
         seasonalSupport: season,
         finalConfidence,
+        ...(Object.keys(nudges).length > 0 && { nudges }),
       };
       return { result, originalIndex };
     });
+    // Camera tilt: a tie-breaker between close candidates only, never more.
+    if (ctx.tilt && ctx.tilt !== 'level') {
+      const fits = scored.map((s) => tiltFit(s.result, ctx.tilt));
+      const factors = tiltTieBreak(
+        scored.map((s) => s.result.finalConfidence),
+        fits,
+      );
+      factors.forEach((f, i) => {
+        if (f === undefined) return;
+        const r = scored[i].result;
+        scored[i].result = {
+          ...r,
+          finalConfidence: r.finalConfidence * f,
+          nudges: { ...r.nudges, tilt: f },
+        };
+      });
+    }
     // Stable sort: ties keep the provider's order.
     scored.sort(
       (a, b) =>

@@ -1,19 +1,36 @@
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Icon } from '../components/Icon';
+import { InstallPrompt } from '../components/InstallPrompt';
+import { RankUpMoment } from '../components/RankUpMoment';
 import { UpdatePrompt } from '../components/UpdatePrompt';
 import { BRAND } from '../config/brand';
 import { HistoryScreen, ObservationScreen } from '../features/history/HistoryScreen';
 import { HomeScreen, LocationReadout } from '../features/identification/HomeScreen';
 import { IdentifyScreen } from '../features/identification/IdentifyScreen';
-import { ListenScreen } from '../features/listen/ListenScreen';
-import { LiveScreen } from '../features/live/LiveScreen';
 import { SessionProvider } from '../features/identification/SessionContext';
 import { LocationProvider } from '../features/location/LocationContext';
-import { PrivacyScreen } from '../features/privacy/PrivacyScreen';
-import { SettingsScreen } from '../features/settings/SettingsScreen';
+import { OfflineQueueRunner } from '../features/offline/OfflineQueue';
 import { useOnline } from '../lib/useOnline';
 import { HealthProvider } from './health';
 import { useRoute, type Route } from './router';
+
+// Screens off the main photo path load on demand (the service worker still precaches them
+// for offline use), which keeps the first download small.
+const LiveScreen = lazy(() =>
+  import('../features/live/LiveScreen').then((m) => ({ default: m.LiveScreen })),
+);
+const ListenScreen = lazy(() =>
+  import('../features/listen/ListenScreen').then((m) => ({ default: m.ListenScreen })),
+);
+const SpeciesPageScreen = lazy(() =>
+  import('../features/journal/SpeciesPage').then((m) => ({ default: m.SpeciesPageScreen })),
+);
+const PrivacyScreen = lazy(() =>
+  import('../features/privacy/PrivacyScreen').then((m) => ({ default: m.PrivacyScreen })),
+);
+const SettingsScreen = lazy(() =>
+  import('../features/settings/SettingsScreen').then((m) => ({ default: m.SettingsScreen })),
+);
 
 function NavLink({
   href,
@@ -47,6 +64,8 @@ function Screen({ route }: { route: Route }) {
       return <HistoryScreen />;
     case 'observation':
       return <ObservationScreen id={route.id} />;
+    case 'species':
+      return <SpeciesPageScreen speciesKey={route.key} />;
     case 'privacy':
       return <PrivacyScreen />;
     case 'settings':
@@ -96,7 +115,11 @@ export function App() {
               <div className="flex gap-1">
                 <NavLink
                   href="#/history"
-                  active={route.name === 'history' || route.name === 'observation'}
+                  active={
+                    route.name === 'history' ||
+                    route.name === 'observation' ||
+                    route.name === 'species'
+                  }
                 >
                   <Icon name="book" className="h-5 w-5" />
                   <span className="sr-only">Field Journal</span>
@@ -117,12 +140,16 @@ export function App() {
                 className="mb-2 flex items-center gap-2 rounded-2xl bg-toast px-4 py-2.5 text-white"
                 data-testid="offline-banner"
               >
-                <Icon name="offline" className="h-5 w-5" /> You’re offline. Identification needs a
-                connection.
+                <Icon name="offline" className="h-5 w-5" /> You’re offline. Photos can be saved and
+                identified when you’re back online.
               </div>
             )}
+            {/* Only on calm screens, never mid-identification or on the live camera. */}
+            {(route.name === 'home' || route.name === 'history') && <InstallPrompt />}
             <main id="main" tabIndex={-1} className="flex-1 pb-10 outline-none">
-              <Screen route={route} />
+              <Suspense fallback={<div className="skeleton mt-4 h-64" aria-label="Loading" />}>
+                <Screen route={route} />
+              </Suspense>
             </main>
             <footer className="safe-bottom border-t border-line pt-4 text-center text-sm text-ink-muted">
               {BRAND.name} is an identification aid.{' '}
@@ -132,6 +159,10 @@ export function App() {
             </footer>
           </div>
           <UpdatePrompt />
+          {/* Checks only on home and history; never mid-identification or on live. */}
+          <RankUpMoment />
+          {/* Identifies photos saved without signal once back online. */}
+          <OfflineQueueRunner />
         </SessionProvider>
       </LocationProvider>
     </HealthProvider>

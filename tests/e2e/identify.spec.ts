@@ -150,7 +150,13 @@ test.describe('identification flow (mock API)', () => {
     await expect(page.getByTestId('rank-card')).toContainText('Observer');
     await expect(page.getByTestId('rank-card')).toContainText('6 pts');
     await expect(page.getByTestId('journal-filter')).toContainText('Plants');
+    // A species card opens its field-guide page; a sighting there opens the saved result.
     await page.getByTestId('species-card').first().getByRole('link').click();
+    await expect(page.getByTestId('species-page')).toContainText('Acer rubrum');
+    await page
+      .getByRole('link', { name: /^Sighting on / })
+      .first()
+      .click();
     await expect(page.getByTestId('result-headline')).toContainText('Acer rubrum');
     await page.getByRole('button', { name: 'Delete observation' }).click();
     await expect(page.getByText('Your journal is empty.', { exact: false })).toBeVisible();
@@ -422,6 +428,8 @@ test.describe('with location permission', () => {
   });
 
   test('uses approximate location and shows the separate iNaturalist card', async ({ page }) => {
+    // Distances follow the device locale (imperial on en-US); this test checks the metric copy.
+    await page.addInitScript(() => localStorage.setItem('fieldlens.settings.units', 'metric'));
     await page.goto('/?mock=high');
     await expect(page.getByTestId('viewfinder-readout')).toContainText('°N');
     await choosePhoto(page);

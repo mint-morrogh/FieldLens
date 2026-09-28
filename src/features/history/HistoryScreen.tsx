@@ -5,17 +5,34 @@ import { CategoryIcon } from '../../components/CategoryIcon';
 import { Icon } from '../../components/Icon';
 import { Button, Card, Notice } from '../../components/ui';
 import { displayName, formatDateTime } from '../../lib/format';
+import { useSetting } from '../../lib/settings';
+import { useAreaSize } from '../../lib/units';
+import { ExploredMilestones } from '../journal/ExploredMilestones';
+import { HomePatchCard } from '../journal/HomePatchCard';
+import { FamiliesCard, SeasonsCard, StampsCard } from '../journal/JournalCards';
+import { WeeklyGoalsCard } from '../journal/WeeklyGoalsCard';
+import { YearInReviewCard } from '../journal/YearInReviewCard';
+import { withNearbyNotes } from '../journal/nearby';
+import { useNearbyFamilyCounts } from '../journal/useNearby';
+import { RankEmblem } from '../journal/RankEmblem';
+import { rankTheme } from '../journal/rankTheme';
 import {
   JOURNAL_GROUPS,
+  POINTS_PER_EXTRA_PART,
   POINTS_PER_GROUP,
+  POINTS_PER_SHARP_EYE,
   POINTS_PER_SPECIES,
+  familyTrees,
   journalPins,
+  journalStamps,
   rankFor,
+  seasonalWheel,
   speciesEntries,
   type JournalGroup,
   type RankInfo,
   type SpeciesEntry,
 } from '../journal/journal';
+import { renderSpecimenCard, shareOrDownload, specimenFileName } from '../journal/specimenCard';
 import { ResultView } from '../results/ResultView';
 import {
   clearObservations,
@@ -25,7 +42,7 @@ import {
   type ObservationRecord,
 } from './historyStore';
 
-function useObjectUrl(blob: Blob | undefined): string | undefined {
+export function useObjectUrl(blob: Blob | undefined): string | undefined {
   const url = useMemo(() => (blob ? URL.createObjectURL(blob) : undefined), [blob]);
   useEffect(
     () => () => {
@@ -87,7 +104,7 @@ function ObservationRow({
   );
 }
 
-function useObservations(limit?: number) {
+export function useObservations(limit?: number) {
   const [records, setRecords] = useState<ObservationRecord[]>();
   const [failed, setFailed] = useState(false);
   const reload = useCallback(() => {
@@ -264,12 +281,25 @@ const JournalGlobe = lazy(() => import('../results/Globe'));
 
 /** Rank, points and progress to the next rank. */
 export function RankCard({ rank, finds }: { rank: RankInfo; finds: number }) {
+  const theme = rankTheme(rank.name);
   return (
-    <Card as="section" aria-labelledby="rank-title" data-testid="rank-card">
-      <p className="readout text-[0.7rem] font-semibold text-ink-muted">Naturalist rank</p>
-      <h2 id="rank-title" className="mt-1 font-serif text-2xl font-bold text-moss-dark">
-        {rank.name}
-      </h2>
+    <Card
+      as="section"
+      aria-labelledby="rank-title"
+      data-testid="rank-card"
+      className="rank-cover"
+      data-cover={theme.cover}
+      style={theme.style}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="readout text-[0.7rem] font-semibold text-ink-muted">Naturalist rank</p>
+          <h2 id="rank-title" className={`mt-1 font-serif text-2xl font-bold ${theme.text}`}>
+            {rank.name}
+          </h2>
+        </div>
+        <RankEmblem rank={rank.name} className="h-16 w-16 shrink-0" />
+      </div>
       <div
         className="mt-3 h-2 overflow-hidden rounded-full bg-paper-deep"
         role="progressbar"
@@ -279,7 +309,7 @@ export function RankCard({ rank, finds }: { rank: RankInfo; finds: number }) {
         aria-valuenow={Math.round(rank.progress * 100)}
       >
         <div
-          className="h-full rounded-full bg-moss transition-[width] duration-700"
+          className={`h-full rounded-full ${theme.fill} transition-[width] duration-700`}
           style={{ width: `${Math.max(3, rank.progress * 100)}%` }}
         />
       </div>
@@ -295,14 +325,16 @@ export function RankCard({ rank, finds }: { rank: RankInfo; finds: number }) {
             ['Finds', finds],
           ] as const
         ).map(([label, value]) => (
-          <div key={label} className="rounded-xl bg-paper-deep px-2 py-2">
+          <div key={label} className={`rounded-xl ${theme.soft} px-2 py-2`}>
             <dd className="text-xl font-bold tabular-nums">{value}</dd>
             <dt className="text-xs text-ink-muted">{label}</dt>
           </div>
         ))}
       </dl>
       <p className="mt-3 text-xs text-ink-muted">
-        {POINTS_PER_SPECIES} point per confident species, {POINTS_PER_GROUP} for each new group.
+        {POINTS_PER_SPECIES} point per confident species, {POINTS_PER_GROUP} for each new group,{' '}
+        {POINTS_PER_EXTRA_PART} for each extra part photographed (flower, bark…),{' '}
+        {POINTS_PER_SHARP_EYE} for a sharp eye (an added photo that made it confident).
       </p>
     </Card>
   );
@@ -315,7 +347,7 @@ function SpeciesCard({ entry }: { entry: SpeciesEntry }) {
   return (
     <li data-testid="species-card" data-group={entry.group}>
       <a
-        href={routeHref({ name: 'observation', id: latest.id })}
+        href={routeHref({ name: 'species', key: entry.scientificName.toLowerCase() })}
         className="block overflow-hidden rounded-2xl border border-line bg-card"
       >
         <span className="relative block">
@@ -360,10 +392,19 @@ function SpeciesCard({ entry }: { entry: SpeciesEntry }) {
 /** The Field Journal: rank, a globe of where you've been, and your species by group. */
 export function HistoryScreen() {
   const { records, failed, reload } = useObservations();
+  const areaSize = useAreaSize();
   const [confirmClear, setConfirmClear] = useState(false);
   const [group, setGroup] = useState<JournalGroup | 'all'>('all');
   const entries = useMemo(() => speciesEntries(records ?? []), [records]);
   const pins = useMemo(() => journalPins(records ?? []), [records]);
+  const nameItFirst = useSetting('nameItFirst');
+  const stamps = useMemo(
+    () => journalStamps(records ?? [], { nameItFirst }),
+    [records, nameItFirst],
+  );
+  const wheels = useMemo(() => seasonalWheel(records ?? []), [records]);
+  const trees = useMemo(() => familyTrees(entries.filter((e) => e.confirmed)), [entries]);
+  const nearby = useNearbyFamilyCounts(trees, records);
   const rank = rankFor(entries);
   const shown = group === 'all' ? entries : entries.filter((e) => e.group === group);
   const counts = new Map<JournalGroup, number>();
@@ -391,6 +432,10 @@ export function HistoryScreen() {
           </Button>
         </Card>
       )}
+      {records && records.length > 0 && <WeeklyGoalsCard records={records} />}
+      {records && records.length > 0 && (
+        <StampsCard stamps={withNearbyNotes(stamps, trees, nearby)} />
+      )}
       {pins.length > 0 && (
         <Card as="section" aria-labelledby="explored-title" data-testid="journal-globe">
           <p className="readout text-[0.7rem] font-semibold text-ink-muted">Explored</p>
@@ -405,11 +450,13 @@ export function HistoryScreen() {
             <JournalGlobe pins={pins} title="where you’ve found things" />
           </Suspense>
           <p className="mt-2 text-center text-sm text-ink-muted">
-            {pins.length} {pins.length === 1 ? 'place' : 'places'} · each pin is an area about 10 km
-            across
+            {pins.length} {pins.length === 1 ? 'place' : 'places'} · each pin is an area about{' '}
+            {areaSize} across
           </p>
         </Card>
       )}
+      {records && pins.length > 0 && <ExploredMilestones records={records} />}
+      {records && <HomePatchCard records={records} />}
       {entries.length > 0 && (
         <section aria-labelledby="species-title">
           <div className="mb-3 flex items-center gap-3">
@@ -456,6 +503,9 @@ export function HistoryScreen() {
           </ul>
         </section>
       )}
+      {trees.length > 0 && <FamiliesCard trees={trees} nearby={nearby} />}
+      {wheels.length > 0 && <SeasonsCard wheels={wheels} />}
+      {records && <YearInReviewCard records={records} />}
       {records && records.length > 0 && (
         <details className="group rounded-[var(--radius-card)] border border-line bg-card px-4">
           <summary className="flex min-h-12 cursor-pointer items-center justify-between font-semibold">
@@ -509,6 +559,51 @@ export function HistoryScreen() {
   );
 }
 
+/** Makes a specimen card image of this find and opens the share sheet (or downloads it). */
+function ShareSpecimenButton({ record }: { record: ObservationRecord }) {
+  const [state, setState] = useState<'idle' | 'working' | 'downloaded' | 'failed'>('idle');
+  const top = record.top!;
+  const share = async () => {
+    setState('working');
+    try {
+      const rank = rankFor(speciesEntries(await listObservations()));
+      const name = displayName(top);
+      const blob = await renderSpecimenCard({
+        photo: record.photo ?? record.thumbnail,
+        name,
+        scientificName: top.scientificName,
+        rankLine: `${rank.name} · ${rank.species} species`,
+        date: record.createdAt,
+      });
+      const outcome = await shareOrDownload(blob, specimenFileName(name), name);
+      setState(outcome === 'downloaded' ? 'downloaded' : 'idle');
+    } catch {
+      setState('failed');
+    }
+  };
+  return (
+    <div>
+      <Button
+        variant="secondary"
+        className="w-full"
+        onClick={() => void share()}
+        disabled={state === 'working'}
+        data-testid="share-specimen"
+      >
+        <Icon name="share" className="h-5 w-5" />
+        {state === 'working' ? 'Making card…' : 'Share specimen card'}
+      </Button>
+      <p className="mt-1.5 text-center text-xs text-ink-muted" role="status">
+        {state === 'downloaded'
+          ? 'Card saved to your downloads.'
+          : state === 'failed'
+            ? 'Couldn’t make the card in this browser.'
+            : 'Photo, name, rank and date. No location.'}
+      </p>
+    </div>
+  );
+}
+
 export function ObservationScreen({ id }: { id: string }) {
   const [record, setRecord] = useState<ObservationRecord | null>();
   useEffect(() => {
@@ -538,7 +633,10 @@ export function ObservationScreen({ id }: { id: string }) {
         photoUrl={photo}
         thumbnailUrl={thumb}
         userPhotos={photo ? [photo] : undefined}
+        guess={record.guess}
+        sharpEye={record.sharpEye}
       />
+      {record.top && <ShareSpecimenButton record={record} />}
       <Button
         variant="danger"
         className="w-full"

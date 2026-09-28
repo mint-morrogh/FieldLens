@@ -1,5 +1,6 @@
 import { CLIENT_IMAGE } from '../../shared/config';
 import { fitWithin, toPixelRect, type Box } from '../features/crop/cropMath';
+import { uploadEncoding } from './settings';
 
 export async function loadImage(blob: Blob): Promise<HTMLImageElement> {
   const url = URL.createObjectURL(blob);
@@ -33,9 +34,11 @@ export async function cropAndEncode(
   box: Box,
   options: { maxEdge?: number; quality?: number } = {},
 ): Promise<{ blob: Blob; width: number; height: number }> {
+  // Without explicit options this is the upload copy: smaller with data saver on.
+  const upload = uploadEncoding();
   const img = await loadImage(source);
   const { sx, sy, sw, sh } = toPixelRect(box, img.naturalWidth, img.naturalHeight);
-  const { width, height } = fitWithin(sw, sh, options.maxEdge ?? CLIENT_IMAGE.maxEdge);
+  const { width, height } = fitWithin(sw, sh, options.maxEdge ?? upload.maxEdge);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -43,7 +46,7 @@ export async function cropAndEncode(
   if (!ctx) throw new Error('canvas_unavailable');
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
-  const blob = await canvasToBlob(canvas, 'image/jpeg', options.quality ?? CLIENT_IMAGE.quality);
+  const blob = await canvasToBlob(canvas, 'image/jpeg', options.quality ?? upload.quality);
   return { blob, width, height };
 }
 

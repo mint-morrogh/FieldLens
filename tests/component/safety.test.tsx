@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { SafetySection } from '../../src/features/results/SafetySection';
 import type { SafetyInfo } from '../../shared/types';
@@ -84,5 +84,65 @@ describe('Wildlife safety', () => {
     expect(screen.getByText(/most often found with rabies/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /CDC — About Rabies/ })).toBeInTheDocument();
     expect(screen.queryByText(/edible/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a small, credited reference photo next to each look-alike warning', () => {
+    const lookalikes: SafetyInfo = {
+      level: 'danger',
+      statements: [
+        {
+          kind: 'lookalike',
+          severity: 'deadly',
+          subject: 'poison hemlock',
+          text: 'All parts of poison hemlock are highly poisonous to people and animals.',
+          source: 'Wikipedia (summarised by FieldLens)',
+          sourceUrl: 'https://en.wikipedia.org/wiki/Conium_maculatum',
+          photo: {
+            url: 'https://static.inaturalist.org/photos/1/small.jpg',
+            thumbnailUrl: 'https://static.inaturalist.org/photos/1/square.jpg',
+            author: '(c) A. Botanist, some rights reserved (CC BY)',
+            license: 'CC-BY',
+            source: 'iNaturalist',
+            sourceUrl: 'https://www.inaturalist.org/taxa/49640',
+          },
+        },
+        {
+          kind: 'lookalike',
+          severity: 'deadly',
+          subject: 'water hemlock',
+          text: 'Water hemlocks are highly poisonous; eating even a small amount can be fatal.',
+          source: 'Wikipedia (summarised by FieldLens)',
+        },
+      ],
+    };
+    render(<SafetySection safety={lookalikes} band="high" category="plant" />);
+    const [hemlock, water] = screen.getAllByRole('listitem');
+    // Warning text comes first; the photo is secondary.
+    expect(hemlock.textContent!.indexOf('highly poisonous')).toBeLessThan(
+      hemlock.textContent!.indexOf('Photo of poison hemlock'),
+    );
+    const img = within(hemlock).getByRole('img', { name: 'Reference photo of poison hemlock' });
+    expect(img).toHaveAttribute('src', 'https://static.inaturalist.org/photos/1/small.jpg');
+    expect(within(hemlock).getByTestId('lookalike-credit')).toHaveTextContent(
+      'Photo of poison hemlock: © A. Botanist, some rights reserved (CC BY) · CC-BY · iNaturalist',
+    );
+    expect(within(hemlock).getByRole('link', { name: /source/ })).toHaveAttribute(
+      'href',
+      'https://www.inaturalist.org/taxa/49640',
+    );
+    // No photo: the warning is shown as before.
+    expect(within(water).queryByRole('img')).not.toBeInTheDocument();
+    expect(water).toHaveTextContent('Water hemlocks are highly poisonous');
+
+    // Tap to enlarge.
+    fireEvent.click(screen.getByTestId('lookalike-photo'));
+    expect(screen.getByTestId('lightbox')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close photos' }));
+
+    // A photo that fails to load disappears with its credit; the warning stays.
+    fireEvent.error(img);
+    expect(screen.queryByRole('img', { name: /Reference photo/ })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lookalike-credit')).not.toBeInTheDocument();
+    expect(screen.getByText(/All parts of poison hemlock/)).toBeInTheDocument();
   });
 });

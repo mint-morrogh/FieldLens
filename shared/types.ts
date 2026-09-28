@@ -80,6 +80,36 @@ export type OccurrenceEvidence = {
   recentlyReported?: boolean;
   /** Relative to the species' iNaturalist range map; absent when it has no map. */
   range?: RangeStatus;
+  /** Records within the widest radius that carry an elevation, and how many sit near the site's. */
+  elevation?: ElevationEvidence;
+};
+
+/** Ground elevation of the ~11 km cell around the location (Open-Meteo, Copernicus DEM). */
+export type ElevationSample = { centerM: number; minM: number; maxM: number };
+
+export type ElevationEvidence = {
+  site: ElevationSample;
+  /** The elevation band counted as "at this elevation", in metres. */
+  bandM: [number, number];
+  recordsWithElevation: number;
+  recordsInBand: number;
+};
+
+/** Which way the camera pointed when the photo was taken. */
+export type TiltBucket = 'up' | 'level' | 'down';
+
+/** Daylight at the capture place and time; twilight is treated as neutral. */
+export type DayPhase = 'day' | 'twilight' | 'night';
+
+/**
+ * Soft context adjustments applied to a candidate's score, as multipliers (≤ 1). Absent when a
+ * signal was not used for that candidate.
+ */
+export type ContextNudges = {
+  timeOfDay?: number;
+  season?: number;
+  elevation?: number;
+  tilt?: number;
 };
 
 export type ExternalLink = { label: string; url: string };
@@ -106,6 +136,8 @@ export type OrganismCandidate = {
   geographicSupport?: number;
   seasonalSupport?: number;
   finalConfidence: number;
+  /** Time of day, season, elevation and camera-tilt nudges that changed this score. */
+  nudges?: ContextNudges;
 
   occurrence?: OccurrenceEvidence;
 
@@ -236,6 +268,13 @@ export type IdentifyResponse = {
   experimental?: boolean;
   /** Whether the photo actually looks like the chosen category, with a better guess if not. */
   categoryCheck?: CategoryCheck;
+  /**
+   * The category or group the person chose (e.g. 'tree', 'auto', 'bug', 'plant'),
+   * whatever it was narrowed to. Set on every pipeline response.
+   */
+  requestedTarget?: IdentifyTarget;
+  /** The part photographed in each submitted image (e.g. 'flower', 'bark', 'gills'); 'auto' when not chosen. */
+  features?: FeatureId[];
   /** Present when a group or "Not sure" was chosen: what was asked and what was found. */
   categoryDetection?: {
     requested: IdentifyTarget;
@@ -248,6 +287,12 @@ export type IdentifyResponse = {
    * (only when the result is uncertain and sourced traits differ between them).
    */
   questions?: FollowUpQuestion[];
+  /**
+   * The one view that would settle it: set when the close candidates differ on a feature
+   * a specific photo would show (gills vs pores, a volva at the stem base, bill shape) and
+   * that feature hasn't been photographed yet.
+   */
+  decidingView?: DecidingView;
   /** The photo shows a person (people aren't in FieldLens's field guide). */
   person?: boolean;
   /** Set when the photo shows tracks or droppings rather than the animal itself. */
@@ -255,6 +300,17 @@ export type IdentifyResponse = {
   /** Identified from a recording of its call (Calls) rather than photos. */
   call?: boolean;
   mock?: boolean;
+};
+
+export type DecidingView = {
+  /** The part to photograph next, one of the category's features (e.g. 'underside', 'base'). */
+  feature: FeatureId;
+  /** Short instruction, e.g. "Show the underside of the cap". */
+  prompt: string;
+  /** Why this view would help, naming the candidates it separates. */
+  reason: string;
+  source?: string;
+  sourceUrl?: string;
 };
 
 export type FollowUpQuestion = {
@@ -281,6 +337,8 @@ export type SafetyStatement = {
   severity?: 'deadly' | 'toxic' | 'skin' | 'caution';
   /** True when `text` is quoted verbatim from the source. */
   quote?: boolean;
+  /** Look-alikes only: an openly licensed reference photo of the look-alike, when one was found. */
+  photo?: LicensedImage;
   source: string;
   sourceUrl?: string;
   license?: string;

@@ -33,6 +33,36 @@ export const RANKING = {
     animal: { in: 1, near: 0.92, out: 0.75 },
     plant: { in: 1, near: 0.97, out: 0.9 },
   },
+  /**
+   * Extra, capped penalty for out-of-season matches (a plant in flower in January, a summer
+   * migrant in winter), from local GBIF records per month (flowering records for photos of
+   * flowers). Below `threshold` seasonal support the score drops linearly, by at most
+   * `maxPenalty` (relative) at zero support. On top of the season weight above.
+   */
+  outOfSeason: { threshold: 0.35, maxPenalty: 0.1 },
+} as const;
+
+/** Soft signals from the phone; see server/ranking/context.ts. All caps are relative. */
+export const CONTEXT = {
+  /** Time of day: a diurnal species at night loses up to 5% (a nocturnal one by day, half). */
+  timeOfDayCap: 0.05,
+  /** Sun altitude (degrees) above which it's day and below which it's night; between is twilight. */
+  sunMargins: { day: 10, night: -12 },
+  /** Wider margins when the hour is approximate (library photos: time zone unknown). */
+  sunMarginsApprox: { day: 18, night: -18 },
+  /** Without a location: local hours [from, to) counted as day and as night. */
+  hourBands: { day: [9, 17], night: [22, 4] },
+  /** Elevation: at most 8% off when almost no nearby records are at the site's elevation. */
+  elevationCap: 0.08,
+  /** Nearby GBIF records that carry an elevation needed before elevation is used. */
+  elevationMinRecords: 20,
+  /** Share of those records in the site's elevation band that counts as "normal here". */
+  elevationTypicalShare: 0.05,
+  /**
+   * Camera tilt only breaks ties: between candidates within 3% (relative) of each other, the
+   * one that fits the tilt worse is nudged down by 3%.
+   */
+  tiltTieMargin: 0.03,
 } as const;
 
 export const CONFIDENCE_BANDS = {

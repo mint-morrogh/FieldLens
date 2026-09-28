@@ -12,11 +12,16 @@ import {
   formatMass,
   mammalTraitFacts,
 } from '../../server/facts/mammalFacts';
+import { birdTraitFacts, formatStrata } from '../../server/facts/birdFacts';
 import { runIdentification, signFor } from '../../server/identify/pipeline';
 import { BioclipIdentificationProvider } from '../../server/providers/bioclip/bioclipProvider';
 import { createMockProviders } from '../../server/providers/mock/mockProviders';
 import type { IdentificationInput } from '../../server/providers/types';
-import { buildWildlifeSafety, findWildlifeNotes } from '../../server/safety/wildlife';
+import {
+  WILDLIFE_NOTES,
+  buildWildlifeSafety,
+  findWildlifeNotes,
+} from '../../server/safety/wildlife';
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
 const input = (
@@ -72,6 +77,44 @@ describe('mammal facts (EltonTraits)', () => {
   });
 });
 
+describe('bird facts (EltonTraits)', () => {
+  it('formats foraging strata', () => {
+    expect(formatStrata('G40,L20,M20,C20')).toBe(
+      'On the ground 40%, in low shrubs 20%, at mid-height in trees 20%, in the treetops 20%',
+    );
+    expect(formatStrata('A100')).toBe('In the air');
+    expect(formatStrata('X10')).toBeUndefined();
+  });
+
+  it('gives a blue jay weight, diet, activity and where it feeds', () => {
+    const facts = birdTraitFacts([undefined, 'Cyanocitta cristata']);
+    expect(Object.fromEntries(facts.map((f) => [f.label, f.value]))).toEqual({
+      'Average adult weight': 'about 88 g',
+      Diet: 'seeds & nuts 40%, insects & other invertebrates 20%, fruit 20%, mammals & birds 10%, reptiles & amphibians 10%',
+      Active: 'By day',
+      'Where it feeds':
+        'On the ground 40%, in low shrubs 20%, at mid-height in trees 20%, in the treetops 20%',
+    });
+    expect(facts.every((f) => f.source.includes('EltonTraits'))).toBe(true);
+    expect(birdTraitFacts(['Avis nonexistens'])).toEqual([]);
+  });
+
+  it('marks owls as active at night, as the journal expects', () => {
+    const active = birdTraitFacts(['Strix varia']).find((f) => f.label === 'Active');
+    expect(active?.value).toBe('At night');
+  });
+
+  it('adds bird facts and attribution to a bird identification', async () => {
+    const result = await runIdentification(input('bird'), {
+      providers: createMockProviders('high'),
+    });
+    expect(result.candidates[0].scientificName).toBe('Cyanocitta cristata');
+    expect(result.speciesInfo?.facts.find((f) => f.label === 'Active')?.value).toBe('By day');
+    expect(result.attribution.find((a) => a.provider === 'EltonTraits')?.text).toMatch(/^Bird/);
+    expect(identifyResponseSchema.safeParse(result).success).toBe(true);
+  });
+});
+
 describe('wildlife safety', () => {
   it('warns about rabies for raccoons, and roundworm only for droppings', () => {
     const photo = findWildlifeNotes(candidate({}));
@@ -90,7 +133,7 @@ describe('wildlife safety', () => {
           order: 'Chiroptera',
         }),
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(3);
     expect(
       findWildlifeNotes(
         candidate({ scientificName: 'Ursus americanus', genus: 'Ursus', family: 'Ursidae' }),
@@ -101,6 +144,80 @@ describe('wildlife safety', () => {
         candidate({ scientificName: 'Alces alces', genus: 'Alces', family: 'Cervidae' }),
       ).map((n) => n.taxon),
     ).toEqual(['alces', 'cervidae']);
+  });
+
+  it('covers wildlife beyond North America by species, genus and family', () => {
+    const notes = (over: Partial<OrganismCandidate>) => findWildlifeNotes(candidate(over));
+    expect(
+      notes({
+        scientificName: 'Sus scrofa',
+        genus: 'Sus',
+        family: 'Suidae',
+        order: 'Artiodactyla',
+      }),
+    ).toHaveLength(1);
+    // Genus from the scientific name when `genus` is missing.
+    expect(
+      notes({
+        category: 'reptile',
+        scientificName: 'Pseudonaja textilis',
+        genus: undefined,
+        family: 'Elapidae',
+        order: 'Squamata',
+      })[0].sourceUrl,
+    ).toContain('healthdirect.gov.au');
+    expect(
+      notes({
+        scientificName: 'Macropus giganteus',
+        genus: 'Macropus',
+        family: 'Macropodidae',
+        order: 'Diprotodontia',
+      })[0].commonName,
+    ).toBe('kangaroos & wallabies');
+    const hippo = notes({
+      scientificName: 'Hippopotamus amphibius',
+      genus: 'Hippopotamus',
+      family: 'Hippopotamidae',
+      order: 'Artiodactyla',
+    });
+    expect(hippo.map((n) => n.source)).toEqual([
+      'SANParks — Rules & regulations',
+      'National Geographic — Hippopotamus',
+    ]);
+    // Species entries don't leak to relatives in the same genus.
+    expect(
+      notes({ scientificName: 'Panthera onca', genus: 'Panthera', family: 'Felidae' }),
+    ).toEqual([]);
+  });
+
+  it('keeps every note sourced and free of reassurance', () => {
+    expect(WILDLIFE_NOTES.length).toBeGreaterThan(50);
+    for (const n of WILDLIFE_NOTES) {
+      expect(n.taxon).toBe(n.taxon.toLowerCase());
+      expect(n.taxon.split(' ')).toHaveLength(n.rank === 'species' ? 2 : 1);
+      expect(n.sourceUrl).toMatch(/^https:\/\//);
+      expect(n.note).not.toMatch(/\bsafe\b|harmless/i);
+      expect(n.sourceUrl).not.toContain('wikipedia.org');
+    }
+  });
+
+  it('covers kraits at genus level and the big four species', () => {
+    const notes = (over: Partial<OrganismCandidate>) => findWildlifeNotes(candidate(over));
+    const krait = notes({
+      scientificName: 'Bungarus fasciatus',
+      genus: 'Bungarus',
+      family: 'Elapidae',
+    });
+    expect(krait.map((n) => n.commonName)).toEqual(['kraits']);
+    const common = notes({
+      scientificName: 'Bungarus caeruleus',
+      genus: 'Bungarus',
+      family: 'Elapidae',
+    });
+    expect(common.map((n) => n.source)).toEqual([
+      expect.stringContaining('WHO South-East Asia'),
+      expect.stringContaining('WHO — Snakebite'),
+    ]);
   });
 
   it('includes other likely candidates only when unsure, and never calls anything safe', () => {

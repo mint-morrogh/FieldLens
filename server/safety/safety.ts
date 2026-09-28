@@ -186,7 +186,7 @@ function curatedStatement(entry: HighRiskEntry, subject?: string): SafetyStateme
     subject,
     basis: entry.taxon.includes(' ') ? 'species' : 'genus',
     severity: entry.severity,
-    source: CURATED_SOURCE,
+    source: entry.source ?? CURATED_SOURCE,
     sourceUrl: entry.sourceUrl,
   };
 }
@@ -217,6 +217,14 @@ export function edibilityStatements(values: string[], wikidataUrl?: string): Saf
   if (edible.length && !deadly.length)
     out.push({ ...base, kind: 'edible', text: `Edibility recorded as: ${edible.join(', ')}.` });
   return out;
+}
+
+/** Curated dangerous look-alikes of a candidate (excluding its own entry), in warning order. */
+export function dangerousLookalikes(
+  top: Pick<OrganismCandidate, 'scientificName' | 'genus'>,
+): HighRiskEntry[] {
+  const own = findHighRisk(top.scientificName, top.genus);
+  return findLookalikes(top.scientificName, top.genus).filter((look) => look !== own);
 }
 
 export type SafetyInput = {
@@ -264,8 +272,7 @@ export function buildSafety(input: SafetyInput): SafetyInfo | undefined {
   }
 
   // Dangerous look-alikes of the top candidate.
-  for (const look of findLookalikes(top.scientificName, top.genus)) {
-    if (look === topRisk) continue;
+  for (const look of dangerousLookalikes(top)) {
     statements.push({ ...curatedStatement(look, look.commonName), kind: 'lookalike' });
   }
 
