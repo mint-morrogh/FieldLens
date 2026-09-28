@@ -211,7 +211,7 @@ function Viewfinder({ onOpen }: { onOpen: () => void }) {
           <span className="absolute inset-0 rounded-full border border-[#9fd08a]/20" />
           <span className="shutter-arc absolute inset-0 rounded-full" />
           <span className="shutter-button relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full text-[#10180f] transition-transform duration-200 ease-out group-hover:scale-105 group-active:scale-90">
-            <Icon name="scan" className="h-8 w-8" />
+            <Icon name="live" className="h-9 w-9" />
           </span>
         </span>
         <span className="mt-4 text-xl font-bold tracking-tight">Live identify</span>
@@ -253,7 +253,7 @@ export function HomeScreen() {
         {/* Live identify first, then a single photo, then photos already on the phone. */}
         <Viewfinder onOpen={() => navigate({ name: 'live' })} />
         <Button size="lg" className="min-h-14 text-lg" onClick={camera.open}>
-          <Icon name="camera" className="h-6 w-6" /> Take a photo
+          <Icon name="photo" className="h-6 w-6" /> Take a photo
         </Button>
         <div className="grid grid-cols-2 gap-3">
           <Button

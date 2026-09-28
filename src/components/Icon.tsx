@@ -1,3 +1,12 @@
+import cameraIcon from '../assets/icons/camera.png';
+import liveIcon from '../assets/icons/live.png';
+
+/** Filled icons drawn from images, used as a mask so they take the text colour. */
+const IMAGES = {
+  photo: cameraIcon,
+  live: liveIcon,
+} as const;
+
 /** Small inline icon set (no icon-font or library dependency). */
 const PATHS = {
   camera:
@@ -28,7 +37,7 @@ const PATHS = {
     'M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 4.3-2.6M12 20h.01M19 12.9a10 10 0 0 0-2.4-1.7M2 8.8a15 15 0 0 1 4.4-2.7M22 8.8A15 15 0 0 0 10.7 5',
 } as const;
 
-export type IconName = keyof typeof PATHS;
+export type IconName = keyof typeof PATHS | keyof typeof IMAGES;
 
 export function Icon({
   name,
@@ -39,6 +48,27 @@ export function Icon({
   className?: string;
   label?: string;
 }) {
+  if (name in IMAGES) {
+    const url = `url(${IMAGES[name as keyof typeof IMAGES]})`;
+    return (
+      <span
+        className={`inline-block shrink-0 bg-current ${className}`}
+        style={{
+          maskImage: url,
+          WebkitMaskImage: url,
+          maskSize: 'contain',
+          WebkitMaskSize: 'contain',
+          maskRepeat: 'no-repeat',
+          WebkitMaskRepeat: 'no-repeat',
+          maskPosition: 'center',
+          WebkitMaskPosition: 'center',
+        }}
+        role={label ? 'img' : undefined}
+        aria-label={label}
+        aria-hidden={label ? undefined : true}
+      />
+    );
+  }
   return (
     <svg
       viewBox="0 0 24 24"
@@ -52,7 +82,7 @@ export function Icon({
       aria-label={label}
       aria-hidden={label ? undefined : true}
     >
-      <path d={PATHS[name]} />
+      <path d={PATHS[name as keyof typeof PATHS]} />
     </svg>
   );
 }

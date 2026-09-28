@@ -105,7 +105,7 @@ function ErrorState({ error }: { error: ClientError }) {
         )}
         {retake.input}
         <Button variant="secondary" onClick={retake.open}>
-          <Icon name="camera" className="h-5 w-5" /> Take a different photo
+          <Icon name="photo" className="h-5 w-5" /> Take a different photo
         </Button>
         <Button variant="ghost" onClick={() => navigate({ name: 'home' })}>
           Back to home
@@ -254,7 +254,7 @@ export function IdentifyScreen() {
         )}
         <div className="mt-6 flex flex-col gap-2">
           <Button size="lg" onClick={newCamera.open}>
-            <Icon name="camera" /> Identify something else
+            <Icon name="photo" className="h-5 w-5" /> Identify something else
           </Button>
           <Button variant="ghost" onClick={() => navigate({ name: 'history' })}>
             <Icon name="history" className="h-5 w-5" /> View history
