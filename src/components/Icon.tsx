@@ -1,10 +1,8 @@
 import cameraIcon from '../assets/icons/camera.png';
-import liveIcon from '../assets/icons/live.png';
 
 /** Filled icons drawn from images, used as a mask so they take the text colour. */
 const IMAGES = {
   photo: cameraIcon,
-  live: liveIcon,
 } as const;
 
 /** Small inline icon set (no icon-font or library dependency). */

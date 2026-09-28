@@ -210,8 +210,9 @@ function Viewfinder({ onOpen }: { onOpen: () => void }) {
           <span className="shutter-ripple absolute inset-3 rounded-full border border-[#9fd08a]/60" />
           <span className="absolute inset-0 rounded-full border border-[#9fd08a]/20" />
           <span className="shutter-arc absolute inset-0 rounded-full" />
-          <span className="shutter-button relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full text-[#10180f] transition-transform duration-200 ease-out group-hover:scale-105 group-active:scale-90">
-            <Icon name="live" className="h-9 w-9" />
+          {/* The button is the play icon itself: a green disc with the triangle cut out. */}
+          <span className="shutter-glow relative transition-transform duration-200 ease-out group-hover:scale-105 group-active:scale-90">
+            <span className="shutter-button shutter-play block h-[4.5rem] w-[4.5rem]" />
           </span>
         </span>
         <span className="mt-4 text-xl font-bold tracking-tight">Live identify</span>

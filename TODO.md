@@ -57,8 +57,8 @@ Extra signals that nudge ranking. Like the range maps, each is a capped adjustme
 - [ ] **Battery- and data-light live mode.** Lower the live detector's frame rate when the phone is low on battery (Battery Status API where available) or getting warm, and add a data-saver setting (smaller uploads, fewer live frames).
 - [ ] **Settings page, expanded.** The first version holds today's identification usage. Add the "Name it first" toggle, units (metric/imperial), data saver, clear data, and the default camera mode (photo or live).
 - [ ] **Install prompt.** A gentle "Add FieldLens to your home screen" nudge after the second use, so it opens full-screen like a native app (beforeinstallprompt on Android/Chrome; short instructions on iOS Safari).
-- [ ] **Live identify button: one green play circle.** The viewfinder shutter shows the black play icon inside the green shutter circle, a circle within a circle. Make the play icon itself the green button: a single green circle with the play triangle cut out, keeping the focus arc and ripple around it.
-- [ ] **Journal link: icon only.** In the top bar, show just the journal (book) icon instead of icon + "Journal", like the info and settings icons beside it. Keep an accessible label ("Field Journal") and the active state.
+- [x] **Live identify button: one green play circle.** The viewfinder shutter shows the black play icon inside the green shutter circle, a circle within a circle. Make the play icon itself the green button: a single green circle with the play triangle cut out, keeping the focus arc and ripple around it.
+- [x] **Journal link: icon only.** In the top bar, show just the journal (book) icon instead of icon + "Journal", like the info and settings icons beside it. Keep an accessible label ("Field Journal") and the active state.
 - [ ] **Seasonality, stronger and visible.** Out-of-season matches (a plant flowering in January, a summer migrant in winter) should count for more in ranking and show on the result. Applies to plants, trees, birds, insects and more. Build on the eBird/range work once it's committed.
 
 ## Gamification: collection depth
