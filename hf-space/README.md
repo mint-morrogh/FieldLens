@@ -50,5 +50,8 @@ Returns `{ "results": [{ "name", "commonName", "kingdom", "phylum", "class", "or
 model's belief that falls inside the `within` group — low values mean the photo probably doesn't
 show that kind of organism.
 
+Every response also includes `person` (0–1): how much a small general CLIP model
+(MobileCLIP-S1) believes the photo shows a person. BioCLIP itself doesn't recognise people.
+
 Scores are softmax probabilities over the candidate set; they are overconfident and are tempered
 by the FieldLens server before display.

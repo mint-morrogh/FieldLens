@@ -25,12 +25,11 @@ const safety: SafetyInfo = {
 };
 
 describe('SafetySection', () => {
-  it('always shows warnings with a danger banner and the expert footer', () => {
+  it('always shows warnings with a danger banner', () => {
     render(<SafetySection safety={safety} band="low" category="plant" />);
     expect(screen.getByTestId('safety')).toHaveAttribute('data-level', 'danger');
     expect(screen.getByRole('alert')).toHaveTextContent('Dangerous look-alikes');
     expect(screen.getByText('All parts are highly poisonous.')).toBeInTheDocument();
-    expect(screen.getByText(/Never eat a wild plant based on an app/)).toBeInTheDocument();
   });
   it('hides edible uses unless the identification is high confidence', () => {
     const { unmount } = render(<SafetySection safety={safety} band="medium" category="plant" />);
@@ -85,6 +84,5 @@ describe('Wildlife safety', () => {
     expect(screen.getByText(/most often found with rabies/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /CDC — About Rabies/ })).toBeInTheDocument();
     expect(screen.queryByText(/edible/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Never touch or feed wild animals/)).toBeInTheDocument();
   });
 });

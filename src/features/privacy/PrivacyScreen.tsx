@@ -91,7 +91,8 @@ export function PrivacyScreen() {
               BioCLIP 2
             </ExternalLink>{' '}
             (Imageomics, MIT) — identification of fungi, insects, spiders, birds, mammals, reptiles,
-            amphibians and fish, run on our own Hugging Face Space
+            amphibians and fish, run on our own Hugging Face Space, with Apple’s MobileCLIP-S1
+            checking whether a photo shows a person
           </li>
           <li>
             <ExternalLink href="https://www.gbif.org/">GBIF</ExternalLink> — taxonomy and occurrence
@@ -106,6 +107,11 @@ export function PrivacyScreen() {
               EltonTraits 1.0
             </ExternalLink>{' '}
             (Wilman et al. 2014, CC0) — mammal size, diet and activity
+          </li>
+          <li>
+            Home screen photos:{' '}
+            <ExternalLink href="https://www.inaturalist.org/">iNaturalist</ExternalLink> observers
+            (CC0)
           </li>
           <li>
             <ExternalLink href="https://www.inaturalist.org/">iNaturalist</ExternalLink> — community

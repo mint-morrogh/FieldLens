@@ -29,6 +29,19 @@ export const GROUP_MISMATCH_THRESHOLD = 0.5;
  */
 export const FUNGUS_CONFIDENCE_CAP = 0.9;
 const TIMEOUT_MS = 25_000;
+/**
+ * Portraits scored 0.24–0.91 on the Space's person check; 166 photos of plants, fungi,
+ * animals, tracks and droppings (some with a hand for scale) all stayed at or below 0.05.
+ */
+export const PERSON_THRESHOLD = 0.15;
+const isPerson = (r: BioclipResponse) => (r.person ?? 0) >= PERSON_THRESHOLD;
+const PERSON_RESULT = {
+  provider: SERVICE,
+  candidates: [],
+  attribution: [BIOCLIP_ATTRIBUTION],
+  experimental: true,
+  person: true,
+} satisfies IdentificationResult;
 
 export type BioclipResult = {
   name: string;
@@ -49,6 +62,8 @@ export type BioclipResponse = {
   restricted: boolean;
   candidateCount: number;
   groupProbability?: number | null;
+  /** 0–1 from a general CLIP model: does the photo show a person? (BioCLIP can't tell.) */
+  person?: number;
 };
 
 type BioclipPayload = {
@@ -231,6 +246,7 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
       within: scope,
       k: CANDIDATES.maxCandidates,
     });
+    if (isPerson(response)) return PERSON_RESULT;
     const likelihood = response.groupProbability ?? 1;
     let categoryCheck: CategoryCheck | undefined;
     if (likelihood < GROUP_MISMATCH_THRESHOLD) {
@@ -285,6 +301,7 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
       topScore: Math.round((response.results[0]?.score ?? 0) * 100) / 100,
       ms: Date.now() - started,
     });
+    if (isPerson(response)) return PERSON_RESULT;
     const candidates = toCandidates(response, 'mammal');
     return {
       provider: SERVICE,
@@ -303,6 +320,7 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
   async detectCategory(input: IdentificationInput): Promise<CategoryDetectionResult> {
     const images = input.images.map((img) => Buffer.from(img.data).toString('base64'));
     const response = await this.call({ images, k: 20 });
+    if (isPerson(response)) return { category: 'mammal', likelihood: 1, person: true };
     const votes = new Map<OrganismCategory, number>();
     for (const r of response.results) {
       const c = categoryForTaxon(r.kingdom, r.class, r.phylum);

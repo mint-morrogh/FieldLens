@@ -192,10 +192,13 @@ export function CropEditor({
   };
 
   const features = categoryDef.features.length ? [AUTO_FEATURE, ...categoryDef.features] : [];
-  // "Not sure" and "Animal" only offer the mammal signs, so ask about those directly.
-  const signsOnly =
-    categoryDef.features.length > 0 &&
-    categoryDef.features.every((f) => f.id === 'track' || f.id === 'scat');
+  // Keep the last set of parts on screen while the row collapses back to Auto.
+  const [lastWithParts, setLastWithParts] = useState<IdentifyTarget | undefined>(
+    features.length ? categoryDef.id : undefined,
+  );
+  if (features.length && lastWithParts !== categoryDef.id) setLastWithParts(categoryDef.id);
+  const shownDef = lastWithParts ? getTarget(lastWithParts) : categoryDef;
+  const shownFeatures = shownDef.features.length ? [AUTO_FEATURE, ...shownDef.features] : [];
   const [notice, setNotice] = useState<string>();
 
   return (
@@ -347,19 +350,30 @@ export function CropEditor({
             {notice}
           </p>
         )}
-        {features.length > 0 && (
-          <SheetRow
-            title={signsOnly ? 'Tracks or droppings?' : 'Which part?'}
-            hint={signsOnly ? 'For mammal signs' : 'Optional'}
-            testId="crop-feature"
-          >
-            {features.map((f) => (
-              <SheetChip key={f.id} selected={feature === f.id} onClick={() => setFeature(f.id)}>
-                {signsOnly && f.id === 'auto' ? 'Neither' : f.label}
-              </SheetChip>
-            ))}
-          </SheetRow>
-        )}
+        {/* "Which part?" slides open once a type is chosen; Auto has no parts to ask about. */}
+        <div
+          className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out motion-reduce:transition-none ${
+            features.length ? 'grid-rows-[1fr] opacity-100' : '-mt-4 grid-rows-[0fr] opacity-0'
+          }`}
+          aria-hidden={!features.length}
+          inert={!features.length}
+        >
+          <div className="min-h-0 overflow-hidden">
+            {shownFeatures.length > 0 && (
+              <SheetRow title="Which part?" hint="Optional" testId="crop-feature">
+                {shownFeatures.map((f) => (
+                  <SheetChip
+                    key={f.id}
+                    selected={feature === f.id}
+                    onClick={() => setFeature(f.id)}
+                  >
+                    {f.label}
+                  </SheetChip>
+                ))}
+              </SheetRow>
+            )}
+          </div>
+        </div>
         {locationQuestion && (
           <SheetRow
             title="Where was it taken?"

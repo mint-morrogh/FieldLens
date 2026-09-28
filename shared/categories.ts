@@ -60,6 +60,25 @@ export const SCAT_FEATURE: FeatureDefinition = {
     'A closer photo of the droppings with something for scale (a coin or stick, not your hand) would help.',
 };
 
+const BUG_HEAD_FEATURE: FeatureDefinition = {
+  id: 'face',
+  label: 'Head',
+  followUpLabel: 'Add a head photo',
+  advice: 'A close photo of the head, eyes and antennae would help.',
+};
+const WINGS_FEATURE: FeatureDefinition = {
+  id: 'wing',
+  label: 'Wings',
+  followUpLabel: 'Add a wings photo',
+  advice: 'A photo with the wings spread, showing their pattern, would help.',
+};
+const FINS_FEATURE: FeatureDefinition = {
+  id: 'fins',
+  label: 'Fins & tail',
+  followUpLabel: 'Add a fins photo',
+  advice: 'A photo showing the fins and tail spread out would help.',
+};
+
 const EDIBILITY_NOTICE =
   'Do not use this identification alone to decide whether an organism is safe to eat, touch, handle, or use medicinally.';
 const WILDLIFE_NOTICE =
@@ -282,10 +301,29 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
     generalAdvice: 'A side-on photo showing the fins would help.',
     features: [
       {
+        id: 'whole',
+        label: 'Whole fish',
+        followUpLabel: 'Add a whole-fish photo',
+        advice: 'A photo of the whole fish, nose to tail, would help.',
+      },
+      {
         id: 'lateral',
         label: 'Side',
         followUpLabel: 'Add a side-on photo',
         advice: 'A side-on photo showing all the fins would help.',
+      },
+      {
+        id: 'head',
+        label: 'Head',
+        followUpLabel: 'Add a head photo',
+        advice: 'A close photo of the head and mouth from the side would help.',
+      },
+      FINS_FEATURE,
+      {
+        id: 'pattern',
+        label: 'Markings',
+        followUpLabel: 'Add a markings photo',
+        advice: 'A close photo of the spots, stripes or scales would help.',
       },
     ],
   },
@@ -315,6 +353,8 @@ export const CATEGORIES: Record<OrganismCategory, CategoryDefinition> = {
         followUpLabel: 'Add a side photo',
         advice: 'A side view would help.',
       },
+      BUG_HEAD_FEATURE,
+      WINGS_FEATURE,
     ],
   },
   arachnid: {
@@ -423,7 +463,28 @@ export const GROUPS: Record<CategoryGroupId, CategoryDefinition> = {
     gbifKingdom: 'Animalia',
     safetyNotice: WILDLIFE_NOTICE,
     generalAdvice: 'A clear photo from above showing the body and markings would help.',
-    features: [],
+    features: [
+      {
+        id: 'dorsal',
+        label: 'From above',
+        followUpLabel: 'Add a top-down photo',
+        advice: 'Try photographing the body and markings from above.',
+      },
+      {
+        id: 'lateral',
+        label: 'Side',
+        followUpLabel: 'Add a side photo',
+        advice: 'A side view would help.',
+      },
+      BUG_HEAD_FEATURE,
+      WINGS_FEATURE,
+      {
+        id: 'web',
+        label: 'Web',
+        followUpLabel: 'Add a web photo',
+        advice: 'A photo of the web would help.',
+      },
+    ],
   },
   herp: {
     id: 'herp',
@@ -512,7 +573,7 @@ export const GROUPS: Record<CategoryGroupId, CategoryDefinition> = {
     ],
     pluralNoun: 'organisms',
     generalAdvice: 'A closer, well-lit photo of just the organism would help.',
-    features: [TRACK_FEATURE, SCAT_FEATURE],
+    features: [],
   },
 };
 

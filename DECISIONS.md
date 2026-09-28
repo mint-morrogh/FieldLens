@@ -117,3 +117,19 @@ On 75 iNaturalist track and scat photos, ranked against 150 regional species, th
 The home screen's hero is a viewfinder: a dark panel with the same reticle and grid as the crop and analysis screens. The whole panel is the camera button, and a small monospace readout shows readiness and the approximate position, rounded on the device. Research pointed to camera-first nature apps (Seek) and to function-first design lasting longer than trends, so the serif wordmark, paper and moss palette stay. The only "futuristic" cues are the instrument ones: reticle, grid, readout and a slow scan sweep, all disabled with reduced motion. The group icons became a quiet "Recognises" list.
 
 Results lost their explanatory subtext: the confidence footnote, per-candidate "image match · location" lines, the globe caption, the iNaturalist disclaimer, the photo-library hint and the Sources list. The geographic card is hidden when no location was used. Inline credits that licences require stay: photo authors, the Wikipedia quote and safety sources. Every source is still listed on the privacy page.
+
+## People, the analysis screen and photo parts (2026-09-28)
+
+**People.** BioCLIP 2 is trained on the Tree of Life and can't recognise people: on public-domain portraits, _Homo sapiens_ ranked 48,000th or lower, and a portrait of Barack Obama came out as the flatworm _Obama marmorata_. BioCLIP's own text encoder has lost everyday concepts like "person", so the Space runs a small general CLIP model (MobileCLIP-S1, Apple) on every photo. In testing, the person share was 0.24–0.91 for portraits and at most 0.05 for 166 photos of plants, fungi, animals, tracks and droppings, including ones with a hand for scale. At ≥ 0.15 the app answers "That's a person!" instead of guessing a species.
+
+**Analysis screen.** The photo panel shows what a vision classifier does, driven by the real stages:
+
+- While the image model runs, the photo turns high-contrast grayscale, a patch grid lights up (vision transformers read images as patches) and a loupe magnifies regions.
+- Colour returns while names and local records are checked.
+- The progress bar is the share of finished stages.
+
+No invented numbers are shown.
+
+**Photo parts.** The crop sheet only asks "Which part?" once a type is chosen, and the row slides open. Bug gained From above, Side, Head, Wings and Web; Fish gained Whole fish, Head, Fins & tail and Markings. Tracks and droppings are offered under Mammal only.
+
+**Home.** Dim CC0 iNaturalist photos of living things cross-fade behind the camera button. The location readout moved to the top-left, and the Recognises list was removed.

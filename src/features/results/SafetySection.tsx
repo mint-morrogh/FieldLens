@@ -64,10 +64,6 @@ function WildlifeSafety({ safety }: { safety: SafetyInfo }) {
           <Statement key={i} s={s} />
         ))}
       </ul>
-      <p className="mt-4 border-t border-line pt-3 text-sm font-medium text-ink">
-        Never touch or feed wild animals. If you’re bitten or scratched, wash the wound and see a
-        doctor right away.
-      </p>
     </section>
   );
 }
@@ -168,11 +164,6 @@ export function SafetySection({
           </>
         )}
       </div>
-
-      <p className="mt-4 border-t border-line pt-3 text-sm font-medium text-ink">
-        Never eat a wild {fungus ? 'mushroom' : 'plant'} based on an app. Confirm with a local
-        expert. If someone may have been poisoned, call 911 or your local poison centre.
-      </p>
     </section>
   );
 }

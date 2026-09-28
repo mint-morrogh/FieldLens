@@ -199,6 +199,7 @@ export const identifyResponseSchema = z.object({
     })
     .optional(),
   sign: z.enum(['track', 'scat']).optional(),
+  person: z.boolean().optional(),
   safety: z
     .object({
       kind: z.enum(['food', 'wildlife']).optional(),

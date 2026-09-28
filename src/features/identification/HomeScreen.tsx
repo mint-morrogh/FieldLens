@@ -4,7 +4,7 @@ import { Icon } from '../../components/Icon';
 import { Button, Notice } from '../../components/ui';
 import { BRAND } from '../../config/brand';
 import { MOCK_SCENARIO_OPTIONS, getMockScenario, setMockScenario } from '../../lib/mockScenario';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePhotoPicker } from '../camera/usePhotoPicker';
 import { RecentObservations } from '../history/HistoryScreen';
 import { useLocationState } from '../location/LocationContext';
@@ -109,16 +109,6 @@ function DemoModePanel() {
   );
 }
 
-const RECOGNISES: { id: string; label: string }[] = [
-  { id: 'plant', label: 'Plants' },
-  { id: 'fungus', label: 'Fungi' },
-  { id: 'bug', label: 'Insects & spiders' },
-  { id: 'bird', label: 'Birds' },
-  { id: 'mammal', label: 'Mammals' },
-  { id: 'herp', label: 'Reptiles & amphibians' },
-  { id: 'fish', label: 'Fish' },
-];
-
 /** "46.2°N 63.1°W" — one decimal (~11 km); shown on the device only, never sent like this. */
 function coarseCoords(lat: number, lng: number) {
   const f = (v: number, pos: string, neg: string) =>
@@ -126,20 +116,69 @@ function coarseCoords(lat: number, lng: number) {
   return `${f(lat, 'N', 'S')} ${f(lng, 'E', 'W')}`;
 }
 
+/** Openly licensed (CC0) iNaturalist photos, bundled so they work offline. */
+const SPECIMENS = ['flower', 'mushroom', 'butterfly', 'bird', 'fox', 'frog', 'fern', 'turtle'];
+const SPECIMEN_MS = 4500;
+
+/**
+ * Dim, slowly cross-fading photos of living things behind the camera button, so it's
+ * obvious what to point the camera at. Still (first photo only) with reduced motion.
+ */
+function SpecimenBackdrop() {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const t = setInterval(() => setIndex((i) => (i + 1) % SPECIMENS.length), SPECIMEN_MS);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="absolute inset-0 -z-20" aria-hidden>
+      {SPECIMENS.map((name, i) => (
+        <img
+          key={name}
+          src={`/viewfinder/${name}.webp`}
+          alt=""
+          loading={i === 0 ? 'eager' : 'lazy'}
+          decoding="async"
+          className={`specimen absolute inset-0 h-full w-full object-cover transition-opacity duration-[1600ms] ease-in-out ${
+            i === index ? 'specimen-active opacity-45' : 'opacity-0'
+          }`}
+        />
+      ))}
+      {/* Keeps the grid, reticle and label readable over any photo. */}
+      <div className="absolute inset-0 bg-[radial-gradient(90%_75%_at_50%_45%,rgba(17,20,15,0.25),rgba(17,20,15,0.8))]" />
+    </div>
+  );
+}
+
+/** Top-left of the home page: live location status, like an instrument readout. */
+export function LocationReadout() {
+  const { status, location } = useLocationState();
+  const on = status === 'granted';
+  const text = on
+    ? location
+      ? coarseCoords(location.latitude, location.longitude)
+      : 'Location on'
+    : status === 'requesting'
+      ? 'Locating…'
+      : 'No location';
+  return (
+    <span
+      className="readout flex min-h-11 items-center gap-2 text-[0.72rem] text-ink-muted"
+      data-testid="viewfinder-readout"
+      aria-label={on ? `Approximate location ${text}` : text}
+    >
+      <Icon name="pin" className={`h-4 w-4 ${on ? 'text-moss' : 'text-ink-muted/60'}`} />
+      {text}
+    </span>
+  );
+}
+
 /**
  * The hero: a field viewfinder. The whole panel is the camera button, framed by the
- * same reticle and grid as the crop and analysis screens, with a small status readout.
+ * same reticle and grid as the crop and analysis screens.
  */
 function Viewfinder({ onCapture }: { onCapture: () => void }) {
-  const { status, location } = useLocationState();
-  const readout =
-    status === 'granted'
-      ? location
-        ? coarseCoords(location.latitude, location.longitude)
-        : 'Location ready'
-      : status === 'requesting'
-        ? 'Locating…'
-        : 'No location';
   return (
     <button
       type="button"
@@ -148,6 +187,7 @@ function Viewfinder({ onCapture }: { onCapture: () => void }) {
       className="group relative isolate block w-full overflow-hidden rounded-[1.75rem] bg-toast text-left text-white shadow-[0_18px_40px_-18px_rgba(17,20,15,0.6)] ring-1 ring-white/5 transition-transform duration-200 active:scale-[0.99]"
       data-testid="viewfinder"
     >
+      <SpecimenBackdrop />
       <div className="scan-grid absolute inset-0 -z-10 opacity-70" aria-hidden />
       <div
         className="absolute inset-0 -z-10 bg-[radial-gradient(120%_80%_at_50%_45%,rgba(159,208,138,0.16),transparent_60%)]"
@@ -164,17 +204,13 @@ function Viewfinder({ onCapture }: { onCapture: () => void }) {
         <span key={c} className={`reticle absolute h-7 w-7 border-[#9fd08a]/80 ${c}`} aria-hidden />
       ))}
 
-      <div className="readout flex items-center justify-between px-14 pt-[1.35rem] text-[0.68rem] text-white/60">
-        <span className="flex items-center gap-1.5">
-          <span className="live-dot h-1.5 w-1.5 rounded-full bg-[#9fd08a]" />
-          Ready
-        </span>
-        <span data-testid="viewfinder-readout">{readout}</span>
-      </div>
-
-      <div className="flex flex-col items-center px-6 pb-10 pt-7 text-center">
-        <span className="relative flex h-24 w-24 items-center justify-center rounded-full border border-[#9fd08a]/40 transition-transform duration-200 group-hover:scale-105">
-          <span className="flex h-18 w-18 items-center justify-center rounded-full bg-[#9fd08a] text-[#10180f] shadow-[0_0_0_6px_rgba(159,208,138,0.12)]">
+      <div className="flex flex-col items-center px-6 pb-11 pt-11 text-center">
+        {/* Shutter: a focus arc sweeps the ring and a soft ripple pulses outward. */}
+        <span className="relative flex h-26 w-26 items-center justify-center" aria-hidden>
+          <span className="shutter-ripple absolute inset-3 rounded-full border border-[#9fd08a]/60" />
+          <span className="absolute inset-0 rounded-full border border-[#9fd08a]/20" />
+          <span className="shutter-arc absolute inset-0 rounded-full" />
+          <span className="shutter-button relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full text-[#10180f] transition-transform duration-200 ease-out group-hover:scale-105 group-active:scale-90">
             <Icon name="camera" className="h-8 w-8" />
           </span>
         </span>
@@ -194,9 +230,6 @@ export function HomeScreen() {
   };
   const camera = usePhotoPicker((f) => start(f, 'camera'), { capture: true });
   const picker = usePhotoPicker((f) => start(f, 'library'));
-  const covers = RECOGNISES.filter(
-    (c) => !health || c.id === 'plant' || health.autoDetect !== false,
-  );
 
   return (
     <div className="space-y-6">
@@ -231,26 +264,6 @@ export function HomeScreen() {
       </div>
 
       {status !== 'granted' && status !== 'requesting' && <LocationPanel />}
-
-      <section aria-labelledby="recognises-title" data-testid="identifies">
-        <div className="flex items-center gap-3">
-          <h2
-            id="recognises-title"
-            className="readout shrink-0 text-[0.7rem] font-semibold text-ink-muted"
-          >
-            Recognises
-          </h2>
-          <span className="h-px flex-1 bg-line" aria-hidden />
-        </div>
-        <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[0.95rem] text-ink-soft">
-          {covers.map((c) => (
-            <li key={c.id} className="flex items-center gap-2 whitespace-nowrap">
-              <span className="h-1.5 w-1.5 rounded-full bg-moss/70" aria-hidden />
-              {c.label}
-            </li>
-          ))}
-        </ul>
-      </section>
 
       <RecentObservations />
     </div>

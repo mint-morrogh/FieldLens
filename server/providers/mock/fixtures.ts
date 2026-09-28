@@ -18,6 +18,7 @@ export const MOCK_SCENARIOS = [
   'wrong-category',
   'auto-bug',
   'auto-animal',
+  'person',
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 

@@ -39,4 +39,5 @@ export const MOCK_SCENARIO_OPTIONS = [
   { id: 'wrong-category', label: 'Wrong category (insects)' },
   { id: 'auto-bug', label: '“Not sure” → insect' },
   { id: 'auto-animal', label: '“Not sure” → amphibian' },
+  { id: 'person', label: 'Photo of a person' },
 ];

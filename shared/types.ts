@@ -234,6 +234,8 @@ export type IdentifyResponse = {
     likelihood?: number;
   };
   safety?: SafetyInfo;
+  /** The photo shows a person (people aren't in FieldLens's field guide). */
+  person?: boolean;
   /** Set when the photo shows tracks or droppings rather than the animal itself. */
   sign?: AnimalSign;
   mock?: boolean;

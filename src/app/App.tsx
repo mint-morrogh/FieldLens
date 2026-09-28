@@ -3,7 +3,7 @@ import { Icon } from '../components/Icon';
 import { UpdatePrompt } from '../components/UpdatePrompt';
 import { BRAND } from '../config/brand';
 import { HistoryScreen, ObservationScreen } from '../features/history/HistoryScreen';
-import { HomeScreen } from '../features/identification/HomeScreen';
+import { HomeScreen, LocationReadout } from '../features/identification/HomeScreen';
 import { IdentifyScreen } from '../features/identification/IdentifyScreen';
 import { SessionProvider } from '../features/identification/SessionContext';
 import { LocationProvider } from '../features/location/LocationContext';
@@ -73,8 +73,8 @@ export function App() {
               aria-label="Main"
             >
               {route.name === 'home' ? (
-                // The big title below already names the app; a lone logo here looked like a placeholder.
-                <span aria-hidden />
+                // The big title below already names the app, so this corner shows location status.
+                <LocationReadout />
               ) : (
                 <a
                   href="#/"

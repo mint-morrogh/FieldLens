@@ -28,6 +28,7 @@ import { GBIF_ATTRIBUTION, GBIF_SOURCE } from '../providers/gbif/gbif.js';
 import { INAT_ATTRIBUTION } from '../providers/inaturalist/inaturalistProvider.js';
 import { taxonLinks } from '../providers/plantnet/plantnetProvider.js';
 import type {
+  CategoryDetectionResult,
   IdentificationInput,
   ProviderCandidate,
   ProviderSet,
@@ -136,6 +137,41 @@ export function genusGroup(
   return { rank: 'genus', name: genus, confidence, memberCount: members.length };
 }
 
+/** A photo of a person: nothing to identify, so answer straight away. */
+function personResponse(
+  input: IdentificationInput,
+  requestId: string,
+  providers: ProviderSet,
+): IdentifyResponse {
+  return {
+    requestId,
+    category: 'mammal',
+    generatedAt: new Date().toISOString(),
+    imagesSubmitted: input.images.length,
+    location: input.location
+      ? {
+          used: true,
+          approx: input.location,
+          label: coarseLocationLabel(input.location),
+          source: input.locationSource ?? 'device',
+        }
+      : { used: false },
+    confidenceBand: 'none',
+    candidates: [],
+    evidence: { supports: [], uncertainties: [] },
+    guidance: [],
+    attribution: [],
+    sourceStatus: {
+      identification: 'ok',
+      occurrence: 'skipped',
+      speciesInfo: 'skipped',
+      community: 'skipped',
+    },
+    person: true,
+    mock: providers.mock || undefined,
+  };
+}
+
 /** Targets for which a "Tracks" or "Droppings" photo means a mammal sign. */
 const SIGN_TARGETS: IdentifyTarget[] = ['auto', 'animal', 'mammal'];
 
@@ -185,7 +221,7 @@ export async function runIdentification(
         logger.warn('identify.detect_failed', {
           reason: error instanceof Error ? error.name : 'unknown',
         });
-        return { category: 'plant' as OrganismCategory, likelihood: 0 };
+        return { category: 'plant', likelihood: 0 } as CategoryDetectionResult;
       });
       stage({ stage: 'detect', status: 'done' });
       // A failed detection (likelihood 0) silently falls back to plants without a "detected" tag.
@@ -196,6 +232,10 @@ export async function runIdentification(
         category: found.category,
         likelihood: Math.round(found.likelihood * 100) / 100,
       });
+      if (found.person) {
+        logger.info('identify.person');
+        return personResponse(input, requestId, providers);
+      }
       if (found.category === 'other') {
         throw new ApiError(
           'unsupported_category',
@@ -250,6 +290,11 @@ export async function runIdentification(
     sign,
     signCandidates,
   });
+  if (identification.person) {
+    stage({ stage: 'identify', status: 'done' });
+    logger.info('identify.person');
+    return personResponse(input, requestId, providers);
+  }
   if (sign) {
     identification.candidates = identification.candidates.map((c) => ({
       ...c,

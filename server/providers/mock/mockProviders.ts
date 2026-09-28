@@ -83,6 +83,7 @@ export class MockIdentificationProvider implements IdentificationProvider {
 
   /** "Not sure": plants by default; the auto-bug / auto-animal scenarios detect other groups. */
   async detectCategory(): Promise<CategoryDetectionResult> {
+    if (this.scenario === 'person') return { category: 'mammal', likelihood: 1, person: true };
     if (this.scenario === 'auto-bug') return { category: 'insect', likelihood: 0.68 };
     if (this.scenario === 'auto-animal') return { category: 'amphibian', likelihood: 0.41 };
     return { category: 'plant', likelihood: 0.91 };
@@ -125,6 +126,15 @@ export class MockIdentificationProvider implements IdentificationProvider {
 
   /** Everything except plants (BioCLIP in live mode): experimental, with a category check. */
   private identifyAnimal(input: IdentificationInput): IdentificationResult {
+    if (this.scenario === 'person') {
+      return {
+        provider: 'Mock BioCLIP',
+        candidates: [],
+        attribution: [MOCK_ATTRIBUTION],
+        experimental: true,
+        person: true,
+      };
+    }
     if (this.scenario === 'wrong-category') {
       return {
         provider: 'Mock BioCLIP',

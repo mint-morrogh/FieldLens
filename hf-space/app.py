@@ -61,6 +61,34 @@ _prompt_cache: dict[str, torch.Tensor] = {}
 SIGN_WORDS = {"track": ["footprints", "tracks"], "scat": ["scat", "droppings"]}
 MAX_SIGN_CANDIDATES = 400
 
+# BioCLIP is trained on the Tree of Life and doesn't recognise people (a portrait of Barack
+# Obama came out as the flatworm Obama marmorata). A small general CLIP model answers "is this
+# a person?" instead: on 170 test photos, portraits scored 0.24-0.91 and nothing else > 0.05.
+PERSON_MODEL = ("MobileCLIP-S1", "datacompdr")
+PERSON_PROMPTS = ["a photo of a person", "a selfie", "a photo of a human face", "a photo of people"]
+OTHER_PROMPTS = [
+    "a photo of an animal", "a photo of a plant", "a photo of a mushroom", "a photo of an insect",
+    "a photo of a bird", "a photo of a wild mammal", "a photo of a fish", "a photo of animal tracks",
+    "a photo of animal droppings", "a photo of a landscape", "a photo of a pet dog or cat",
+]
+person_model, _, person_preprocess = open_clip.create_model_and_transforms(
+    PERSON_MODEL[0], pretrained=PERSON_MODEL[1], device=DEVICE
+)
+person_model.eval()
+with torch.no_grad():
+    _pt = person_model.encode_text(open_clip.get_tokenizer(PERSON_MODEL[0])(PERSON_PROMPTS + OTHER_PROMPTS).to(DEVICE))
+    PERSON_TEXT = torch.nn.functional.normalize(_pt.float(), dim=-1)
+
+
+def _person_probability(images: list[Image.Image]) -> float:
+    """Highest share of belief, over the photos, that a photo shows a person."""
+    with torch.no_grad():
+        x = torch.stack([person_preprocess(img) for img in images]).to(DEVICE)
+        feats = torch.nn.functional.normalize(person_model.encode_image(x).float(), dim=-1)
+        probs = torch.softmax(100 * feats @ PERSON_TEXT.T, dim=-1)[:, : len(PERSON_PROMPTS)].sum(dim=-1)
+    return float(probs.max())
+
+
 print(f"BioCLIP ready on {DEVICE}: {EMB.shape[1]} taxa in {time.time() - started:.0f}s", flush=True)
 
 
@@ -191,8 +219,9 @@ def _run_signs(images: list[Image.Image], payload: dict) -> dict:
 
 def _run(payload: dict) -> dict:
     images = _decode(payload.get("images", []))
+    person = round(_person_probability(images), 4)
     if payload.get("sign"):
-        return _run_signs(images, payload)
+        return {**_run_signs(images, payload), "person": person}
     rank = str(payload.get("rank") or "species").lower()
     if rank not in RANKS:
         raise gr.Error(f"rank must be one of {', '.join(RANKS)}")
@@ -259,6 +288,7 @@ def _run(payload: dict) -> dict:
         "candidateCount": len(columns) if restricted else int(EMB.shape[1]),
         "unmatched": unmatched[:50],
         "groupProbability": None if group_probability is None else round(group_probability, 6),
+        "person": person,
     }
 
 

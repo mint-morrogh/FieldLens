@@ -40,7 +40,7 @@ test.describe('identification flow (mock API)', () => {
     await expect(page.getByTestId('why-this-match')).toContainText('Strong image-model match');
     await expect(page.getByTestId('demo-banner')).toBeVisible();
     await expect(page.getByTestId('safety')).toBeVisible();
-    await expect(page.getByTestId('safety')).toContainText('Never eat a wild plant');
+    await expect(page.getByTestId('safety')).toContainText('Edibility & safety');
   });
 
   test('receive a low-confidence result with guidance, then add a follow-up photo', async ({
@@ -195,7 +195,6 @@ test('photo first: "What is it?" is optional on the crop screen and starts on Au
   page,
 }) => {
   await page.goto('/?mock=high');
-  await expect(page.getByTestId('identifies')).toContainText('Recognises');
   await expect(page.getByTestId('viewfinder')).toContainText('Take a photo');
   await choosePhoto(page);
   const row = page.getByTestId('crop-category');
@@ -274,7 +273,7 @@ test('mushrooms get the safety package', async ({ page }) => {
   await expect(safety).toHaveAttribute('data-level', 'danger');
   await expect(safety).toContainText('death cap');
   await expect(safety.getByTestId('edible-list')).toHaveCount(0);
-  await expect(safety).toContainText('Never eat a wild mushroom based on an app');
+  await expect(page.getByTestId('result-view')).toContainText('Never eat a wild mushroom');
 });
 
 test('birds are identified with an experimental label and no edibility section', async ({
@@ -306,16 +305,18 @@ test('reptiles and amphibians share a tile and the result says which', async ({ 
   await expect(page.getByTestId('detected-category')).toHaveText('Amphibian');
 });
 
-test('a track photo under "Not sure" is identified as a mammal sign', async ({ page }) => {
+test('parts only appear once a type is chosen, and Mammal offers tracks', async ({ page }) => {
   await page.goto('/?mock=high');
   await choosePhoto(page);
-  const signs = page.getByTestId('crop-feature');
-  await expect(signs).toContainText('Tracks or droppings?');
-  await expect(signs.getByRole('button', { name: 'Neither' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  await signs.getByRole('button', { name: 'Tracks' }).click();
+  const parts = page.getByTestId('crop-feature');
+  // Auto: nothing to ask about yet.
+  await expect(parts).toHaveCount(0);
+  await pickCategory(page, 'Bug');
+  await expect(parts).toContainText('Wings');
+  await pickCategory(page, 'Fish');
+  await expect(parts).toContainText('Fins & tail');
+  await pickCategory(page, 'Mammal');
+  await parts.getByRole('button', { name: 'Tracks' }).click();
   await identifySelection(page);
   await expect(page.getByTestId('sign-pill')).toHaveText(/From tracks/i);
   await expect(page.getByTestId('result-headline')).toContainText('Procyon lotor');
@@ -460,4 +461,12 @@ test('mammal photos show size, diet and activity facts and wildlife safety', asy
   await expect(facts).toContainText('EltonTraits');
   await expect(page.getByTestId('safety')).toContainText('rabies');
   await expect(page.getByTestId('sign-pill')).toHaveCount(0);
+});
+
+test('a photo of a person gets a friendly answer instead of a species', async ({ page }) => {
+  await page.goto('/?mock=person');
+  await choosePhoto(page);
+  await identifySelection(page);
+  await expect(page.getByTestId('person-result')).toContainText('That’s a person!');
+  await expect(page.getByTestId('safety')).toHaveCount(0);
 });

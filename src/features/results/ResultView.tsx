@@ -138,7 +138,18 @@ function Headline({
             From {result.sign === 'track' ? 'tracks' : 'droppings'}
           </p>
         )}
-        {result.categoryCheck && !result.categoryCheck.matchesCategory ? (
+        {result.person ? (
+          <div data-testid="person-result">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-moss">
+              <span className="sci normal-case tracking-normal">Homo sapiens</span>
+            </p>
+            <h1 className="mt-1 text-2xl font-bold">That’s a person!</h1>
+            <p className="mt-2 text-ink-soft">
+              FieldLens identifies wild plants, fungi and animals, and people aren’t in its field
+              guide. To identify something else in the photo, box just that and try again.
+            </p>
+          </div>
+        ) : result.categoryCheck && !result.categoryCheck.matchesCategory ? (
           <>
             <h1 className="text-2xl font-bold">
               This doesn’t look like{' '}

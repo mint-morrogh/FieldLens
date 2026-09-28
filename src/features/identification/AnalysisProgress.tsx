@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { getTarget } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
 import type { IdentifyStage, StageEvent } from '../../../shared/types';
@@ -105,6 +106,153 @@ const STATE_TEXT: Record<RowState, string> = {
   skipped: 'skipped',
 };
 
+/** Where the attention loupe looks next (fractions of the photo; top-left of the loupe). */
+const LOUPE_STOPS: [number, number][] = [
+  [0.33, 0.3],
+  [0.08, 0.1],
+  [0.55, 0.12],
+  [0.58, 0.52],
+  [0.12, 0.55],
+  [0.36, 0.62],
+  [0.62, 0.3],
+  [0.2, 0.32],
+];
+const LOUPE = 0.34;
+const ZOOM = 2.2;
+const PATCH_COLS = 8;
+const PATCH_ROWS = 6;
+
+type Phase = 'load' | 'scan' | 'refine' | 'done';
+
+/**
+ * A picture of what the classifier does, driven by the real stages: while the image model
+ * runs, the photo turns to high-contrast grayscale, a patch grid lights up (vision
+ * transformers read images as patches) and a loupe hops between regions; colour returns
+ * while names and local records are checked; the reticle locks on when it's done.
+ */
+function ClassifierVisual({
+  url,
+  phase,
+  label,
+  model,
+  fraction,
+  topGuess,
+}: {
+  url: string;
+  phase: Phase;
+  label: string;
+  model: string;
+  fraction: number;
+  topGuess?: string;
+}) {
+  const [stop, setStop] = useState(0);
+  const scanning = phase === 'scan' || phase === 'load';
+  useEffect(() => {
+    if (!scanning || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const t = setInterval(() => setStop((i) => (i + 1) % LOUPE_STOPS.length), 950);
+    return () => clearInterval(t);
+  }, [scanning]);
+  const [lx, ly] = phase === 'done' ? [(1 - LOUPE) / 2, (1 - LOUPE) / 2] : LOUPE_STOPS[stop];
+  // Zoomed view inside the loupe, centred on the loupe's centre.
+  const zx = lx + LOUPE / 2 - LOUPE / (2 * ZOOM);
+  const zy = ly + LOUPE / 2 - LOUPE / (2 * ZOOM);
+  const scale = ZOOM / LOUPE;
+
+  return (
+    <div
+      className={`classifier relative aspect-[4/3] w-full overflow-hidden bg-[#0d100c]`}
+      data-phase={phase}
+    >
+      <img
+        src={url}
+        alt="Photo being identified"
+        className="classifier-photo absolute inset-0 h-full w-full object-cover"
+      />
+      <div className="scan-grid absolute inset-0" aria-hidden />
+
+      {/* Patch tokens */}
+      <div
+        className="classifier-patches absolute inset-0 grid"
+        style={{
+          gridTemplateColumns: `repeat(${PATCH_COLS}, 1fr)`,
+          gridTemplateRows: `repeat(${PATCH_ROWS}, 1fr)`,
+        }}
+        aria-hidden
+      >
+        {Array.from({ length: PATCH_COLS * PATCH_ROWS }, (_, i) => (
+          <span
+            key={i}
+            className="patch"
+            style={{ animationDelay: `${((i * 37) % 23) * 0.11}s` }}
+          />
+        ))}
+      </div>
+
+      <div className="scan-line classifier-sweep" aria-hidden />
+
+      {/* Attention loupe */}
+      <div
+        className="classifier-loupe absolute overflow-hidden rounded-lg"
+        style={{
+          left: `${lx * 100}%`,
+          top: `${ly * 100}%`,
+          width: `${LOUPE * 100}%`,
+          height: `${LOUPE * 100}%`,
+        }}
+        aria-hidden
+      >
+        <img
+          src={url}
+          alt=""
+          className="absolute max-w-none object-cover"
+          style={{
+            width: `${scale * 100}%`,
+            height: `${scale * 100}%`,
+            left: `${-zx * scale * 100}%`,
+            top: `${-zy * scale * 100}%`,
+          }}
+        />
+        <span className="readout absolute left-1.5 top-1 text-[0.55rem] text-[#d6f5c7]/90">
+          x{lx.toFixed(2).slice(1)} y{ly.toFixed(2).slice(1)}
+        </span>
+      </div>
+
+      {phase === 'done' && (
+        <div className="fade-up absolute inset-0 flex items-center justify-center" aria-hidden>
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#9fd08a] text-[#10180f] shadow-[0_0_0_8px_rgba(159,208,138,0.2)]">
+            <Icon name="check" className="h-9 w-9" />
+          </span>
+        </div>
+      )}
+
+      {/* Readouts */}
+      <div className="readout absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent px-3 pb-6 pt-2.5 text-[0.62rem] text-white/80">
+        <span className="flex items-center gap-1.5">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${phase === 'done' ? 'bg-[#9fd08a]' : 'live-dot bg-[#9fd08a]'}`}
+          />
+          {phase === 'done' ? 'Complete' : phase === 'refine' ? 'Refining' : 'Classifying'}
+        </span>
+        <span>{model}</span>
+      </div>
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-3 pb-3 pt-8">
+        {topGuess && (
+          <p className="fade-up readout mb-1 truncate text-[0.62rem] text-[#d6f5c7]">
+            Leading match · <span className="normal-case tracking-normal">{topGuess}</span>
+          </p>
+        )}
+        <p className="text-sm font-semibold text-white">{label}</p>
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/15">
+          <div
+            className="h-full rounded-full bg-[#9fd08a] transition-[width] duration-500 ease-out"
+            style={{ width: `${Math.max(4, fraction * 100)}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AnalysisProgress() {
   const { state } = useSession();
   const { status: locationStatus } = useLocationState();
@@ -119,48 +267,36 @@ export function AnalysisProgress() {
   );
   const allDone = rows.every((r) => r.state === 'done' || r.state === 'skipped');
   const active = rows.find((r) => r.state === 'active');
+  const finished = rows.filter((r) => r.state === 'done' || r.state === 'skipped').length;
+  const fraction = finished / rows.length;
+  const imageStep = (key: string) => rows.find((r) => r.key === key)?.state;
+  const phase: Phase = allDone
+    ? 'done'
+    : imageStep('upload') === 'active'
+      ? 'load'
+      : imageStep('identify') === 'done'
+        ? 'refine'
+        : 'scan';
+  const model =
+    state.category === 'auto' ? 'Auto-detect' : (category.identificationSource ?? 'Image model');
 
   return (
     <div className="space-y-4" aria-busy={!allDone} data-testid="analysis">
       <Card as="div" className="overflow-hidden !p-0">
-        <div className="relative bg-toast">
-          {last && (
-            <img
-              src={last.url}
-              alt="Photo being identified"
-              className={`max-h-[42vh] w-full object-cover transition duration-500 ${allDone ? '' : 'brightness-90 saturate-[0.85]'}`}
-            />
-          )}
-          {!allDone && (
-            <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-              <div className="scan-grid absolute inset-0" />
-              <div className="scan-line" />
-              <div className="reticle absolute inset-[12%]">
-                {[
-                  'left-0 top-0 border-l-4 border-t-4 rounded-tl-xl',
-                  'right-0 top-0 border-r-4 border-t-4 rounded-tr-xl',
-                  'left-0 bottom-0 border-l-4 border-b-4 rounded-bl-xl',
-                  'right-0 bottom-0 border-r-4 border-b-4 rounded-br-xl',
-                ].map((c) => (
-                  <span key={c} className={`absolute h-10 w-10 border-[#d6f5c7] ${c}`} />
-                ))}
-              </div>
-            </div>
-          )}
-          {allDone && (
-            <div
-              className="fade-up absolute inset-0 flex items-center justify-center bg-moss/30"
-              aria-hidden
-            >
-              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-moss text-on-accent shadow-lg">
-                <Icon name="check" className="h-9 w-9" />
-              </span>
-            </div>
-          )}
-          <p className="absolute inset-x-3 bottom-3 rounded-xl bg-black/55 px-3 py-2 text-center text-sm font-semibold text-white backdrop-blur-sm">
-            {allDone ? 'Analysis complete' : `${active?.label ?? 'Working'}…`}
-          </p>
-        </div>
+        {last && (
+          <ClassifierVisual
+            url={last.url}
+            phase={phase}
+            label={allDone ? 'Analysis complete' : `${active?.label ?? 'Working'}…`}
+            model={model}
+            fraction={fraction}
+            topGuess={
+              progress.preview?.[0]
+                ? `${displayName(progress.preview[0])} ${formatPercent(progress.preview[0].visualConfidence)}`
+                : undefined
+            }
+          />
+        )}
 
         <div className="p-5">
           <h1 className="text-xl font-bold">

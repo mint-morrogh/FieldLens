@@ -134,8 +134,10 @@ describe('tracks and droppings', () => {
     expect(signFor(input('mammal', 'track'))).toBe('track');
     expect(signFor(input('mammal', 'face'))).toBeUndefined();
     expect(signFor(input('bird', 'track'))).toBeUndefined();
-    expect(isValidFeature('auto', 'track')).toBe(true);
-    expect(isValidFeature('auto', 'scat')).toBe(true);
+    // The app only offers Tracks and Droppings once Mammal is chosen.
+    expect(isValidFeature('mammal', 'track')).toBe(true);
+    expect(isValidFeature('mammal', 'scat')).toBe(true);
+    expect(isValidFeature('auto', 'track')).toBe(false);
     expect(isValidFeature('plant', 'scat')).toBe(false);
   });
 
@@ -197,5 +199,40 @@ describe('tracks and droppings', () => {
       scientificName: 'Alces alces',
       category: 'mammal',
     });
+  });
+});
+
+describe('photos of people', () => {
+  it('answers "a person" under Not sure without identifying a species', async () => {
+    const result = await runIdentification(input('auto'), {
+      providers: createMockProviders('person'),
+    });
+    expect(result.person).toBe(true);
+    expect(result.candidates).toEqual([]);
+    expect(identifyResponseSchema.safeParse(result).success).toBe(true);
+  });
+
+  it('flags a person when the Space says so, even under a chosen category', async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response(JSON.stringify({ event_id: 'e1' }));
+      const data = {
+        results: [{ name: 'Obama marmorata', species: 'Obama marmorata', score: 0.2 }],
+        rank: 'species',
+        restricted: true,
+        candidateCount: 1,
+        person: 0.9,
+      };
+      return new Response(`event: complete\ndata: ${JSON.stringify([data])}\n\n`);
+    });
+    const provider = new BioclipIdentificationProvider(
+      'https://space',
+      'tok',
+      ['mammal'],
+      fetchImpl as unknown as typeof fetch,
+    );
+    const result = await provider.identify(input('mammal'));
+    expect(result.person).toBe(true);
+    expect(result.candidates).toEqual([]);
+    expect((await provider.detectCategory(input('auto'))).person).toBe(true);
   });
 });

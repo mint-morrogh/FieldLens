@@ -59,13 +59,20 @@ export type IdentificationResult = {
   attribution: Attribution[];
   experimental?: boolean;
   categoryCheck?: CategoryCheck;
+  /** The photo shows a person; no candidates are returned. */
+  person?: boolean;
   /** For groups: the specific category of the top candidate (e.g. "amphibian" for "animal"). */
   detectedCategory?: OrganismCategory;
   /** Provider-native response, kept only for debugging; never sent to the UI. */
   raw?: unknown;
 };
 
-export type CategoryDetectionResult = { category: OrganismCategory; likelihood: number };
+export type CategoryDetectionResult = {
+  category: OrganismCategory;
+  likelihood: number;
+  /** The photo shows a person, not something FieldLens identifies. */
+  person?: boolean;
+};
 
 export interface IdentificationProvider {
   readonly name: string;
