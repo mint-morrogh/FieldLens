@@ -314,7 +314,7 @@ export function INaturalistCard({
       <div className="mb-3 flex items-center gap-2">
         <span
           aria-hidden
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-inat text-white"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-inat text-on-accent"
         >
           <Icon name="pin" className="h-5 w-5" />
         </span>
@@ -380,7 +380,7 @@ export function INaturalistCard({
                     />
                   ) : (
                     <span
-                      className="flex h-12 w-12 items-center justify-center rounded-lg bg-white/60 text-inat-ink"
+                      className="flex h-12 w-12 items-center justify-center rounded-lg bg-card/60 text-inat-ink"
                       aria-hidden
                     >
                       <Icon name="leaf" className="h-5 w-5" />
@@ -414,7 +414,7 @@ export function INaturalistCard({
                 href={summary.exploreUrl ?? summary.taxonUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-inat-ink px-4 font-semibold text-white"
+                className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-inat-ink px-4 font-semibold text-on-accent"
               >
                 View on iNaturalist <Icon name="external" className="h-4 w-4" />
                 <span className="sr-only">(opens in a new tab)</span>
@@ -473,13 +473,7 @@ export function NearbySpeciesSection({
   );
 }
 
-export function SourceAttribution({
-  attribution,
-  mock,
-}: {
-  attribution: Attribution[];
-  mock?: boolean;
-}) {
+export function SourceAttribution({ attribution }: { attribution: Attribution[] }) {
   return (
     <section
       aria-labelledby="sources-title"
@@ -489,11 +483,6 @@ export function SourceAttribution({
       <h2 id="sources-title" className="mb-1 font-bold uppercase tracking-wider">
         Sources
       </h2>
-      {mock && (
-        <p className="mb-1 font-semibold text-amber">
-          Demo mode — these results are fixtures, not a real identification.
-        </p>
-      )}
       <ul className="space-y-0.5">
         {attribution.map((a) => (
           <li key={a.provider + a.text}>

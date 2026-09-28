@@ -38,7 +38,7 @@ export function UpdatePrompt() {
   return (
     <div
       role="status"
-      className="safe-bottom fixed inset-x-3 bottom-3 z-30 mx-auto flex max-w-xl items-center gap-3 rounded-2xl bg-ink p-3 pl-4 text-white shadow-lg"
+      className="safe-bottom fixed inset-x-3 bottom-3 z-30 mx-auto flex max-w-xl items-center gap-3 rounded-2xl bg-toast p-3 pl-4 text-white shadow-lg"
     >
       <p className="flex-1">A new version is available.</p>
       <Button size="sm" onClick={() => void updateServiceWorker(true)}>

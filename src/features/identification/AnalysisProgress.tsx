@@ -78,7 +78,7 @@ export function buildRows(
 function RowIcon({ state }: { state: RowState }) {
   if (state === 'done')
     return (
-      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-moss text-white">
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-moss text-on-accent">
         <Icon name="check" className="h-4 w-4" />
       </span>
     );
@@ -123,7 +123,7 @@ export function AnalysisProgress() {
   return (
     <div className="space-y-4" aria-busy={!allDone} data-testid="analysis">
       <Card as="div" className="overflow-hidden !p-0">
-        <div className="relative bg-ink">
+        <div className="relative bg-toast">
           {last && (
             <img
               src={last.url}
@@ -152,7 +152,7 @@ export function AnalysisProgress() {
               className="fade-up absolute inset-0 flex items-center justify-center bg-moss/30"
               aria-hidden
             >
-              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-moss text-white shadow-lg">
+              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-moss text-on-accent shadow-lg">
                 <Icon name="check" className="h-9 w-9" />
               </span>
             </div>

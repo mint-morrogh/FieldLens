@@ -511,7 +511,7 @@ export function ResultView({
         </Notice>
       )}
 
-      <SourceAttribution attribution={result.attribution} mock={result.mock} />
+      <SourceAttribution attribution={result.attribution} />
     </div>
   );
 }

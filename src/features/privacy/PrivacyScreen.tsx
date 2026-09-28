@@ -90,7 +90,8 @@ export function PrivacyScreen() {
             <ExternalLink href="https://huggingface.co/imageomics/bioclip-2">
               BioCLIP 2
             </ExternalLink>{' '}
-            (Imageomics, MIT) — experimental identification of insects, spiders, fungi and birds
+            (Imageomics, MIT) — identification of fungi, insects, spiders, birds, mammals, reptiles,
+            amphibians and fish, run on our own Hugging Face Space
           </li>
           <li>
             <ExternalLink href="https://www.gbif.org/">GBIF</ExternalLink> — taxonomy and occurrence
@@ -99,6 +100,12 @@ export function PrivacyScreen() {
           <li>
             <ExternalLink href="https://zenodo.org/records/15758276">TPPT</ExternalLink> (Agroscope,
             CC BY 4.0) — plant toxicity data
+          </li>
+          <li>
+            <ExternalLink href="https://doi.org/10.6084/m9.figshare.3559887.v1">
+              EltonTraits 1.0
+            </ExternalLink>{' '}
+            (Wilman et al. 2014, CC0) — mammal size, diet and activity
           </li>
           <li>
             <ExternalLink href="https://www.inaturalist.org/">iNaturalist</ExternalLink> — community

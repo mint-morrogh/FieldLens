@@ -87,11 +87,12 @@ function DemoModePanel() {
       className="rounded-2xl border border-dashed border-amber/50 bg-amber-soft/60 p-3 text-sm"
       data-testid="demo-panel"
     >
-      <label className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold text-amber">Demo mode</span>
-        <span className="text-ink-soft">— photos are not analyzed. Sample result:</span>
+      <p className="font-semibold text-amber">Demo mode</p>
+      <p className="text-ink-soft">Photos aren’t analyzed; you’ll see a sample result.</p>
+      <label className="mt-2 flex items-center justify-between gap-3">
+        <span className="text-ink-soft">Sample result</span>
         <select
-          className="min-h-10 rounded-xl border border-line bg-card px-2"
+          className="min-h-10 min-w-0 flex-1 rounded-xl border border-line bg-card px-2 text-ink sm:max-w-56 sm:flex-none"
           value={scenario}
           onChange={(e) => {
             setScenario(e.target.value);

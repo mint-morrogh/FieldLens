@@ -3,7 +3,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-moss text-white hover:bg-moss-dark active:bg-moss-dark shadow-sm',
+  primary: 'bg-moss text-on-accent hover:bg-moss-dark active:bg-moss-dark shadow-sm',
   secondary: 'bg-card text-ink border border-line hover:bg-paper-deep',
   ghost: 'text-moss hover:bg-moss-soft',
   danger: 'bg-card text-rust border border-rust/40 hover:bg-rust-soft',
@@ -118,7 +118,7 @@ export function Chip({
       onClick={onClick}
       className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 text-[0.95rem] font-semibold transition-colors ${
         selected
-          ? 'border-moss bg-moss text-white'
+          ? 'border-moss bg-moss text-on-accent'
           : 'border-line bg-card text-ink hover:bg-paper-deep'
       } disabled:border-dashed disabled:bg-transparent disabled:text-ink-muted disabled:opacity-100`}
     >

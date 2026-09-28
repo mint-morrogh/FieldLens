@@ -99,7 +99,7 @@ export function App() {
             {!online && (
               <div
                 role="status"
-                className="mb-2 flex items-center gap-2 rounded-2xl bg-ink px-4 py-2.5 text-white"
+                className="mb-2 flex items-center gap-2 rounded-2xl bg-toast px-4 py-2.5 text-white"
                 data-testid="offline-banner"
               >
                 <Icon name="offline" className="h-5 w-5" /> You’re offline. Identification needs a

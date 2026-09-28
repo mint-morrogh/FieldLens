@@ -18,6 +18,10 @@
   --color-inat: #74ac00;
   --color-inat-soft: #eef5df;
   --color-inat-ink: #3d5a00;
+  /* Text on solid accent fills (moss, rust, inat-ink buttons and banners). */
+  --color-on-accent: #ffffff;
+  /* Toasts and dark photo backdrops stay dark in both themes. */
+  --color-toast: #1b1f1a;
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -32,6 +36,40 @@
   --globe-border: #c9bfa9;
   --globe-grid: rgba(47, 93, 58, 0.12);
   --globe-edge: #b9c9c0;
+  --skeleton-shine: #f6f1e6;
+  color-scheme: light;
+}
+
+/* Dark theme follows the device setting. Accent fills turn light with dark text on top. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-paper: #11140f;
+    --color-paper-deep: #1b2019;
+    --color-card: #181c16;
+    --color-ink: #eceee6;
+    --color-ink-soft: #c6cbbe;
+    --color-ink-muted: #9da494;
+    --color-line: #2e3429;
+    --color-moss: #9fd08a;
+    --color-moss-dark: #bfe2ae;
+    --color-moss-soft: #223322;
+    --color-amber: #e6b660;
+    --color-amber-soft: #2f2716;
+    --color-rust: #ee8f74;
+    --color-rust-soft: #3a211a;
+    --color-inat: #98c93e;
+    --color-inat-soft: #1c2512;
+    --color-inat-ink: #bddf78;
+    --color-on-accent: #10180f;
+    --color-toast: #2a3027;
+    --globe-ocean: #1d2a31;
+    --globe-land: #2a3027;
+    --globe-border: #3d4539;
+    --globe-grid: rgba(159, 208, 138, 0.1);
+    --globe-edge: #34443c;
+    --skeleton-shine: #262c23;
+  }
 }
 
 @layer base {
@@ -84,7 +122,7 @@
   background: linear-gradient(
     90deg,
     var(--color-paper-deep) 25%,
-    #f6f1e6 50%,
+    var(--skeleton-shine) 50%,
     var(--color-paper-deep) 75%
   );
   background-size: 200% 100%;

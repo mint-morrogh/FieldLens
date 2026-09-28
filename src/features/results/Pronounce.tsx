@@ -53,13 +53,13 @@ export function PronounceButton({
     <button
       type="button"
       onClick={speak}
-      className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-semibold text-moss hover:bg-moss-soft"
+      title="Latin names are read by an English voice, so they're approximate."
+      className="mt-2 inline-flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-card px-3.5 text-sm font-semibold text-moss hover:bg-moss-soft"
       aria-label={`Hear how to pronounce ${commonName ? `${commonName} and ` : ''}${scientificName}`}
       data-testid="pronounce"
     >
       <Icon name="speaker" className="h-4 w-4" />
-      {speaking ? 'Speaking…' : 'Hear pronunciation'}
-      <span className="font-normal text-ink-muted">· Latin is approximate</span>
+      {speaking ? 'Speaking…' : 'Hear it'}
     </button>
   );
 }

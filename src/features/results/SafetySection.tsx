@@ -116,7 +116,7 @@ export function SafetySection({
       </div>
 
       {safety.level === 'danger' && (
-        <p className="mb-3 rounded-xl bg-rust px-3 py-2 font-semibold text-white" role="alert">
+        <p className="mb-3 rounded-xl bg-rust px-3 py-2 font-semibold text-on-accent" role="alert">
           {safety.topToxic
             ? 'Reported poisonous. Do not eat any part of it.'
             : 'Dangerous look-alikes or possible matches. Don’t eat it without an expert’s confirmation.'}

@@ -185,7 +185,7 @@ export function RecentObservations() {
       {undo && (
         <div
           role="status"
-          className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-2.5 text-white"
+          className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-toast px-4 py-2.5 text-white"
           data-testid="undo-delete"
         >
           <span className="truncate">

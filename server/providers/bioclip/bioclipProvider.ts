@@ -17,7 +17,7 @@ const SERVICE = 'BioCLIP 2';
 
 export const BIOCLIP_ATTRIBUTION = {
   provider: SERVICE,
-  text: 'Image identification by BioCLIP 2 (Imageomics, MIT licence) — experimental',
+  text: 'Image identification by BioCLIP 2 (Imageomics, MIT licence)',
   url: 'https://huggingface.co/imageomics/bioclip-2',
 };
 
