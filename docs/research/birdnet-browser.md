@@ -159,6 +159,16 @@ Risks:
 - Labels are English (`en_us`) only, like the Space; the server's taxonomy supplies the displayed names anyway.
 - "Clear local data" doesn't delete the model; Remove in Settings does.
 
+## 8. 40-clip check against the Space (2026-09-29)
+
+**Set.** 40 new research-grade iNaturalist bird recordings from 2024 on, one per species: 20 from North America, 20 from Europe, mostly phone clips (21 m4a, 16 wav, 3 mp3). Each clip went through the app's own `toCallSamples` (mono, 48 kHz, first 15 s). The phone path ran on those samples in headless Chrome (WebGL). The Space got `encodeWav` of the same samples. Both used the observation's location and date.
+
+**Result: the same top-1 on 39/40.** Scores were within 0.01 on 36 clips and at most 0.024 on the rest; the small gap is the Space's 16-bit WAV against the phone's float samples. Against the observers' species, top-1 was 26/40 on the phone and 27/40 on the Space (top-3: 31 and 32). These clips often record a different bird from the one observed, which is why accuracy is lower than the curated set in DECISIONS.md.
+
+**The one difference is the location model.** For the Tawny Owl (Cornwall, week 36), both paths score the owl 0.93 without location. The phone's location model gives *Strix aluco* 0.025, just under the 0.03 filter, so it's dropped. The Space's gives 0.030. The TF.js `area-model` shipped by BirdNET Live (converter v3.17, 6.8 MB) is an older location model than the one in v2.4's official release (`BirdNET_v2.4_tfjs.zip` → `model/mdata`, converter v4.16, 29 MB, same labels and `[lat, lon, week]` input). The Space's `meta-model.tflite` comes from that same release. At the same place and week the official model keeps 146 species against the old model's 112. BirdNET Live's repository hasn't changed its model since 6ab67ac.
+
+**Fix (not done).** Load the official `mdata` model instead. That adds ~22 MB to the download (about 82 MB in total), and it has to be hosted somewhere the app can fetch it, since it's only published inside the Zenodo zip. `scripts/mirror-birdnet-model.mjs` could put it in our Hugging Face mirror.
+
 ## Sources
 
 - BirdNET-Analyzer (code MIT, model licence and non-commercial note): https://github.com/birdnet-team/BirdNET-Analyzer

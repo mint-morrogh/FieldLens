@@ -138,7 +138,8 @@ Builds on the Field Journal and naturalist rank (done 2026-09-28). No rarity sco
   - [x] Audio windowing and ranking prototype (`src/features/listen/birdnet/`).
   - [x] Fix `microphone=()` in `vercel.json`: it blocked Bird calls on the deployed site (now `microphone=(self)`).
   - [x] Opt-in on-device mode (owner OK'd the non-commercial licence, 2026-09-28): Settings toggle with download/progress/remove and BirdNET credit; TF.js worker (WebGL, WASM fallback); model from the BirdNET team's files on jsDelivr (pinned, SHA-256 checked) in its own cache with the licence file; only the result is sent for enrichment; Space fallback. Matches the Space on 4 real clips (scores within 0.0001). See §7 of the research doc.
-  - [ ] Check against the Space on the 40-clip set (same top-1 on ≥ 39/40).
+  - [x] Check against the Space on the 40-clip set (same top-1 on ≥ 39/40): 39/40 on 40 new iNaturalist clips (2026-09-29), scores within 0.01 on 36 clips and ≤ 0.024 on all. See docs/research/birdnet-browser.md §8.
+  - [ ] The one miss comes from the location model: the TF.js `area-model` from BirdNET Live is older than v2.4's official metadata model (which the Space uses) and lets through ~25% fewer species. Switching needs the official 29 MB TF.js `mdata` model hosted somewhere the app can fetch (e.g. our HF mirror).
   - [ ] Measure on a real mid-range Android and an iPhone (load, warm ID time, memory; does Safari's worker WebGL pass or fall back to WASM?).
 - [ ] Fix the TypeScript warnings in Vercel's build log.
   - [x] Local build is clean: `api/tsconfig.json` type-checks with no errors, and the >500 kB chunk warning is fixed (screens off the photo path load lazily; React/zod/idb in a `vendor` chunk).
