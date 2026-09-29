@@ -143,7 +143,7 @@ Builds on the Field Journal and naturalist rank (done 2026-09-28). No rarity sco
 - [ ] Fix the TypeScript warnings in Vercel's build log.
   - [x] Local build is clean: `api/tsconfig.json` type-checks with no errors, and the >500 kB chunk warning is fixed (screens off the photo path load lazily; React/zod/idb in a `vendor` chunk).
   - [ ] Confirm on the next Vercel deploy's build log; if warnings remain, paste them here.
-- [ ] Optional: ask iNaturalist about paid partner access to their vision model.
+- ~~Optional: ask iNaturalist about paid partner access to their vision model.~~ Not needed for now (owner, 2026-09-29).
 
 ## Gamification: looking back
 
