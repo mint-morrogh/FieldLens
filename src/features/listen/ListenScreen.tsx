@@ -13,6 +13,7 @@ import { displayName } from '../../lib/format';
 import { newId } from '../../lib/ids';
 import { useSession } from '../identification/SessionContext';
 import { useLocationState } from '../location/LocationContext';
+import { OnDevicePrompt } from './birdnet/OnDevicePrompt';
 import { stopBirdnet } from './birdnet/client';
 import { identifyOnDevice, prewarmOnDevice } from './birdnet/onDevice';
 
@@ -22,7 +23,7 @@ import { identifyOnDevice, prewarmOnDevice } from './birdnet/onDevice';
  * history keeps the spectrogram drawn while listening, as the "photo" for that find.
  * With "Identify bird calls on this device" on and the model downloaded, BirdNET runs here
  * instead and only its result is sent (for names, ranges and facts); if it can't run, the
- * recording goes to the Space as usual.
+ * recording goes to the Space as usual. Without the model, the screen offers the download.
  */
 export const MIN_SECONDS = 3;
 export const MAX_SECONDS = 15;
@@ -268,6 +269,8 @@ export function ListenScreen() {
         </span>
         <span className="w-11" aria-hidden />
       </div>
+
+      <OnDevicePrompt busy={status !== 'idle' && status !== 'error'} />
 
       <div className="relative mx-4 mt-6 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-[#0d120f]">
         <canvas
