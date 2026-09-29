@@ -308,6 +308,23 @@ test('mushrooms get the safety package', async ({ page }) => {
   await expect(page.getByTestId('result-view')).toContainText('Never eat a wild mushroom');
 });
 
+test('demo look-alikes show reference photos next to the warnings', async ({ page }) => {
+  // Keep the test offline: the demo's photos are real iNaturalist URLs.
+  await page.route('https://inaturalist-open-data.s3.amazonaws.com/**', (route) =>
+    route.fulfill({ path: 'tests/fixtures/leaf.png', contentType: 'image/png' }),
+  );
+  await page.goto('/?mock=lookalike');
+  await choosePhoto(page);
+  await pickCategory(page, 'Plant');
+  await identifySelection(page);
+  await expect(page.getByTestId('result-headline')).toContainText('Allium tricoccum');
+  const safety = page.getByTestId('safety');
+  await expect(safety).toContainText('lily of the valley', { ignoreCase: true });
+  await expect(safety.getByTestId('lookalike-photo').first()).toBeVisible();
+  await expect(safety.getByRole('img', { name: /Reference photo of/ }).first()).toBeVisible();
+  await expect(safety.getByTestId('lookalike-credit').first()).toContainText('iNaturalist');
+});
+
 test('birds are identified with an experimental label and no edibility section', async ({
   page,
 }) => {

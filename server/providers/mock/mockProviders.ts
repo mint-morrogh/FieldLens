@@ -31,6 +31,7 @@ import {
   BIRD_FIXTURES,
   FUNGUS_FIXTURES,
   INSECT_FIXTURES,
+  LOOKALIKE_FIXTURES,
   MAMMAL_FIXTURES,
   NEARBY_FIXTURES,
   findFixture,
@@ -99,11 +100,13 @@ export class MockIdentificationProvider implements IdentificationProvider {
       return { provider: this.name, candidates: [], attribution: [MOCK_ATTRIBUTION] };
 
     const set =
-      this.scenario === 'medium'
-        ? FIXTURES.medium
-        : this.scenario === 'low'
-          ? FIXTURES.low
-          : FIXTURES.high;
+      this.scenario === 'lookalike'
+        ? LOOKALIKE_FIXTURES
+        : this.scenario === 'medium'
+          ? FIXTURES.medium
+          : this.scenario === 'low'
+            ? FIXTURES.low
+            : FIXTURES.high;
     // Extra photos nudge the top score upward, mimicking multi-image fusion.
     const boost = Math.min(0.12, (input.images.length - 1) * 0.06);
     const candidates = set.map((s, i) => ({
@@ -338,6 +341,35 @@ export function createMockProviders(scenario: MockScenario = 'high'): ProviderSe
       getMammalCandidates: async () =>
         MAMMAL_FIXTURES.map((s) => ({ name: s.scientificName, common: s.commonNames[0] })),
     },
+    referencePhotos: new MockReferencePhotoProvider(),
     mock: true,
   };
+}
+
+/** Real, openly licensed iNaturalist photos for the look-alikes named in the demo's warnings. */
+const DEMO_LOOKALIKE_PHOTOS: Record<string, LicensedImage> = {
+  convallaria: {
+    url: 'https://inaturalist-open-data.s3.amazonaws.com/photos/129833718/medium.jpeg',
+    thumbnailUrl: 'https://inaturalist-open-data.s3.amazonaws.com/photos/129833718/square.jpeg',
+    author: '(c) prellinchen, some rights reserved (CC BY-NC)',
+    license: 'CC-BY-NC',
+    source: 'iNaturalist',
+    sourceUrl: 'https://www.inaturalist.org/taxa/48206',
+  },
+  veratrum: {
+    url: 'https://inaturalist-open-data.s3.amazonaws.com/photos/491949/medium.JPG',
+    thumbnailUrl: 'https://inaturalist-open-data.s3.amazonaws.com/photos/491949/square.JPG',
+    author: '(c) 101595408250610106310, some rights reserved (CC BY)',
+    license: 'CC-BY',
+    source: 'iNaturalist',
+    sourceUrl: 'https://www.inaturalist.org/taxa/79484',
+  },
+};
+
+class MockReferencePhotoProvider {
+  readonly name = 'Mock iNaturalist photos';
+  async getReferencePhoto(taxon: TaxonIdentity): Promise<LicensedImage | undefined> {
+    const name = taxon.scientificName.toLowerCase();
+    return DEMO_LOOKALIKE_PHOTOS[name] ?? DEMO_LOOKALIKE_PHOTOS[name.split(' ')[0]];
+  }
 }

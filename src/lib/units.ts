@@ -53,3 +53,8 @@ export function localizeMeasurements(text: string, units: Units): string {
 export function useAreaSize(km = 10): string {
   return formatAreaSize(km, useSetting('units'));
 }
+
+/** "1 km" or "0.6 mi": a single coarse distance in the person's units. */
+export function useDistance(km: number): string {
+  return formatDistance(km, useSetting('units'));
+}

@@ -40,4 +40,5 @@ export const MOCK_SCENARIO_OPTIONS = [
   { id: 'auto-bug', label: '“Not sure” → insect' },
   { id: 'auto-animal', label: '“Not sure” → amphibian' },
   { id: 'person', label: 'Photo of a person' },
+  { id: 'lookalike', label: 'Edible plant with look-alikes' },
 ];

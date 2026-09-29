@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/ui';
 import { detectPlatform, locationUnblockSteps } from '../../lib/platform';
+import { useDistance } from '../../lib/units';
 import { useLocationState } from './LocationContext';
 
 /**
@@ -10,6 +11,7 @@ import { useLocationState } from './LocationContext';
  * identification. If the browser has location blocked, shows how to unblock it.
  */
 export function LocationFixCard({ onRetry }: { onRetry: () => void }) {
+  const fine = useDistance(1);
   const { status, request } = useLocationState();
   const [failed, setFailed] = useState(false);
   const blocked = status === 'denied' || failed;
@@ -54,7 +56,7 @@ export function LocationFixCard({ onRetry }: { onRetry: () => void }) {
             </>
           ) : (
             <p className="mt-1 text-ink-soft">
-              Adding your approximate location (about 1 km) checks which species are actually
+              Adding your approximate location (about {fine}) checks which species are actually
               recorded near you and fills in the iNaturalist card.
             </p>
           )}

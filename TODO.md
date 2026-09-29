@@ -69,7 +69,7 @@ Extra signals that nudge ranking. Like the range maps, each is a capped adjustme
   - Done: `src/features/live/framePolicy.ts` (pure policy). Low battery (<20%, not charging) slows the loop to 300 ms; a rising per-tick processing time (warm or throttled phone) backs it off up to 600 ms; data saver sends at most 8 frames per session (vs 15), waits longer between scans, and uploads 1024 px crops. A quiet "Low battery · Cooling down · Data saver" line shows under the Live pill.
 - [x] **Settings page, expanded.** The first version holds today's identification usage. Add the "Name it first" toggle, units (metric/imperial), data saver, clear data, and the default camera mode (photo or live).
   - Settings live in `src/lib/settings.ts` (`useSettings()`, `useSetting(key)`, `getSetting(key)`, `setSetting(key, value)`). Units default from the device locale (imperial for the US).
-  - [ ] Units still metric: the "about 10 km from your usual spots" weekly-goal text (`journal/goals.ts`, built outside React) and the ~1 km / ~11 km notes on the privacy and location screens.
+  - [x] Units now also cover the weekly-goal text and the ~1 km / ~10 km notes on the privacy and location screens.
 - [x] **Install prompt.** A gentle "Add FieldLens to your home screen" nudge after the second use, so it opens full-screen like a native app (beforeinstallprompt on Android/Chrome; short instructions on iOS Safari).
 - [x] **Live identify button: one green play circle.** The viewfinder shutter shows the black play icon inside the green shutter circle, a circle within a circle. Make the play icon itself the green button: a single green circle with the play triangle cut out, keeping the focus arc and ripple around it.
 - [x] **Journal link: icon only.** In the top bar, show just the journal (book) icon instead of icon + "Journal", like the info and settings icons beside it. Keep an accessible label ("Field Journal") and the active state.
@@ -127,9 +127,10 @@ Builds on the Field Journal and naturalist rank (done 2026-09-28). No rarity sco
 
 - [ ] Grow the curated high-risk list (`server/safety/highRisk.ts`), ideally reviewed by a local botanist/mycologist.
   - [x] 22 non-Wikipedia-sourced entries and 6 look-alike links added (2026-09-28).
-  - [ ] Re-source the older Wikipedia-cited entries; expert review still wanted.
+  - [x] Re-source the older Wikipedia-cited entries: all 27 now cite NC State Extension, MedlinePlus, CDC NIOSH, Poison Control, NY DEC, Illinois Extension, NAMA, BAMS, UBC Beaty Museum or MykoWeb; no Wikipedia left (test-enforced). Lily of the valley lowered to "toxic" per MedlinePlus/NC State (2026-09-28).
+  - [ ] Expert review of the curated notes still wanted.
 - [x] Show look-alike reference photos next to look-alike warnings.
-  - [ ] Add a mock species with a look-alike so the photos show in demo mode.
+  - [x] Add a mock species with a look-alike so the photos show in demo mode (`?mock=lookalike`: ramps, with lily of the valley and false hellebore).
 
 - [ ] Delete the Hugging Face write token (`HF_DEPLOY_TOKEN` in `.env.local`, “fieldlens-setup” on huggingface.co) when not actively changing `hf-space/`.
 - [ ] Bird sound ID with BirdNET running in the browser (check licence before any public launch).

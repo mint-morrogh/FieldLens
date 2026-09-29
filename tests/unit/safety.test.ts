@@ -5,7 +5,12 @@ import {
   INaturalistObservationProvider,
   INaturalistTaxonPhotosProvider,
 } from '../../server/providers/inaturalist/inaturalistProvider';
-import { findHighRisk, findLookalikes } from '../../server/safety/highRisk';
+import {
+  DANGEROUS_LOOKALIKES,
+  HIGH_RISK,
+  findHighRisk,
+  findLookalikes,
+} from '../../server/safety/highRisk';
 import {
   attachLookalikePhotos,
   fetchLookalikePhotos,
@@ -165,6 +170,23 @@ describe('graded sources', () => {
       expect(e.note.toLowerCase()).not.toMatch(/\bsafe\b/);
     }
   });
+  it('cites a named non-Wikipedia source for every curated entry and look-alike', () => {
+    // Taxa still allowed to cite Wikipedia (none at present).
+    const WIKIPEDIA_ALLOWLIST: string[] = [];
+    const lookalikes = Object.keys(DANGEROUS_LOOKALIKES).flatMap((k) => findLookalikes(k));
+    // Every look-alike key resolves, including the false chanterelle outside HIGH_RISK.
+    expect(lookalikes.length).toBe(Object.values(DANGEROUS_LOOKALIKES).flat().length);
+    const entries = [...HIGH_RISK, ...lookalikes];
+    for (const e of entries) {
+      expect(e.sourceUrl, e.taxon).toMatch(/^https:\/\//);
+      expect(e.note.toLowerCase(), e.taxon).not.toMatch(/\bsafe\b/);
+      if (WIKIPEDIA_ALLOWLIST.includes(e.taxon)) continue;
+      expect(e.sourceUrl, e.taxon).not.toMatch(/wikipedia\.org/);
+      expect(e.source, e.taxon).toBeTruthy();
+      expect(e.source, e.taxon).not.toMatch(/wikipedia/i);
+    }
+    expect(findHighRisk('Convallaria majalis')?.severity).toBe('toxic');
+  });
   it('resolves the added look-alikes', () => {
     expect(findLookalikes('Allium ursinum').map((e) => e.taxon)).toEqual([
       'colchicum autumnale',
@@ -201,7 +223,7 @@ describe('buildSafety', () => {
     expect(safety.topToxic).toBe(true);
     expect(safety.statements.map((s) => s.source)).toEqual(
       expect.arrayContaining([
-        'Wikipedia (summarised by FieldLens)',
+        'NC State Extension — Solanum dulcamara',
         'TPPT toxic plant database (Agroscope)',
       ]),
     );

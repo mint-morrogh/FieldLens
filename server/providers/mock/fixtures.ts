@@ -19,6 +19,7 @@ export const MOCK_SCENARIOS = [
   'auto-bug',
   'auto-animal',
   'person',
+  'lookalike',
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -70,6 +71,39 @@ const GOLDENROD = {
 const TREE_SEASON = [2, 3, 8, 70, 60, 98, 71, 56, 71, 65, 12, 1];
 const SUMMER_FLOWER = [0, 0, 1, 4, 20, 60, 90, 85, 50, 12, 2, 0];
 const LATE_SUMMER = [0, 0, 0, 1, 3, 10, 40, 95, 110, 30, 3, 0];
+
+const ONION = {
+  genus: 'Allium',
+  genusKey: 9624496,
+  family: 'Amaryllidaceae',
+  familyKey: 7682,
+  order: 'Asparagales',
+};
+const SPRING_GREENS = [0, 0, 6, 70, 85, 30, 12, 6, 2, 0, 0, 0];
+
+/** Ramps: an edible plant with dangerous look-alikes, so demo mode shows look-alike warnings. */
+export const LOOKALIKE_FIXTURES: FixtureSpecies[] = [
+  {
+    scientificName: 'Allium tricoccum',
+    authorship: 'Aiton',
+    commonNames: ['Ramps', 'Wild leek'],
+    score: 0.9,
+    gbifKey: 2856301,
+    ...ONION,
+    radiusCounts: [6, 80, 640],
+    monthCounts: SPRING_GREENS,
+  },
+  {
+    scientificName: 'Allium burdickii',
+    authorship: '(Hanes) A.G.Jones',
+    commonNames: ['Narrow-leaved wild leek'],
+    score: 0.05,
+    gbifKey: 2857170,
+    ...ONION,
+    radiusCounts: [0, 6, 40],
+    monthCounts: SPRING_GREENS,
+  },
+];
 
 export const FIXTURES: Record<'high' | 'medium' | 'low', FixtureSpecies[]> = {
   high: [
@@ -440,6 +474,7 @@ export const ALL_FIXTURE_SPECIES = [
   ...BIRD_FIXTURES,
   ...AMPHIBIAN_FIXTURES,
   ...MAMMAL_FIXTURES,
+  ...LOOKALIKE_FIXTURES,
 ];
 
 export function findFixture(scientificName: string): FixtureSpecies | undefined {

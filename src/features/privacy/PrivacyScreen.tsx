@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { APP_VERSION } from '../../../shared/config';
 import { Button, Card, ExternalLink, Notice } from '../../components/ui';
 import { BRAND } from '../../config/brand';
+import { useAreaSize, useDistance } from '../../lib/units';
 import { clearAllLocalData } from '../history/historyStore';
 
 export function PrivacyScreen() {
+  const fine = useDistance(1);
+  const coarse = useAreaSize(10);
   const [cleared, setCleared] = useState(false);
   return (
     <div className="space-y-4">
@@ -30,10 +33,10 @@ export function PrivacyScreen() {
             keeps only the picture of the sound (a spectrogram).
           </li>
           <li>
-            Location is optional. If you allow it, an approximate position (rounded to about 1 km)
+            Location is optional. If you allow it, an approximate position (rounded to about {fine})
             is used to check which species are recorded nearby on GBIF, iNaturalist and eBird, and
-            which are expected there from iNaturalist’s range maps. A coarser position (about 10 km)
-            is sent to Open-Meteo to look up the ground elevation.
+            which are expected there from iNaturalist’s range maps. A coarser position (about{' '}
+            {coarse}) is sent to Open-Meteo to look up the ground elevation.
           </li>
           <li>
             With each identification, FieldLens also sends the local hour the photo was taken and,
@@ -43,18 +46,18 @@ export function PrivacyScreen() {
           <li>{BRAND.name} does not intentionally store your location or photos on its servers.</li>
           <li>
             For photos from your library, FieldLens can read the location saved in the photo — on
-            your device, only if you choose “Where the photo was taken” — and rounds it to about 1
-            km before using it.
+            your device, only if you choose “Where the photo was taken” — and rounds it to about{' '}
+            {fine} before using it.
           </li>
           <li>
-            Your history (a thumbnail, a larger copy of your photo, the result, and a coarse ~10 km
-            area label) stays in this browser’s local storage.
+            Your history (a thumbnail, a larger copy of your photo, the result, and a coarse ~
+            {coarse} area label) stays in this browser’s local storage.
           </li>
           <li>
             If you’re offline, a photo can be saved to identify later. Until it’s identified, this
             browser keeps the cropped photo, an EXIF-free copy for your journal, when it was taken,
-            and the same approximate position (about 1 km) the identification would send. It’s sent
-            automatically once you’re back online, and then the saved copy and its position are
+            and the same approximate position (about {fine}) the identification would send. It’s
+            sent automatically once you’re back online, and then the saved copy and its position are
             deleted; removing it from the list deletes it too. If you allow notifications, they’re
             shown silently by your device and nothing extra is sent.
           </li>

@@ -8,12 +8,10 @@
  * - Prefer genus-level entries when several species in the genus are dangerous.
  * - Species entries take precedence over the genus entry, so a species note can be
  *   more specific (and better sourced) than its genus note.
- * - Prefer poison centres, health agencies, extension services, mycological
- *   societies and peer-reviewed toxicology over Wikipedia; set `source` when the
- *   page isn't Wikipedia. Non-Wikipedia sources checked 2026-09-28.
+ * - Cite poison centres, health agencies, extension services, mycological
+ *   societies, museums and peer-reviewed toxicology, not Wikipedia; always set
+ *   `source`. All sources checked 2026-09-28.
  */
-
-const wiki = (title: string) => `https://en.wikipedia.org/wiki/${title}`;
 
 export type HighRiskEntry = {
   /** Lower-case genus, or "genus species". */
@@ -21,7 +19,7 @@ export type HighRiskEntry = {
   commonName: string;
   note: string;
   severity: 'deadly' | 'toxic' | 'skin' | 'caution';
-  /** Publisher and page, when the source isn't Wikipedia. */
+  /** Publisher and page. Optional only for the safety.ts fallback; every entry here sets it. */
   source?: string;
   sourceUrl: string;
 };
@@ -31,6 +29,11 @@ const pmc = (id: string) => `https://pmc.ncbi.nlm.nih.gov/articles/${id}/`;
 const CDC_AMANITA_2026 = {
   source: 'CDC MMWR — Amanita species mushroom poisonings, Northern California, 2025–2026',
   sourceUrl: 'https://www.cdc.gov/mmwr/volumes/75/wr/mm7520a2.htm',
+};
+const ncsu = (slug: string) => `https://plants.ces.ncsu.edu/plants/${slug}/`;
+const NAMA_SYNDROMES = {
+  source: 'North American Mycological Association — Mushroom poisoning syndromes',
+  sourceUrl: 'https://namyco.org/mushroom-poisoning-syndromes/',
 };
 const BAMS_AMATOXIN = {
   source: 'Bay Area Mycological Society — Amatoxin poisonings',
@@ -43,120 +46,138 @@ export const HIGH_RISK: HighRiskEntry[] = [
     taxon: 'cicuta',
     commonName: 'water hemlock',
     severity: 'deadly',
-    note: 'Water hemlocks are highly poisonous; eating even a small amount can be fatal.',
-    sourceUrl: wiki('Cicuta'),
+    note: 'Water hemlocks are highly poisonous and may be fatal if eaten. All parts are poisonous, and the roots are the most poisonous part.',
+    source: 'NC State Extension — Cicuta maculata',
+    sourceUrl: ncsu('cicuta-maculata'),
   },
   {
     taxon: 'conium maculatum',
     commonName: 'poison hemlock',
     severity: 'deadly',
-    note: 'All parts of poison hemlock are highly poisonous to people and animals.',
-    sourceUrl: wiki('Conium_maculatum'),
+    note: 'All parts of poison hemlock are highly poisonous to people and animals and may be fatal if eaten.',
+    source: 'NC State Extension — Conium maculatum',
+    sourceUrl: ncsu('conium-maculatum'),
   },
   {
     taxon: 'actaea',
     commonName: 'baneberry',
     severity: 'toxic',
-    note: 'Baneberry plants, including their bright berries, are poisonous.',
-    sourceUrl: wiki('Actaea_rubra'),
+    note: 'All parts of baneberry are poisonous, mainly the bright berries and the roots.',
+    source: 'NC State Extension — Actaea pachypoda',
+    sourceUrl: ncsu('actaea-pachypoda'),
   },
   {
     taxon: 'taxus',
     commonName: 'yew',
     severity: 'deadly',
-    note: 'Almost all parts of yews, including the seed inside the red berry, are poisonous.',
-    sourceUrl: wiki('Taxus'),
+    note: 'Yews are poisonous and may be fatal if eaten; the leaves, bark, berries and seeds are all poisonous.',
+    source: 'NC State Extension — Taxus',
+    sourceUrl: ncsu('taxus'),
   },
   {
     taxon: 'solanum dulcamara',
     commonName: 'bittersweet nightshade',
     severity: 'toxic',
-    note: 'Bittersweet nightshade is poisonous; its bright red berries are a risk to children.',
-    sourceUrl: wiki('Solanum_dulcamara'),
+    note: 'All parts of bittersweet nightshade are poisonous to people, pets and livestock; its bright red berries are a risk to children.',
+    source: 'NC State Extension — Solanum dulcamara',
+    sourceUrl: ncsu('solanum-dulcamara'),
   },
   {
     taxon: 'atropa',
     commonName: 'deadly nightshade',
     severity: 'deadly',
-    note: 'Deadly nightshade is highly toxic, including its berries.',
-    sourceUrl: wiki('Atropa_belladonna'),
+    note: 'The leaves, roots and berries of deadly nightshade are highly toxic, and larger doses can kill.',
+    source: 'NC State Extension — Atropa bella-donna',
+    sourceUrl: ncsu('atropa-bella-donna'),
   },
   {
     taxon: 'phytolacca',
     commonName: 'pokeweed',
     severity: 'toxic',
-    note: 'Pokeweed is poisonous, especially the roots and berries.',
-    sourceUrl: wiki('Phytolacca_americana'),
+    note: 'The whole pokeweed plant is poisonous. Eating the roots has caused serious poisonings, and eating several berries can cause stomach pain, vomiting and diarrhea.',
+    source: 'Poison Control (US National Capital Poison Center) — Pokeberries: a grape look-alike',
+    sourceUrl: 'https://www.poison.org/articles/pokeberries-and-grapes-look-alike',
   },
   {
     taxon: 'menispermum',
     commonName: 'moonseed',
     severity: 'toxic',
-    note: 'Moonseed fruit is poisonous and is easily confused with wild grapes.',
-    sourceUrl: wiki('Menispermum_canadense'),
+    note: 'Moonseed fruit is poisonous and is easily confused with wild grapes. Each moonseed fruit has a single crescent-shaped seed; grapes have round seeds.',
+    source: 'NC State Extension — Menispermum canadense',
+    sourceUrl: ncsu('menispermum-canadense'),
   },
   {
     taxon: 'aconitum',
     commonName: 'monkshood',
     severity: 'deadly',
-    note: 'Monkshoods are highly poisonous.',
-    sourceUrl: wiki('Aconitum'),
+    note: 'All parts of monkshood are poisonous and may be fatal to people and pets if eaten.',
+    source: 'NC State Extension — Aconitum',
+    sourceUrl: ncsu('aconitum'),
   },
   {
     taxon: 'digitalis',
     commonName: 'foxglove',
     severity: 'deadly',
-    note: 'Foxglove contains cardiac glycosides and is poisonous.',
-    sourceUrl: wiki('Digitalis_purpurea'),
+    note: 'Foxglove contains cardiac glycosides and is highly poisonous if eaten; poisoning can cause an irregular heartbeat and death.',
+    source: 'NC State Extension — Digitalis purpurea',
+    sourceUrl: ncsu('digitalis-purpurea'),
   },
   {
+    // MedlinePlus: "Death is unlikely"; NC State rates poison severity "Low". Was 'deadly'.
     taxon: 'convallaria',
     commonName: 'lily of the valley',
-    severity: 'deadly',
-    note: 'All parts of lily of the valley are highly poisonous.',
-    sourceUrl: wiki('Convallaria_majalis'),
+    severity: 'toxic',
+    note: 'The flowers, berries and leaves of lily of the valley are poisonous. Poisoning can affect the heartbeat and may need a hospital stay.',
+    source: 'MedlinePlus — Lily of the valley poisoning',
+    sourceUrl: 'https://medlineplus.gov/ency/article/002882.htm',
   },
   {
     taxon: 'veratrum',
     commonName: 'false hellebore',
     severity: 'deadly',
-    note: 'False hellebores are highly toxic.',
-    sourceUrl: wiki('Veratrum_viride'),
+    note: 'False hellebores contain steroidal alkaloids; the flowers, fruits, leaves, roots and stems are highly poisonous.',
+    source: 'NC State Extension — Veratrum viride',
+    sourceUrl: ncsu('veratrum-viride'),
   },
   {
     taxon: 'kalmia',
     commonName: 'laurel (Kalmia)',
     severity: 'toxic',
-    note: 'Kalmia laurels are poisonous to people and livestock.',
-    sourceUrl: wiki('Kalmia'),
+    note: 'Kalmia laurels contain grayanotoxins and are poisonous to people, pets and livestock.',
+    source: 'NC State Extension — Kalmia latifolia',
+    sourceUrl: ncsu('kalmia-latifolia'),
   },
   {
     taxon: 'arisaema',
     commonName: 'jack-in-the-pulpit',
     severity: 'toxic',
-    note: 'Raw jack-in-the-pulpit contains calcium oxalate crystals that cause intense burning and swelling.',
-    sourceUrl: wiki('Arisaema_triphyllum'),
+    note: 'Jack-in-the-pulpit contains calcium oxalate crystals; eating it causes severe mouth pain and swelling of the lips, tongue and throat.',
+    source: 'NC State Extension — Arisaema triphyllum',
+    sourceUrl: ncsu('arisaema-triphyllum'),
   },
   {
     taxon: 'toxicodendron',
     commonName: 'poison ivy / poison sumac',
     severity: 'skin',
-    note: 'Touching these plants can cause a severe itchy rash (urushiol).',
-    sourceUrl: wiki('Toxicodendron_radicans'),
+    note: 'The oil in these plants (urushiol) causes an itchy, blistering rash in most people, even in tiny amounts. After contact, wash the skin right away with soap and plenty of water.',
+    source: 'CDC NIOSH — Poisonous plants',
+    sourceUrl: 'https://www.cdc.gov/niosh/outdoor-workers/about/poisonous-plants.html',
   },
   {
     taxon: 'heracleum mantegazzianum',
     commonName: 'giant hogweed',
     severity: 'skin',
-    note: 'Giant hogweed sap can cause serious burns on skin exposed to sunlight.',
-    sourceUrl: wiki('Heracleum_mantegazzianum'),
+    note: 'Giant hogweed sap and sunlight together can cause serious burns and blisters. After contact, wash with soap and water as soon as possible and keep the skin out of the sun for 48 hours.',
+    source: 'New York State DEC — Giant hogweed',
+    sourceUrl: 'https://dec.ny.gov/nature/animals-fish-plants/plants/harmful-plants/giant-hogweed',
   },
   {
     taxon: 'pastinaca sativa',
     commonName: 'wild parsnip',
     severity: 'skin',
-    note: 'Wild parsnip sap can cause burns and blisters on skin exposed to sunlight.',
-    sourceUrl: wiki('Pastinaca_sativa'),
+    note: 'Wild parsnip sap on skin exposed to sunlight can cause burns and blisters. After contact, wash the skin right away.',
+    source: 'University of Illinois Extension — Invasive wild parsnip',
+    sourceUrl: 'https://extension.illinois.edu/invasives/invasive-wild-parsnip',
   },
   {
     taxon: 'oenanthe crocata',
@@ -246,64 +267,67 @@ export const HIGH_RISK: HighRiskEntry[] = [
     taxon: 'amanita',
     commonName: 'amanitas',
     severity: 'deadly',
-    note: 'The genus includes the death cap and destroying angels, responsible for most fatal mushroom poisonings.',
-    sourceUrl: wiki('Amanita'),
+    note: 'The genus includes the death caps and destroying angels, which cause the vast majority of fatal mushroom poisonings worldwide.',
+    ...BAMS_AMATOXIN,
   },
   {
     taxon: 'galerina',
     commonName: 'galerinas',
     severity: 'deadly',
-    note: 'Some Galerina species (e.g. the funeral bell) contain the same deadly toxins as the death cap.',
-    sourceUrl: wiki('Galerina_marginata'),
+    note: 'Some Galerina species, such as the deadly galerina, contain amatoxins at levels rivalling the death cap. Cooking does not destroy them.',
+    source: 'Beaty Biodiversity Museum (UBC) — Galerina marginata',
+    sourceUrl: 'https://explore.beatymuseum.ubc.ca/mushroomsup/G_marginata.html',
   },
   {
     taxon: 'lepiota',
     commonName: 'lepiotas',
     severity: 'deadly',
-    note: 'Several small Lepiota species are deadly poisonous.',
-    sourceUrl: wiki('Lepiota'),
+    note: 'Small Lepiota species, often with pinkish tones, have caused deadly poisonings.',
+    ...BAMS_AMATOXIN,
   },
   {
     taxon: 'gyromitra',
     commonName: 'false morels',
     severity: 'deadly',
-    note: 'False morels contain gyromitrin and can be deadly.',
-    sourceUrl: wiki('Gyromitra_esculenta'),
+    note: 'False morels contain gyromitrin and have caused severe illness and, in a few cases, death through damage to red blood cells and the liver.',
+    source: 'Beaty Biodiversity Museum (UBC) — Gyromitra esculenta',
+    sourceUrl: 'https://explore.beatymuseum.ubc.ca/mushroomsup/G_esculenta.html',
   },
   {
     taxon: 'cortinarius',
     commonName: 'webcaps',
     severity: 'deadly',
-    note: 'Some webcaps contain orellanine, which can cause kidney failure days after eating.',
-    sourceUrl: wiki('Cortinarius'),
+    note: 'Some webcaps contain orellanine, which causes kidney failure. Symptoms appear 36 hours to 3 weeks after eating.',
+    ...NAMA_SYNDROMES,
   },
   {
     taxon: 'inocybe',
     commonName: 'fibrecaps',
     severity: 'toxic',
-    note: 'Many Inocybe species contain muscarine and are poisonous.',
-    sourceUrl: wiki('Inocybe'),
+    note: 'Inocybe species contain muscarine and are poisonous. Symptoms usually start within 15–30 minutes.',
+    ...NAMA_SYNDROMES,
   },
   {
     taxon: 'clitocybe',
     commonName: 'funnel caps',
     severity: 'toxic',
-    note: 'Some Clitocybe species contain muscarine and are poisonous.',
-    sourceUrl: wiki('Clitocybe'),
+    note: 'Some Clitocybe species, such as C. rivulosa, contain muscarine and are poisonous.',
+    ...NAMA_SYNDROMES,
   },
   {
     taxon: 'omphalotus',
     commonName: "jack-o'-lantern mushroom",
     severity: 'toxic',
-    note: "Jack-o'-lantern mushrooms are poisonous and are often mistaken for chanterelles.",
-    sourceUrl: wiki('Omphalotus_illudens'),
+    note: "Jack-o'-lanterns are poisonous and have been mistaken for chanterelles. They grow on wood (which may be buried) and have true, deep gills and orange flesh.",
+    source: 'Bay Area Mycological Society — Other toxic mushrooms',
+    sourceUrl: 'https://bayareamushrooms.org/poisonings/non_fatal.html',
   },
   {
     taxon: 'chlorophyllum molybdites',
     commonName: 'green-spored parasol',
     severity: 'toxic',
-    note: 'The green-spored parasol is poisonous and can cause serious vomiting and diarrhea.',
-    sourceUrl: wiki('Chlorophyllum_molybdites'),
+    note: 'The green-spored parasol is the most common mushroom cause of poisoning in North America, with severe vomiting and diarrhea.',
+    ...NAMA_SYNDROMES,
   },
   {
     taxon: 'amanita phalloides',
@@ -410,8 +434,9 @@ const HYGROPHOROPSIS: HighRiskEntry = {
   taxon: 'hygrophoropsis aurantiaca',
   commonName: 'false chanterelle',
   severity: 'caution',
-  note: 'The false chanterelle is easily confused with true chanterelles.',
-  sourceUrl: wiki('Hygrophoropsis_aurantiaca'),
+  note: 'The false chanterelle is easily confused with true chanterelles, which are much fleshier and have blunt ridges rather than true gills. Some authors list it as poisonous.',
+  source: 'MykoWeb (California Fungi) — Hygrophoropsis aurantiaca',
+  sourceUrl: 'https://www.mykoweb.com/CAF/species/Hygrophoropsis_aurantiaca.html',
 };
 
 const ALL_ENTRIES = [...HIGH_RISK, HYGROPHOROPSIS];

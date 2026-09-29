@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { CategoryIcon } from '../../components/CategoryIcon';
 import { Card } from '../../components/ui';
+import { useSetting } from '../../lib/settings';
+import { localizeMeasurements } from '../../lib/units';
 import type { ObservationRecord } from '../history/historyStore';
 import { goalStreak, weeklyGoals, type Goal } from './goals';
 
@@ -54,6 +56,7 @@ export function WeeklyGoalsCard({
   /** For tests; defaults to the current time. */
   now?: Date;
 }) {
+  const units = useSetting('units');
   const at = useMemo(() => now ?? new Date(), [now]);
   const week = useMemo(() => weeklyGoals(records, at), [records, at]);
   const streak = useMemo(() => goalStreak(records, at), [records, at]);
@@ -95,7 +98,9 @@ export function WeeklyGoalsCard({
               <span className={`block font-bold leading-tight ${g.met ? 'text-moss' : ''}`}>
                 {g.title}
               </span>
-              <span className="block text-sm text-ink-muted">{g.detail}</span>
+              <span className="block text-sm text-ink-muted">
+                {localizeMeasurements(g.detail, units)}
+              </span>
             </span>
             {g.need > 1 ? (
               <span
