@@ -2,16 +2,27 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { navigate } from '../../app/router';
 import { Icon } from '../../components/Icon';
 import { ClientError, identify } from '../../lib/api';
-import { canRecordAudio, newAudioContext, toCallWav } from '../../lib/audio';
+import {
+  CALL_SAMPLE_RATE,
+  canRecordAudio,
+  encodeWav,
+  newAudioContext,
+  toCallSamples,
+} from '../../lib/audio';
 import { displayName } from '../../lib/format';
 import { newId } from '../../lib/ids';
 import { useSession } from '../identification/SessionContext';
 import { useLocationState } from '../location/LocationContext';
+import { stopBirdnet } from './birdnet/client';
+import { identifyOnDevice, prewarmOnDevice } from './birdnet/onDevice';
 
 /**
  * Calls: records a few seconds of birdsong and identifies it with BirdNET.
  * The clip is decoded on the device and sent once as a short mono WAV. It's never stored:
  * history keeps the spectrogram drawn while listening, as the "photo" for that find.
+ * With "Identify bird calls on this device" on and the model downloaded, BirdNET runs here
+ * instead and only its result is sent (for names, ranges and facts); if it can't run, the
+ * recording goes to the Space as usual.
  */
 export const MIN_SECONDS = 3;
 export const MAX_SECONDS = 15;
@@ -66,14 +77,20 @@ export function ListenScreen() {
     r.raf = r.timer = r.stream = r.ctx = undefined;
   }, []);
 
-  useEffect(
-    () => () => {
-      rec.current.cancelled = true;
-      if (rec.current.recorder?.state === 'recording') rec.current.recorder.stop();
+  useEffect(() => {
+    // Load the on-device model (if it's in use) while the user records.
+    prewarmOnDevice();
+    const r = rec.current;
+    // React's development double mount runs the cleanup once before the real mount.
+    r.cancelled = false;
+    return () => {
+      r.cancelled = true;
+      if (r.recorder?.state === 'recording') r.recorder.stop();
       teardown();
-    },
-    [teardown],
-  );
+      // Frees the model's memory; it reloads from the cache next time.
+      stopBirdnet();
+    };
+  }, [teardown]);
 
   /** Scrolls the spectrogram one column per frame from the analyser. */
   const draw = useCallback((analyser: AnalyserNode, sampleRate: number) => {
@@ -101,8 +118,8 @@ export function ListenScreen() {
     async (clip: Blob) => {
       setStatus('analysing');
       try {
-        const [wav, location, spectrogram] = await Promise.all([
-          toCallWav(clip, MAX_SECONDS),
+        const [samples, location, spectrogram] = await Promise.all([
+          toCallSamples(clip, MAX_SECONDS),
           current().catch(() => undefined),
           new Promise<Blob | null>((resolve) =>
             canvasRef.current
@@ -111,12 +128,15 @@ export function ListenScreen() {
           ),
         ]);
         const capturedAt = new Date();
+        const birdnet = await identifyOnDevice(samples, { location, capturedAt });
+        const heard = birdnet?.results[0];
+        if (heard) setGuess(heard.common || heard.name);
         const result = await identify(
           {
             observationId: newId(),
             category: 'bird',
             images: [],
-            audio: wav,
+            ...(birdnet ? { birdnet } : { audio: encodeWav(samples, CALL_SAMPLE_RATE) }),
             location,
             capturedAt,
             timeSource: 'device',
@@ -127,7 +147,16 @@ export function ListenScreen() {
               if (top) setGuess(displayName(top));
             },
           },
-        );
+        ).catch((e: unknown) => {
+          // Offline, the on-device answer is still worth showing, even without the details.
+          if (heard && e instanceof ClientError && (e.code === 'offline' || e.code === 'network')) {
+            throw new ClientError(
+              e.code,
+              `On this device it sounds like ${heard.common || heard.name}. Connect to the internet to see the full result.`,
+            );
+          }
+          throw e;
+        });
         if (rec.current.cancelled) return;
         const image = spectrogram ?? new Blob([], { type: 'image/jpeg' });
         session.adoptResult(

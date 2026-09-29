@@ -1,3 +1,4 @@
+import type { OnDeviceCall } from '../../shared/onDeviceCall.js';
 import type {
   AnimalSign,
   ApproxLocation,
@@ -26,8 +27,16 @@ export type InputImage = {
   feature: FeatureId;
 };
 
-/** Calls: a validated mono 16-bit PCM WAV at `AUDIO.sampleRate`. */
-export type InputAudio = { data: Uint8Array; mimeType: 'audio/wav'; seconds: number };
+/**
+ * Calls: a validated mono 16-bit PCM WAV at `AUDIO.sampleRate`, or (with `onDevice`, and
+ * empty `data`) BirdNET's result from the phone, when the recording never left it.
+ */
+export type InputAudio = {
+  data: Uint8Array;
+  mimeType: 'audio/wav';
+  seconds: number;
+  onDevice?: OnDeviceCall;
+};
 
 export type IdentificationInput = {
   observationId: string;

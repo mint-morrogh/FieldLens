@@ -2,7 +2,13 @@ import { Fragment, useState } from 'react';
 import { getCategory, getTarget } from '../../../shared/categories';
 import { formatPercent } from '../../../shared/confidence';
 import { CANDIDATES } from '../../../shared/config';
-import { NOT_SURE, applyAnswers, contradicts, type Answers } from '../../../shared/questions';
+import {
+  NOT_SURE,
+  answersEarnSharpEye,
+  contradicts,
+  rescoreWithAnswers,
+  type Answers,
+} from '../../../shared/questions';
 import type {
   DecidingView,
   FeatureId,
@@ -446,14 +452,14 @@ function DecidingViewCard({ view, improve }: { view: DecidingView; improve: Impr
   );
 }
 
-/** Quiet notes on field skills: a guess that named it, or an added photo that settled it. */
+/** Quiet notes on field skills: a guess that named it, or an added photo or answers that settled it. */
 function SkillNotes({
   guess,
   sharpEye,
   confident,
 }: {
   guess?: Guess;
-  sharpEye?: boolean;
+  sharpEye?: 'photo' | 'answers';
   confident: boolean;
 }) {
   const guessLine =
@@ -476,8 +482,10 @@ function SkillNotes({
       )}
       {sharpEye && (
         <p className="flex items-center gap-1.5" data-testid="sharp-eye-note">
-          <Icon name="check" className="h-4 w-4 text-moss" /> Sharp eye: your extra photo made this
-          confident.
+          <Icon name="check" className="h-4 w-4 text-moss" />{' '}
+          {sharpEye === 'answers'
+            ? 'Sharp eye: your answers made this confident.'
+            : 'Sharp eye: your extra photo made this confident.'}
         </p>
       )}
     </div>
@@ -558,6 +566,8 @@ export function ResultView({
   onSwitchCategory,
   guess,
   sharpEye,
+  answers: savedAnswers,
+  onAnswers,
 }: {
   result: IdentifyResponse;
   photoUrl?: string;
@@ -572,14 +582,20 @@ export function ResultView({
   guess?: Guess;
   /** An added photo turned an uncertain identification into this confident one. */
   sharpEye?: boolean;
+  /** Follow-up answers saved earlier for this result (by its requestId). */
+  answers?: { requestId: string; answers: Answers };
+  /** Called with every change of answer, e.g. to save them on the observation. */
+  onAnswers?: (answers: Answers) => void;
 }) {
   // Answers belong to one result; a new result starts with none.
-  const [answered, setAnswered] = useState<{ id: string; answers: Answers }>({
+  const [answered, setAnswered] = useState<{ id: string; answers: Answers }>(() => ({
     id: original.requestId,
-    answers: {},
-  });
+    answers: savedAnswers?.requestId === original.requestId ? savedAnswers.answers : {},
+  }));
   const answers = answered.id === original.requestId ? answered.answers : {};
-  const result = applyAnswers(original, answers);
+  // Answers that rule rivals down re-score the top match on the device (never above medium).
+  const { result, raised } = rescoreWithAnswers(original, answers);
+  const answersSharpEye = answersEarnSharpEye(original, result);
   const questions = original.questions ?? [];
   const ruledOut = original.candidates
     .filter((c) => contradicts(c, questions, answers))
@@ -624,10 +640,16 @@ export function ResultView({
         userPhotos={userPhotos}
       />
 
+      {raised && (
+        <p className="px-1 text-[0.95rem] text-ink-soft" data-testid="answers-updated">
+          Updated from your answers.
+        </p>
+      )}
+
       <SkillNotes
         guess={guess}
-        sharpEye={sharpEye}
-        confident={original.confidenceBand === 'high' || original.confidenceBand === 'medium'}
+        sharpEye={answersSharpEye ? 'answers' : sharpEye ? 'photo' : undefined}
+        confident={band === 'high' || band === 'medium'}
       />
 
       {result.categoryCheck?.suggestedCategory &&
@@ -668,9 +690,11 @@ export function ResultView({
           questions={questions}
           answers={answers}
           ruledOut={ruledOut}
-          onAnswer={(id, option) =>
-            setAnswered({ id: original.requestId, answers: { ...answers, [id]: option } })
-          }
+          onAnswer={(id, option) => {
+            const next = { ...answers, [id]: option };
+            setAnswered({ id: original.requestId, answers: next });
+            onAnswers?.(next);
+          }}
         />
       )}
 

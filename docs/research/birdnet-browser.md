@@ -4,7 +4,8 @@ _Research date: 2026-09-28. Licences, model versions and browser support change;
 
 ## TL;DR
 
-- **Today:** Bird calls records on the phone, converts the clip to 48 kHz mono WAV, and sends it to our Hugging Face Space. The Space runs **BirdNET v2.4 TFLite** (acoustic model plus location model) on CPU (`hf-space/birdnet_audio.py`, `server/providers/birdnet/birdnet.ts`). No on-device inference yet.
+- **Today:** Bird calls records on the phone, converts the clip to 48 kHz mono WAV, and sends it to our Hugging Face Space. The Space runs **BirdNET v2.4 TFLite** (acoustic model plus location model) on CPU (`hf-space/birdnet_audio.py`, `server/providers/birdnet/birdnet.ts`).
+- **Update 2026-09-28: the opt-in on-device mode is built** (§7). The owner decided FieldLens stays personal and non-commercial, so the v2.4 licence is acceptable. Settings → "Identify bird calls on this device" downloads the model (59.6 MB) into its own cache; Listen then runs BirdNET in a worker and sends only the result to the server for enrichment, falling back to the Space if the model isn't ready or fails. On 4 real recordings (8 runs with and without location) it gave the **same species, in the same order, as the Space, with scores within 0.0001**.
 - **Running it in the browser works.** BirdNET's own team ships it: [BirdNET Live](https://github.com/birdnet-team/real-time-pwa) runs v2.4 with **TensorFlow.js (WebGL)** in a Web Worker, with the location model, fully offline. The model's first layer computes the spectrogram, so the page only supplies raw 48 kHz samples in 3 s windows.
 - **Download size:** about **58 MB** for v2.4 (52 MB acoustic model + 6.8 MB location model + 0.26 MB labels) plus about 0.4 MB (gzipped) for the TF.js runtime **(measured)**. The weights hardly compress (about 7% with gzip). BirdNET+ V3.0 preview is about 72 MB (pruned FP16 ONNX) plus about 13 MB for the ONNX Runtime WASM file.
 - **Licence verdict:** v2.4 weights are **NonCommercial** (CC BY-NC-SA 4.0 in the Analyzer README; the Zenodo record says CC BY-NC 4.0). They're **fine for a free, non-commercial public app with attribution**, which is already true of today's server-side use. They're **not OK for any commercial launch** (ads, paid tier, paid app, sponsorship) unless Cornell grants a licence. **BirdNET+ V3.0** is CC BY-SA 4.0, which allows commercial use, but it's a changing "developer preview" whose terms also say it's "provided solely for research and evaluation". It isn't a safe base for shipping until a stable release.
@@ -101,13 +102,13 @@ Community ports and apps:
 
 ## 6. Implementation plan
 
-Already done (this change, not wired into the UI):
+Done in the first change (the prototype, now used by the worker):
 
 - `src/features/listen/birdnet/audioWindows.ts`: `toMono`, `resample` (band-limited windowed sinc, for browsers that ignore the requested `AudioContext` rate), the streaming `WindowChunker` (for live mic input) and `frameWindows`/`toBatch`. Configs for v2.4 (48 kHz) and the V3 preview (32 kHz). Window starts match the Space's `_segments` exactly.
 - `src/features/listen/birdnet/scores.ts`: `parseLabels`, `sigmoid`, `birdnetWeek`, `geoInput`, and `rankDetections`, a port of `identify_audio` that returns the Space's `BirdnetResponse` shape.
 - `tests/unit/birdnetAudio.test.ts`: 18 tests. Framing matches the Space for 0.5–15 s clips, streaming matches batch, resampling keeps a 3 kHz tone and removes a 20 kHz tone when going to 32 kHz, ranking/location/noise rules work, and week numbers match the server. No model download.
 
-Next steps (about 3–5 days):
+Next steps as planned (steps 1–7 are now done; see §7 for what was built and what changed from this plan):
 
 1. **Fix the mic header** in `vercel.json` (`microphone=(self)`).
 2. **Model hosting:** publish the v2.4 TF.js files, labels (`en_us`, plus other locales if needed), `LICENSE` and a README to a HF model repo, pinned by revision. Add a `models/birdnet` manifest with SHA-256 hashes.
@@ -127,6 +128,36 @@ Risks:
 - **Drift:** TF.js float32 WebGL results can differ slightly from the TFLite results on the Space. Validate as in step 3.
 - **Safari WebGL/OffscreenCanvas quirks** in workers. The WASM fallback covers this but is slower.
 - **V3 churn:** labels and terms may change before release.
+
+## 7. Built: on-device mode (2026-09-28)
+
+**What the user sees.** Settings → Identifying → "Identify bird calls on this device" (off by default). Turning it on shows the download size, a Download button (the tap is the confirmation of the size; "Best on Wi-Fi"), progress with Cancel, then Remove. The BirdNET credit and a link to CC BY-NC-SA 4.0 sit under the control, and the privacy page says what's sent in each mode. Until the model is downloaded, or if it can't run, calls go to the Space as before.
+
+**Where the files come from.** No hosting by us. The app downloads the BirdNET team's own TF.js build of v2.4 (the files BirdNET Live ships: `model.json` + 13 shards, `area-model/`, `labels/en_us.txt`) from **jsDelivr, pinned to commit `6ab67ac` of `birdnet-team/real-time-pwa`**. jsDelivr sends `Access-Control-Allow-Origin: *` and immutable caching. Every file is checked against a **SHA-256 in `src/features/listen/birdnet/manifest.ts`** before it's cached, so a changed or tampered upstream file is refused. If that source ever disappears, `node scripts/mirror-birdnet-model.mjs` copies the same files (with the licence and a README) to a public Hugging Face model repo and prints the `VITE_BIRDNET_MODEL_URL` to set; nothing else changes. Not verified: that these files are byte-identical to the Zenodo `BirdNET_v2.4_tfjs.zip` (not downloaded); the results below match the Space's Zenodo TFLite model, which is the check that matters.
+
+**Caching.** Cache Storage bucket `fieldlens-birdnet-v2.4`, keyed under `/models/birdnet-v2.4/` on our own origin (so a change of source doesn't orphan a download). `LICENSE.txt` (credit, licence, citation, source, "no changes") is stored beside the weights, and `complete.json` is written last so a half-finished download is never used (and resumes: verified files aren't fetched again). `navigator.storage.persist()` is requested, and the download stops early if the storage estimate is too small. The service worker's precache never includes the model or the worker: `globIgnores` skips `birdnetWorker-*.js`, and a single `CacheFirst` runtime rule (`fieldlens-birdnet-runtime`) keeps the worker script and TF.js WASM for offline use once they've been fetched (the worker is started once right after the download for that reason). Remove deletes both caches.
+
+**Runtime.** `@tensorflow/tfjs-core`, `-layers`, `-converter`, `-backend-webgl` and `-backend-wasm` 4.22.0 (new dependencies), used only inside `birdnetWorker.ts`. WebGL first, but only if the GPU can render float32 textures (half floats lose too much precision); WASM (SIMD) otherwise. The spectrogram layer (`MelSpecLayerSimple`) is our own code (`melSpec.ts`): Keras's layer takes the *real part* of the STFT (a complex → float cast), which is linear, so Hann window × real DFT × mel filterbank fold into one matrix and the whole layer becomes one strided `conv1d`. That runs on every backend without a custom FFT kernel. The acoustic model's last layer is a sigmoid (the TFLite export gives logits), so no extra sigmoid is applied. Windows are sent in batches of 4 (short batches zero-padded) so WebGL compiles one shape only; both models are warmed up on load, and Listen starts loading while the user records.
+
+**Same processing as the Space.** `protocol.ts` reuses `frameWindows` (3 s, 1.5 s hop, padded tail, 1 s minimum) and `rankDetections` (mean ranking, best-window score, 0.03 location filter, noise classes held back), with the same week number, the same `k` (`CANDIDATES.maxCandidates`) and the same 30 s cap.
+
+**How results reach the result screen (option (a) of step 5).** The phone sends BirdNET's result (`{model, seconds, results, sound}`, `shared/onDeviceCall.ts`, validated with zod) in a `birdnet` form field instead of the WAV, so the request is under 1 KB and the recording never leaves the phone. `/api/identify` turns it into the same candidates as a Space result (`OnDeviceBirdnetProvider`, sharing `toCallCandidates` and the confidence cap), then runs the usual enrichment: taxonomy, GBIF, eBird, ranges, facts. It doesn't need the Space to be configured. The attribution line says "identified on this device". Offline, the Listen screen shows the on-device name in its error message ("On this device it sounds like…"), since the full result still needs the server. Trust: the server takes the client's scores as given, which is no worse than today (a client could already send any audio).
+
+**Verified.**
+
+- Chrome (Playwright, `channel: chrome`, headless, macOS x86): download of all 18 files with checksums in about 5 s; load 0.2 s + warm-up 1.2–2.5 s (WebGL); a warm 15 s clip (9 windows) in **0.25–0.6 s** on WebGL and **about 1 s on WASM** (GPU disabled).
+- Against the Space, same 15 s of audio, with and without location: Northern Cardinal, American Robin (New York, May), Great Tit, Eurasian Blackbird (London, April; Wikimedia Commons / xeno-canto recordings). **All 8 runs: identical species lists and order; every score and mean within 0.0001.** WASM results match WebGL to within 0.0001 too.
+- Full Listen flow in dev (Chrome's fake microphone playing the Great Tit clip): the request carried only the `birdnet` field (853 bytes, no audio), and the result screen showed Great Tit.
+- Unit tests (fake model, no downloads): `tests/unit/birdnetOnDevice.test.ts` (spectrogram kernel vs a direct DFT, worker protocol, batching, location cache, errors, client timeouts, form field, server parsing and pipeline), `tests/unit/birdnetModelStore.test.ts` (checksums, licence file, resume, remove), `tests/component/onDeviceCalls.test.tsx` (setting and credit).
+
+**Bundle impact** (`vite build`): main `index` chunk 224.38 → 224.61 kB (+0.2 kB; +0.1 kB gzipped). Precache 1,184 → 1,196 KiB (Settings/Listen and the small model-store chunk). New lazy files, fetched only by people who turn it on: `birdnetWorker-*.js` 1.77 MB (285 kB gzipped), and the WASM binaries (311 kB and 425 kB; only fetched if WebGL isn't usable).
+
+**Still to do.**
+
+- Run the 40-clip set through both paths (plan step 3's bar: same top-1 on at least 39/40, scores within 0.02). The 4 clips above are a smoke test, not that check.
+- Measure on a real mid-range Android (Chrome) and an iPhone 12-class device (Safari 26): load time, warm time per clip, memory, and whether Safari's worker WebGL passes the float32 check or falls back to WASM. Plan step 8's bar: a warm 10 s ID under 2 s.
+- Labels are English (`en_us`) only, like the Space; the server's taxonomy supplies the displayed names anyway.
+- "Clear local data" doesn't delete the model; Remove in Settings does.
 
 ## Sources
 

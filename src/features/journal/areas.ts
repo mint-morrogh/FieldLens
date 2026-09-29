@@ -75,6 +75,7 @@ export function exploredAreas(
 
 export const AREA_MILESTONES = [1, 5, 10, 25, 50, 100] as const;
 export const COUNTRY_MILESTONES = [1, 2, 3, 5, 10] as const;
+export const REGION_MILESTONES = [1, 2, 3, 5, 10] as const;
 
 export type Milestone = {
   /** How many areas (or countries) it takes. */
@@ -134,17 +135,27 @@ export type CountryLookup = (
   longitude: number,
 ) => { id: string; name: string } | undefined;
 
+/** Places (countries, regions) the areas fall in, each with its first find, first first. */
+function explored<P extends { id: string }>(
+  areas: Area[],
+  lookup: (latitude: number, longitude: number) => P | undefined,
+): (P & { firstFound: string })[] {
+  const places = new Map<string, P & { firstFound: string }>();
+  for (const a of areas) {
+    const p = lookup(a.latitude, a.longitude);
+    if (!p) continue;
+    const prev = places.get(p.id);
+    if (!prev || a.firstFound < prev.firstFound)
+      places.set(p.id, { ...p, firstFound: a.firstFound });
+  }
+  return [...places.values()].sort(
+    (a, b) => a.firstFound.localeCompare(b.firstFound) || a.id.localeCompare(b.id),
+  );
+}
+
 /** Countries you've made finds in, first explored first. */
 export function exploredCountries(areas: Area[], countryOf: CountryLookup): CountryFirst[] {
-  const countries = new Map<string, CountryFirst>();
-  for (const a of areas) {
-    const c = countryOf(a.latitude, a.longitude);
-    if (!c) continue;
-    const prev = countries.get(c.id);
-    if (!prev || a.firstFound < prev.firstFound)
-      countries.set(c.id, { ...c, firstFound: a.firstFound });
-  }
-  return [...countries.values()].sort((a, b) => a.firstFound.localeCompare(b.firstFound));
+  return explored(areas, countryOf);
 }
 
 export function countryMilestones(countries: CountryFirst[]): MilestoneProgress {
@@ -152,4 +163,37 @@ export function countryMilestones(countries: CountryFirst[]): MilestoneProgress 
     countries.map((c) => c.firstFound),
     COUNTRY_MILESTONES,
   );
+}
+
+export type Region = {
+  /** Natural Earth admin-1 id, e.g. "CAN-685". */
+  id: string;
+  /** "Nova Scotia". */
+  name: string;
+  /** ISO 3166-1 alpha-2 country code, e.g. "CA". */
+  country: string;
+};
+
+export type RegionFirst = Region & { firstFound: string };
+
+/** Looks up the province or state for a point, or undefined over the sea or when unknown. */
+export type RegionLookup = (latitude: number, longitude: number) => Region | undefined;
+
+/** Provinces and states you've made finds in, first explored first. */
+export function exploredRegions(areas: Area[], regionOf: RegionLookup): RegionFirst[] {
+  return explored(areas, regionOf);
+}
+
+export function regionMilestones(regions: RegionFirst[]): MilestoneProgress {
+  return milestoneProgress(
+    regions.map((r) => r.firstFound),
+    REGION_MILESTONES,
+  );
+}
+
+/** Region names for display, with the country added where two share a name ("Punjab (IN)"). */
+export function regionNames(regions: Region[]): string[] {
+  const counts = new Map<string, number>();
+  for (const r of regions) counts.set(r.name, (counts.get(r.name) ?? 0) + 1);
+  return regions.map((r) => ((counts.get(r.name) ?? 0) > 1 ? `${r.name} (${r.country})` : r.name));
 }

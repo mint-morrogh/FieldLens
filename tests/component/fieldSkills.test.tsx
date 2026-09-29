@@ -72,6 +72,90 @@ describe('skill notes', () => {
     );
   });
 
+  it('re-scores from answers that rule rivals down, with a sharp-eye note', async () => {
+    const base = await mockResult('low');
+    const [first, second, third] = base.candidates;
+    const candidates = [
+      { ...first, finalConfidence: 0.45 },
+      { ...second, finalConfidence: 0.35 },
+      ...(third ? [{ ...third, finalConfidence: 0.1 }] : []),
+    ];
+    const result = {
+      ...base,
+      category: 'mammal' as const,
+      confidenceBand: 'low' as const,
+      candidates,
+      questions: [
+        {
+          id: 'size' as const,
+          prompt: 'About how big was it?',
+          options: [
+            { id: 'small', label: 'Small' },
+            { id: 'big', label: 'Big' },
+          ],
+          fits: Object.fromEntries(candidates.map((c, i) => [c.id, i === 0 ? ['big'] : ['small']])),
+          source: 'EltonTraits 1.0 (Wilman et al. 2014)',
+          sourceUrl: 'https://doi.org/10.6084/m9.figshare.3559887.v1',
+        },
+      ],
+    };
+    const onAnswers = vi.fn();
+    render(<ResultView result={result} onAnswers={onAnswers} />);
+    expect(screen.getByTestId('result-headline')).toHaveAttribute('data-band', 'low');
+    expect(screen.queryByTestId('answers-updated')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Big' }));
+    expect(onAnswers).toHaveBeenCalledWith({ size: 'big' });
+    expect(screen.getByTestId('result-headline')).toHaveAttribute('data-band', 'medium');
+    expect(screen.getByTestId('answers-updated')).toHaveTextContent('Updated from your answers');
+    expect(screen.getByTestId('sharp-eye-note')).toHaveTextContent(
+      'Sharp eye: your answers made this confident.',
+    );
+    // "Not sure" takes it back.
+    await userEvent.click(screen.getByRole('button', { name: 'Not sure' }));
+    expect(screen.getByTestId('result-headline')).toHaveAttribute('data-band', 'low');
+    expect(screen.queryByTestId('sharp-eye-note')).not.toBeInTheDocument();
+  });
+
+  it('shows saved answers again when reopened', async () => {
+    const base = await mockResult('low');
+    const [first, second] = base.candidates;
+    const result = {
+      ...base,
+      category: 'mammal' as const,
+      confidenceBand: 'low' as const,
+      candidates: [
+        { ...first, finalConfidence: 0.45 },
+        { ...second, finalConfidence: 0.4 },
+      ],
+      questions: [
+        {
+          id: 'time' as const,
+          prompt: 'When did you see it?',
+          options: [
+            { id: 'day', label: 'In daylight' },
+            { id: 'night', label: 'At night' },
+          ],
+          fits: { [first.id]: ['day'], [second.id]: ['night'] },
+          source: 'EltonTraits 1.0 (Wilman et al. 2014)',
+          sourceUrl: 'https://doi.org/10.6084/m9.figshare.3559887.v1',
+        },
+      ],
+    };
+    render(
+      <ResultView
+        result={result}
+        sharpEye
+        answers={{ requestId: result.requestId, answers: { time: 'day' } }}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'In daylight' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByTestId('answers-updated')).toBeInTheDocument();
+    expect(screen.getByTestId('sharp-eye-note')).toHaveTextContent('your answers');
+  });
+
   it('says nothing about a missed guess', async () => {
     render(
       <ResultView result={await mockResult('high')} guess={{ text: 'oak', result: 'miss' }} />,

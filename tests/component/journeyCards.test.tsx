@@ -1,11 +1,29 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExploredMilestones } from '../../src/features/journal/ExploredMilestones';
 import { HomePatchCard } from '../../src/features/journal/HomePatchCard';
 import { WeeklyGoalsCard } from '../../src/features/journal/WeeklyGoalsCard';
 import { YearInReviewCard } from '../../src/features/journal/YearInReviewCard';
 import { HOME_PATCH_KEY, loadHomePatch } from '../../src/features/journal/patch';
+import { createRegionLookup, type AdminTopology } from '../../src/features/journal/regions';
 import { find } from '../unit/journalRecord';
+
+// The region outlines are a separate download in the app; here they're read from disk.
+const loadRegionOf = vi.hoisted(() => vi.fn());
+vi.mock('../../src/features/journal/regions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/features/journal/regions')>()),
+  loadRegionOf,
+}));
+const admin1 = () =>
+  JSON.parse(
+    readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '../../src/assets/admin1.topo.json'),
+      'utf8',
+    ),
+  ) as AdminTopology;
 
 const HOME = '46.2°N, 63.1°W';
 const AWAY = '45.9°N, 64.0°W';
@@ -28,6 +46,7 @@ describe('journey cards', () => {
   beforeEach(() => localStorage.clear());
 
   it('shows areas explored with the next milestone, then countries once loaded', async () => {
+    loadRegionOf.mockRejectedValue(new TypeError('offline'));
     render(<ExploredMilestones records={records} />);
     const card = screen.getByTestId('explored-milestones');
     expect(within(card).getByRole('heading')).toHaveTextContent('2 areas');
@@ -37,6 +56,19 @@ describe('journey cards', () => {
     const countries = await screen.findByTestId('explored-countries', {}, { timeout: 10_000 });
     expect(countries).toHaveTextContent('1 country');
     expect(countries).toHaveTextContent('Canada');
+    // Offline: the region outlines never arrive, so there's no provinces line.
+    expect(screen.queryByTestId('explored-regions')).not.toBeInTheDocument();
+  });
+
+  it('shows provinces & states, with the newest, once the outlines load', async () => {
+    loadRegionOf.mockResolvedValue(createRegionLookup(admin1()));
+    render(<ExploredMilestones records={records} />);
+    const regions = await screen.findByTestId('explored-regions', {}, { timeout: 10_000 });
+    expect(regions).toHaveTextContent('2 provinces & states');
+    expect(regions).toHaveTextContent('Prince Edward Island, Nova Scotia');
+    expect(within(regions).getByTestId('newest-region')).toHaveTextContent('Newest: Nova Scotia');
+    expect(regions).toHaveTextContent('1 more to 3 provinces & states');
+    expect(within(regions).getAllByText(/Provinces & states: reached/)).toHaveLength(2);
   });
 
   it('shows this week’s three goals and the week streak', () => {

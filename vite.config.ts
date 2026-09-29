@@ -81,10 +81,20 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
+          // The on-device BirdNET worker (TF.js) is only for people who turn it on.
+          globIgnores: ['**/birdnetWorker-*.js'],
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/api\//],
-          // Never cache API responses or third-party data in the service worker.
-          runtimeCaching: [],
+          // Never cache API responses or third-party data in the service worker. The one
+          // runtime cache keeps the BirdNET worker and TF.js WASM for offline use once used;
+          // its name matches BIRDNET_RUNTIME_CACHE (src/features/listen/birdnet/manifest.ts).
+          runtimeCaching: [
+            {
+              urlPattern: /\/assets\/(birdnetWorker-[\w-]+\.js|tfjs-backend-wasm[\w-]*\.wasm)$/,
+              handler: 'CacheFirst',
+              options: { cacheName: 'fieldlens-birdnet-runtime' },
+            },
+          ],
           // Opens an observation when an offline-queue notification is tapped.
           importScripts: ['sw-notifications.js'],
         },

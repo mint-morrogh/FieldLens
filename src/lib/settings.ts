@@ -22,6 +22,8 @@ export interface Settings {
   dataSaver: boolean;
   /** The home screen's main camera action. */
   defaultCameraMode: CameraMode;
+  /** Identify bird calls with BirdNET on this device (needs a ~60 MB download). Off by default. */
+  onDeviceCalls: boolean;
 }
 
 export const SETTINGS_KEYS: Record<keyof Settings, string> = {
@@ -29,6 +31,7 @@ export const SETTINGS_KEYS: Record<keyof Settings, string> = {
   units: 'fieldlens.settings.units',
   dataSaver: 'fieldlens.settings.dataSaver',
   defaultCameraMode: 'fieldlens.settings.cameraMode',
+  onDeviceCalls: 'fieldlens.settings.onDeviceCalls',
 };
 
 /** Regions that measure in miles and pounds. */
@@ -60,7 +63,13 @@ export function defaultUnits(locales?: readonly string[]): Units {
 }
 
 export function defaultSettings(): Settings {
-  return { nameItFirst: false, units: defaultUnits(), dataSaver: false, defaultCameraMode: 'live' };
+  return {
+    nameItFirst: false,
+    units: defaultUnits(),
+    dataSaver: false,
+    defaultCameraMode: 'live',
+    onDeviceCalls: false,
+  };
 }
 
 const parsers: { [K in keyof Settings]: (raw: string) => Settings[K] | undefined } = {
@@ -68,6 +77,7 @@ const parsers: { [K in keyof Settings]: (raw: string) => Settings[K] | undefined
   dataSaver: (raw) => (raw === 'true' ? true : raw === 'false' ? false : undefined),
   units: (raw) => (raw === 'metric' || raw === 'imperial' ? raw : undefined),
   defaultCameraMode: (raw) => (raw === 'live' || raw === 'photo' ? raw : undefined),
+  onDeviceCalls: (raw) => (raw === 'true' ? true : raw === 'false' ? false : undefined),
 };
 
 /** Values set this session, used when storage can't be written or read. */

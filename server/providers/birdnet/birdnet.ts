@@ -67,6 +67,53 @@ export function toCallCandidates(response: BirdnetResponse): ProviderCandidate[]
   });
 }
 
+/** Shown when BirdNET ran on the phone rather than on our Space. */
+export const BIRDNET_ON_DEVICE_ATTRIBUTION = {
+  ...BIRDNET_ATTRIBUTION,
+  text: 'Bird call identified on this device by BirdNET v2.4 (K. Lisa Yang Center for Conservation Bioacoustics, Cornell Lab of Ornithology, and Chemnitz University of Technology; CC BY-NC-SA 4.0)',
+};
+
+function callResult(
+  response: BirdnetResponse,
+  attribution: typeof BIRDNET_ATTRIBUTION,
+): IdentificationResult {
+  return {
+    provider: SERVICE,
+    candidates: toCallCandidates(response),
+    attribution: [attribution],
+    experimental: true,
+    detectedCategory: 'bird',
+    ...(response.sound && { sound: response.sound }),
+  };
+}
+
+/**
+ * Calls identified by BirdNET on the phone (opt-in, same model and ranking as the Space):
+ * the app sends BirdNET's result instead of the recording, and the pipeline enriches it like
+ * any other call. No network call here.
+ */
+export class OnDeviceBirdnetProvider implements IdentificationProvider {
+  readonly name = SERVICE;
+  readonly acceptedMimeTypes = [] as const;
+  readonly maxImages = 0;
+
+  supports(target: IdentifyTarget): boolean {
+    return target === 'bird';
+  }
+
+  async identify(input: IdentificationInput): Promise<IdentificationResult> {
+    const response = input.audio?.onDevice;
+    if (!response) throw new ApiError('invalid_request', 'Please include a recording.');
+    logger.info('birdnet.identify', {
+      onDevice: true,
+      seconds: Math.round(response.seconds),
+      candidates: response.results.length,
+      topScore: Math.round((response.results[0]?.score ?? 0) * 100) / 100,
+    });
+    return callResult(response, BIRDNET_ON_DEVICE_ATTRIBUTION);
+  }
+}
+
 /** Bird calls, identified by BirdNET on our Hugging Face Space (CPU, no GPU quota). */
 export class BirdnetCallProvider implements IdentificationProvider {
   readonly name = SERVICE;
@@ -105,13 +152,6 @@ export class BirdnetCallProvider implements IdentificationProvider {
       topScore: Math.round((response.results[0]?.score ?? 0) * 100) / 100,
       ms: Date.now() - started,
     });
-    return {
-      provider: SERVICE,
-      candidates: toCallCandidates(response),
-      attribution: [BIRDNET_ATTRIBUTION],
-      experimental: true,
-      detectedCategory: 'bird',
-      ...(response.sound && { sound: response.sound }),
-    };
+    return callResult(response, BIRDNET_ATTRIBUTION);
   }
 }

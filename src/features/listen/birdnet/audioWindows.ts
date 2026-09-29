@@ -1,5 +1,5 @@
 /**
- * Audio front end for running BirdNET on the device (prototype, not wired into the UI).
+ * Audio front end for running BirdNET on the device (used by ./protocol.ts in the worker).
  * See docs/research/birdnet-browser.md.
  *
  * BirdNET takes raw mono samples; the spectrogram is computed inside the model. This module

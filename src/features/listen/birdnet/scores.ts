@@ -1,8 +1,9 @@
 /**
  * Turns BirdNET's per-window outputs into the same result shape the Hugging Face Space
  * returns (`BirdnetResponse` in server/providers/birdnet/birdnet.ts), so an on-device run
- * could feed the existing candidate/ranking code unchanged. Prototype, not wired into the UI.
- * Mirrors `identify_audio` in hf-space/birdnet_audio.py.
+ * feeds the existing candidate/ranking code unchanged. Mirrors `identify_audio` in
+ * hf-space/birdnet_audio.py. (The TF.js model ends in its own sigmoid, so `sigmoid` here is
+ * only needed for exports that output logits, like the Space's TFLite model.)
  */
 
 export type BirdnetLabel = {

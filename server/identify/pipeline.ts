@@ -25,6 +25,7 @@ import type {
 import { ApiError, UpstreamError } from '../lib/errors.js';
 import { settle } from '../lib/http.js';
 import { logger } from '../lib/logger.js';
+import { OnDeviceBirdnetProvider } from '../providers/birdnet/birdnet.js';
 import { EBIRD_ATTRIBUTION, EBIRD_SOURCE } from '../providers/ebird/ebird.js';
 import { GBIF_ATTRIBUTION, GBIF_SOURCE } from '../providers/gbif/gbif.js';
 import { RANGES_ATTRIBUTION, RANGES_SOURCE } from '../providers/ranges/ranges.js';
@@ -32,6 +33,7 @@ import { INAT_ATTRIBUTION, INAT_SOURCE } from '../providers/inaturalist/inatural
 import { taxonLinks } from '../providers/plantnet/plantnetProvider.js';
 import type {
   CategoryDetectionResult,
+  IdentificationProvider,
   IdentificationInput,
   ProviderCandidate,
   ProviderSet,
@@ -290,14 +292,18 @@ export async function runIdentification(
     }
   }
 
-  if (input.audio && !providers.audio) {
+  // A call identified on the phone needs no Space: its result is only enriched here.
+  const audioProvider: IdentificationProvider | undefined = input.audio?.onDevice
+    ? new OnDeviceBirdnetProvider()
+    : providers.audio;
+  if (input.audio && !audioProvider) {
     throw new ApiError(
       'not_configured',
       'Bird call identification isn’t set up on this server yet.',
     );
   }
   const provider = input.audio
-    ? providers.audio
+    ? audioProvider
     : providers.identification.find((p) => p.supports(target));
   if (!provider) {
     if (providers.identification.length === 0) {

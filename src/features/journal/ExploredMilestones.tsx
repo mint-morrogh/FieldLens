@@ -8,9 +8,16 @@ import {
   countryMilestones,
   exploredAreas,
   exploredCountries,
+  exploredRegions,
+  regionMilestones,
+  regionNames,
   type CountryLookup,
   type MilestoneProgress,
+  type RegionLookup,
 } from './areas';
+
+/** Region names shown before "and N more". */
+const MAX_REGION_NAMES = 12;
 
 /** A row of milestone marks: filled once reached, outlined while still ahead. */
 function MilestoneTrack({ progress, unit }: { progress: MilestoneProgress; unit: string }) {
@@ -52,30 +59,44 @@ function nextLine(p: MilestoneProgress, one: string, many: string): string {
 }
 
 /**
- * Areas explored (~10 km cells with a confident find) and countries, with milestones.
- * Sits under the journal globe. Countries come from an offline outline lookup, loaded
- * on demand; nothing leaves the device.
+ * Areas explored (~10 km cells with a confident find), countries, and provinces & states,
+ * with milestones. Sits under the journal globe. Countries and regions come from offline
+ * outline lookups, loaded on demand (the region outlines are a separate download; the
+ * line stays hidden if it can't be fetched); nothing leaves the device.
  */
 export function ExploredMilestones({ records }: { records: ObservationRecord[] }) {
   const areas = useMemo(() => exploredAreas(records), [records]);
   const areaSize = useAreaSize();
   const progress = useMemo(() => areaMilestones(areas), [areas]);
   const [countryOf, setCountryOf] = useState<CountryLookup>();
+  const [regionOf, setRegionOf] = useState<RegionLookup>();
+  const hasAreas = areas.length > 0;
   useEffect(() => {
-    if (!areas.length) return;
+    if (!hasAreas) return;
     let live = true;
     import('./countries')
       .then((m) => live && setCountryOf(() => m.countryOf))
       .catch(() => undefined);
+    import('./regions')
+      .then((m) => m.loadRegionOf())
+      .then((lookup) => live && setRegionOf(() => lookup))
+      .catch(() => undefined);
     return () => {
       live = false;
     };
-  }, [areas.length]);
+  }, [hasAreas]);
   const countries = useMemo(
     () => (countryOf ? exploredCountries(areas, countryOf) : undefined),
     [areas, countryOf],
   );
   const countryProgress = countries && countryMilestones(countries);
+  const regions = useMemo(
+    () => (regionOf ? exploredRegions(areas, regionOf) : undefined),
+    [areas, regionOf],
+  );
+  const regionProgress = regions && regionMilestones(regions);
+  const names = regions ? regionNames(regions) : [];
+  const newest = regions?.at(-1);
 
   return (
     <Card as="section" aria-labelledby="areas-title" data-testid="explored-milestones">
@@ -98,6 +119,27 @@ export function ExploredMilestones({ records }: { records: ObservationRecord[] }
           <MilestoneTrack progress={countryProgress} unit="Countries" />
           <p className="mt-1.5 text-sm text-ink-muted">
             {nextLine(countryProgress, 'country', 'countries')}
+          </p>
+        </div>
+      )}
+
+      {regions && regionProgress && regions.length > 0 && newest && (
+        <div className="mt-4 border-t border-line pt-3" data-testid="explored-regions">
+          <p className="font-bold">
+            <span className="tabular-nums">{regions.length}</span>{' '}
+            {regions.length === 1 ? 'province or state' : 'provinces & states'}
+          </p>
+          <p className="text-sm text-ink-soft">
+            {names.slice(0, MAX_REGION_NAMES).join(', ')}
+            {names.length > MAX_REGION_NAMES && ` and ${names.length - MAX_REGION_NAMES} more`}
+          </p>
+          <p className="mt-1 text-sm text-ink-soft" data-testid="newest-region">
+            Newest: <span className="font-semibold text-ink">{names.at(-1)}</span>
+            <span className="text-ink-muted">, {formatDate(newest.firstFound)}</span>
+          </p>
+          <MilestoneTrack progress={regionProgress} unit="Provinces & states" />
+          <p className="mt-1.5 text-sm text-ink-muted">
+            {nextLine(regionProgress, 'province or state', 'provinces & states')}
           </p>
         </div>
       )}

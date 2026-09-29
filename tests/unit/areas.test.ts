@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AREA_MILESTONES,
   areaMilestones,
@@ -7,9 +10,18 @@ import {
   exploredCountries,
   formatArea,
   milestoneProgress,
+  exploredRegions,
+  regionMilestones,
+  regionNames,
   type CountryLookup,
+  type RegionLookup,
 } from '../../src/features/journal/areas';
 import { countryOf } from '../../src/features/journal/countries';
+import {
+  createRegionLookup,
+  loadRegionOf,
+  type AdminTopology,
+} from '../../src/features/journal/regions';
 import { find } from './journalRecord';
 
 const day = (d: number) => new Date(2026, 5, d, 12);
@@ -89,5 +101,101 @@ describe('offline country lookup', () => {
     expect(countryOf(-33.9, 151.2)?.name).toBe('Australia'); // Sydney, on the coast
     expect(countryOf(48.9, 2.3)?.name).toBe('France');
     expect(countryOf(0, -30)).toBeUndefined();
+  });
+});
+
+describe('provinces & states', () => {
+  const regionOf = createRegionLookup(
+    JSON.parse(
+      readFileSync(
+        path.join(
+          path.dirname(fileURLToPath(import.meta.url)),
+          '../../src/assets/admin1.topo.json',
+        ),
+        'utf8',
+      ),
+    ) as AdminTopology,
+  );
+
+  it.each([
+    [44.6, -63.6, 'Nova Scotia', 'CA'], // Halifax
+    [45.1, -64.9, 'Nova Scotia', 'CA'], // Annapolis Valley
+    [46.2, -63.1, 'Prince Edward Island', 'CA'], // Charlottetown
+    [46.4, -63.5, 'Prince Edward Island', 'CA'],
+    [43.7, -79.4, 'Ontario', 'CA'], // Toronto
+    [45.4, -75.7, 'Ontario', 'CA'], // Ottawa
+    [46.8, -71.2, 'Quebec', 'CA'], // Quebec City
+    [45.5, -73.6, 'Quebec', 'CA'], // Montreal
+    [49.3, -123.1, 'British Columbia', 'CA'], // Vancouver
+    [50.7, -120.3, 'British Columbia', 'CA'], // Kamloops
+    [34.1, -118.2, 'California', 'US'], // Los Angeles
+    [37.8, -122.4, 'California', 'US'], // San Francisco
+    [40.78, -73.97, 'New York', 'US'], // Central Park
+    [42.7, -73.8, 'New York', 'US'], // Albany
+    [30.3, -97.7, 'Texas', 'US'], // Austin
+    [48.1, 11.6, 'Bavaria', 'DE'], // Munich
+    [-33.9, 151.2, 'New South Wales', 'AU'], // Sydney, on the coast
+    [-27.5, 153.0, 'Queensland', 'AU'], // Brisbane
+    [55.9, -3.2, 'Scotland', 'GB'], // Edinburgh: the UK is split into its four nations
+    [51.5, -0.1, 'England', 'GB'], // London
+    [48.9, 2.3, 'Île-de-France', 'FR'], // Paris: French regions, not departments
+    [48.9, -110.0, 'Montana', 'US'], // just south of the 49th parallel
+    [49.1, -100.0, 'Manitoba', 'CA'], // just north of it
+  ])('finds %s, %s in %s', (lat, lon, name, country) => {
+    expect(regionOf(lat, lon)).toMatchObject({ name, country });
+  });
+
+  it('finds nothing mid-ocean', () => {
+    expect(regionOf(0, -30)).toBeUndefined();
+    expect(regionOf(35, -140)).toBeUndefined();
+  });
+
+  it('lists regions in the order first explored, from confident finds only', () => {
+    const areas = exploredAreas([
+      find('A b', day(1), { locationLabel: '46.2°N, 63.1°W' }), // PEI
+      find('C d', day(2), { locationLabel: '44.6°N, 63.6°W' }), // Nova Scotia
+      find('E f', day(3), { locationLabel: '46.4°N, 63.5°W' }), // PEI again
+      find('G h', day(4), { locationLabel: '45.5°N, 73.6°W', band: 'low' }), // Quebec, unsure
+      find('I j', day(5), { locationLabel: '0°N, 30°W' }), // open sea
+    ]);
+    const regions = exploredRegions(areas, regionOf);
+    expect(regions.map((r) => r.name)).toEqual(['Prince Edward Island', 'Nova Scotia']);
+    expect(regions[0].firstFound).toBe(day(1).toISOString());
+    expect(regionMilestones(regions)).toMatchObject({ count: 2, last: 2, next: 3 });
+  });
+
+  it('adds the country only where two regions share a name', () => {
+    expect(
+      regionNames([
+        { id: 'IND-1', name: 'Punjab', country: 'IN' },
+        { id: 'PAK-1', name: 'Punjab', country: 'PK' },
+        { id: 'CAN-685', name: 'Nova Scotia', country: 'CA' },
+      ]),
+    ).toEqual(['Punjab (IN)', 'Punjab (PK)', 'Nova Scotia']);
+  });
+
+  it('uses the same milestone steps with a lookup stub', () => {
+    const lookup: RegionLookup = (lat) => ({ id: String(lat), name: String(lat), country: 'X' });
+    const areas = exploredAreas(
+      [1, 2, 3, 4, 5].map((d) => find('A b', day(d), { locationLabel: `${d}.0°N, 10.0°E` })),
+    );
+    expect(regionMilestones(exploredRegions(areas, lookup))).toMatchObject({
+      count: 5,
+      last: 5,
+      next: 10,
+    });
+  });
+});
+
+describe('loading the region outlines', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('rejects when the download fails, and tries again next time', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('offline'));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(loadRegionOf()).rejects.toThrow('offline');
+    fetchMock.mockResolvedValue(new Response('nope', { status: 404 }));
+    await expect(loadRegionOf()).rejects.toThrow('HTTP 404');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

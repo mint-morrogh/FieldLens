@@ -7,6 +7,7 @@
  * coarse (~11 km) label is kept.
  */
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { answersEarnSharpEye, applyAnswers, type Answers } from '../../../shared/questions';
 import type { ConfidenceBand, IdentifyResponse, OrganismCategory } from '../../../shared/types';
 import { reloadSettings } from '../../lib/settings';
 import type { Guess } from '../journal/fieldSkills';
@@ -22,6 +23,10 @@ export type ObservationRecord = {
   thumbnail?: Blob;
   /** Higher-quality copy (≤2048 px, EXIF-free) for the full-screen viewer. */
   photo?: Blob;
+  /**
+   * The top match as the journal counts it: the server's, or re-scored on the device from
+   * follow-up answers (see `answers`). `result` always stays the server's own response.
+   */
   top?: {
     scientificName: string;
     commonName?: string;
@@ -35,8 +40,10 @@ export type ObservationRecord = {
   result: IdentifyResponse;
   /** "Name it first": what was guessed before the result was shown, and how it compared. */
   guess?: Guess;
-  /** An added photo turned an uncertain identification into a confident one. */
+  /** An added photo, or follow-up answers, turned an uncertain identification into a confident one. */
   sharpEye?: true;
+  /** Follow-up answers given for `result` (by its requestId); `top` reflects them. */
+  answers?: { requestId: string; answers: Answers };
   // Reserved for the personal field guide: favorites, collections, notes.
   favorite?: boolean;
   collections?: string[];
@@ -126,7 +133,41 @@ export function toRecord(
   };
 }
 
-type Extras = Pick<ObservationRecord, 'guess' | 'sharpEye'>;
+type Extras = Pick<ObservationRecord, 'guess' | 'sharpEye' | 'answers'>;
+
+/**
+ * Fold follow-up answers into `top` (and `sharpEye`) so the journal counts the re-scored band.
+ * Answers for an older result (a follow-up photo replaced it) are dropped. Without answers the
+ * record is unchanged.
+ */
+export function withAnswers(record: ObservationRecord): ObservationRecord {
+  const { answers, ...rest } = record;
+  if (!answers) return record;
+  if (answers.requestId !== record.result.requestId) return rest;
+  const answered = applyAnswers(record.result, answers.answers);
+  const top = answered.candidates[0];
+  const original = record.result.confidenceBand;
+  // A photo can only have earned sharp eye on a confident result; on an uncertain one the
+  // mark is the answers' to give or take back.
+  const sharpEye =
+    original === 'low' || original === 'none'
+      ? answersEarnSharpEye(record.result, answered) || undefined
+      : record.sharpEye;
+  return {
+    ...record,
+    sharpEye: sharpEye || undefined,
+    top: top
+      ? {
+          scientificName: top.scientificName,
+          commonName: top.commonName,
+          finalConfidence: top.finalConfidence,
+          band: answered.confidenceBand,
+          gbifKey: top.taxonKeys.gbif,
+        }
+      : undefined,
+  };
+}
+
 /**
  * Guesses and sharp-eye marks made this session, by observation. Every later save of the same
  * observation (the thumbnail pass, a follow-up photo) keeps them.
@@ -136,11 +177,14 @@ const extrasById = new Map<string, Extras>();
 export async function saveObservation(record: ObservationRecord): Promise<void> {
   await (
     await db()
-  ).put('observations', {
-    ...record,
-    ...extrasById.get(record.id),
-    result: stripLocation(record.result),
-  });
+  ).put(
+    'observations',
+    withAnswers({
+      ...record,
+      ...extrasById.get(record.id),
+      result: stripLocation(record.result),
+    }),
+  );
 }
 
 export async function listObservations(limit?: number): Promise<ObservationRecord[]> {
@@ -163,7 +207,7 @@ export async function patchObservation(id: string, patch: Extras): Promise<void>
   const database = await db();
   const tx = database.transaction('observations', 'readwrite');
   const record = await tx.store.get(id);
-  if (record) await tx.store.put({ ...record, ...patch });
+  if (record) await tx.store.put(withAnswers({ ...record, ...patch }));
   await tx.done;
 }
 

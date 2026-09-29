@@ -8,3 +8,4 @@ test-results
 server/safety/tpptData.ts
 server/facts/mammalTraits.ts
 server/facts/birdTraits.ts
+src/assets/admin1.topo.json

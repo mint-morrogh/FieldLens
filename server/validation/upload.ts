@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { DEFAULT_CATEGORY, isIdentifyTarget, isValidFeature } from '../../shared/categories.js';
 import { AUDIO, UPLOAD } from '../../shared/config.js';
 import { isValidLatLng, toApproxLocation } from '../../shared/geo.js';
+import { onDeviceCallSchema } from '../../shared/onDeviceCall.js';
 import type { IdentifyTarget } from '../../shared/types.js';
 import { ApiError } from '../lib/errors.js';
 import type { IdentificationInput, InputAudio, InputImage } from '../providers/types.js';
@@ -152,7 +153,31 @@ export function wavSeconds(
   return bytes / 2 / sampleRate;
 }
 
+/** A call already identified by BirdNET on the phone (the recording stays there). */
+function parseOnDeviceCall(form: FormData): InputAudio | undefined {
+  const raw = form.get('birdnet');
+  if (typeof raw !== 'string' || !raw) return undefined;
+  let json: unknown;
+  try {
+    json = raw.length <= 20_000 ? JSON.parse(raw) : undefined;
+  } catch {
+    /* rejected below */
+  }
+  const parsed = onDeviceCallSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new ApiError('invalid_request', 'The on-device result couldn’t be read.');
+  }
+  return {
+    data: new Uint8Array(0),
+    mimeType: 'audio/wav',
+    seconds: parsed.data.seconds,
+    onDevice: parsed.data,
+  };
+}
+
 async function parseAudio(form: FormData): Promise<InputAudio | undefined> {
+  const onDevice = parseOnDeviceCall(form);
+  if (onDevice) return onDevice;
   const file = form.get('audio');
   if (!file || typeof file === 'string') return undefined;
   // 16-bit mono: 2 bytes per sample, plus the 44-byte header.

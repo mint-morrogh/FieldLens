@@ -59,6 +59,11 @@ export function encodeWav(samples: Float32Array, sampleRate: number): Blob {
 
 /** Decodes a MediaRecorder clip and resamples it to mono WAV at `CALL_SAMPLE_RATE`. */
 export async function toCallWav(recording: Blob, maxSeconds: number): Promise<Blob> {
+  return encodeWav(await toCallSamples(recording, maxSeconds), CALL_SAMPLE_RATE);
+}
+
+/** Decodes a MediaRecorder clip to mono samples at `CALL_SAMPLE_RATE` (at most `maxSeconds`). */
+export async function toCallSamples(recording: Blob, maxSeconds: number): Promise<Float32Array> {
   const ctx = newAudioContext();
   try {
     const decoded = await ctx.decodeAudioData(await recording.arrayBuffer());
@@ -73,7 +78,7 @@ export async function toCallWav(recording: Blob, maxSeconds: number): Promise<Bl
     source.connect(offline.destination);
     source.start();
     const rendered = await offline.startRendering();
-    return encodeWav(rendered.getChannelData(0), CALL_SAMPLE_RATE);
+    return rendered.getChannelData(0);
   } finally {
     void ctx.close();
   }

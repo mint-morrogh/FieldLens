@@ -39,6 +39,7 @@ import {
   deleteObservation,
   getObservation,
   listObservations,
+  patchObservation,
   type ObservationRecord,
 } from './historyStore';
 
@@ -635,6 +636,12 @@ export function ObservationScreen({ id }: { id: string }) {
         userPhotos={photo ? [photo] : undefined}
         guess={record.guess}
         sharpEye={record.sharpEye}
+        answers={record.answers}
+        onAnswers={(answers) =>
+          void patchObservation(record.id, {
+            answers: { requestId: record.result.requestId, answers },
+          }).catch(() => {})
+        }
       />
       {record.top && <ShareSpecimenButton record={record} />}
       <Button

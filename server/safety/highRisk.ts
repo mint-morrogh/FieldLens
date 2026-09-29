@@ -61,8 +61,8 @@ export const HIGH_RISK: HighRiskEntry[] = [
   {
     taxon: 'actaea',
     commonName: 'baneberry',
-    severity: 'toxic',
-    note: 'All parts of baneberry are poisonous, mainly the bright berries and the roots.',
+    severity: 'deadly', // the cited NC State page says it may be fatal
+    note: 'All parts of baneberry are poisonous, mainly the bright berries and the roots, and poisoning may be fatal.',
     source: 'NC State Extension — Actaea pachypoda',
     sourceUrl: ncsu('actaea-pachypoda'),
   },
@@ -77,8 +77,8 @@ export const HIGH_RISK: HighRiskEntry[] = [
   {
     taxon: 'solanum dulcamara',
     commonName: 'bittersweet nightshade',
-    severity: 'toxic',
-    note: 'All parts of bittersweet nightshade are poisonous to people, pets and livestock; its bright red berries are a risk to children.',
+    severity: 'deadly', // the cited NC State page says it may be fatal
+    note: 'All parts of bittersweet nightshade are poisonous to people, pets and livestock and may be fatal; its bright red berries are a risk to children.',
     source: 'NC State Extension — Solanum dulcamara',
     sourceUrl: ncsu('solanum-dulcamara'),
   },
@@ -101,8 +101,8 @@ export const HIGH_RISK: HighRiskEntry[] = [
   {
     taxon: 'menispermum',
     commonName: 'moonseed',
-    severity: 'toxic',
-    note: 'Moonseed fruit is poisonous and is easily confused with wild grapes. Each moonseed fruit has a single crescent-shaped seed; grapes have round seeds.',
+    severity: 'deadly', // the cited NC State page says it may be fatal
+    note: 'Moonseed fruit is poisonous, may be fatal, and is easily confused with wild grapes. Each moonseed fruit has a single crescent-shaped seed; grapes have round seeds.',
     source: 'NC State Extension — Menispermum canadense',
     sourceUrl: ncsu('menispermum-canadense'),
   },

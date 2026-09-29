@@ -10,6 +10,7 @@ import { useSetting } from '../../lib/settings';
 import { useOnline } from '../../lib/useOnline';
 import { usePhotoPicker } from '../camera/usePhotoPicker';
 import { CropEditor } from '../crop/CropEditor';
+import { patchObservation } from '../history/historyStore';
 import { ResultView } from '../results/ResultView';
 import { LocationFixCard } from '../location/LocationFixCard';
 import { SaveForLater } from '../offline/OfflineQueue';
@@ -236,6 +237,11 @@ export function IdentifyScreen() {
           mixedOrganismWarning={mixed}
           guess={state.guess}
           sharpEye={state.sharpEye}
+          onAnswers={(answers) =>
+            void patchObservation(state.observationId, {
+              answers: { requestId: result.requestId, answers },
+            }).catch(() => {})
+          }
           onSwitchCategory={(category) => void session.submit(undefined, { category })}
           improve={
             result.call

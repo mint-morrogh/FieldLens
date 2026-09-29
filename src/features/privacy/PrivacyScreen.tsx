@@ -30,7 +30,9 @@ export function PrivacyScreen() {
           <li>
             Bird calls are recorded only while you’re listening. The clip is converted on your
             device to a short sound file, sent once for identification and not kept; your history
-            keeps only the picture of the sound (a spectrogram).
+            keeps only the picture of the sound (a spectrogram). If you turn on “Identify bird calls
+            on this device” in Settings, BirdNET runs on your phone instead and only the names it
+            heard are sent, so the recording never leaves your device.
           </li>
           <li>
             Location is optional. If you allow it, an approximate position (rounded to about {fine})
@@ -161,8 +163,13 @@ export function PrivacyScreen() {
             <ExternalLink href="https://github.com/birdnet-team/BirdNET-Analyzer">
               BirdNET
             </ExternalLink>{' '}
-            (K. Lisa Yang Center for Conservation Bioacoustics, CC BY-NC-SA 4.0) — bird call
-            identification
+            (K. Lisa Yang Center for Conservation Bioacoustics at the Cornell Lab of Ornithology,
+            and Chemnitz University of Technology;{' '}
+            <ExternalLink href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+              CC BY-NC-SA 4.0
+            </ExternalLink>
+            ) — bird call identification. The on-device option downloads the unmodified v2.4 model
+            files, with this licence stored beside them, for non-commercial use.
           </li>
           <li>
             Home screen photos:{' '}

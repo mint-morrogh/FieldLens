@@ -3,6 +3,7 @@
  * functions; they never fetch providers directly.
  */
 import { apiErrorSchema, healthResponseSchema, identifyResponseSchema } from '../../shared/schemas';
+import type { OnDeviceCall } from '../../shared/onDeviceCall';
 import type {
   ApiErrorCode,
   ApproxLocation,
@@ -34,6 +35,8 @@ export type IdentifyRequest = {
   images: { blob: Blob; feature: FeatureId }[];
   /** Calls: a short mono WAV recording, identified instead of photos. */
   audio?: Blob;
+  /** Calls identified on the device: BirdNET's result, sent instead of the recording. */
+  birdnet?: OnDeviceCall;
   location?: ApproxLocation;
   /** "photo" when the position came from the photo's own GPS rather than the device. */
   locationSource?: 'photo';
@@ -77,7 +80,8 @@ export function buildIdentifyForm(
     form.append('images', img.blob, `photo-${i + 1}.jpg`);
     form.append('features', img.feature);
   });
-  if (req.audio) form.append('audio', req.audio, 'call.wav');
+  if (req.birdnet) form.append('birdnet', JSON.stringify(req.birdnet));
+  else if (req.audio) form.append('audio', req.audio, 'call.wav');
   if (req.location) {
     form.append('latitude', String(req.location.latitude));
     form.append('longitude', String(req.location.longitude));

@@ -92,7 +92,7 @@ Builds on the Field Journal and naturalist rank (done 2026-09-28). No rarity sco
 ## Gamification: journeys and places
 
 - [x] **Explored areas on the globe.** Each ~10 km area where you've found something lights up on the journal globe. Milestones like "5 areas explored" and "a new province".
-  - [ ] Province/state milestones (needs offline admin-boundary data; countries work).
+  - [x] Province/state milestones: Natural Earth admin-1 outlines (public domain, ~1.4 MB, fetched only by the explored-areas card; built by `scripts/build-admin1.mjs`).
 - [x] **Home patch.** Set an area (home, cottage, a favourite trail) and track "species found at your patch" over time, to see seasonal change on places you return to.
 - [x] **Seasonal wheel.** A 12-month ring per group that fills as you log finds in each month. "Fall fungi" and "spring flowers" become visual goals without time-limited events.
 
@@ -100,7 +100,7 @@ Builds on the Field Journal and naturalist rank (done 2026-09-28). No rarity sco
 
 - [x] **"Sharp eye" bonus.** Extra points when a follow-up answer or an added photo turns an uncertain identification into a confident one. Rewards good habits: photographing the right part, noting size and time.
   - [x] Done 2026-09-28: an added photo (or live frame of the deciding angle) that takes the same top species from low/none to medium/high saves `sharpEye` on the observation: +2 rank points, a "Sharp Eye" stamp, and a quiet note on the result.
-  - [ ] Follow-up answers can't earn it yet: they only down-weight contenders on the device, so the top match's own confidence (and band) never rises. It would need answers to re-score the top, or a server round-trip.
+  - [x] Follow-up answers can earn it too (done 2026-09-28): answers re-score on the device (`rescoreWithAnswers` in shared/questions.ts). Contradicting candidates keep 30%, then confidences are renormalised over max(1, their sum), so the top match's share rises. Capped at medium (just under the 'high' threshold), never for mushrooms, animal signs or experimental results, and no raise when the top match itself contradicts an answer. The result shows "Updated from your answers"; the observation keeps the server result and saves `answers`, with `top` re-scored so the journal counts it. Low/none to medium with the same top sets `sharpEye` ("Sharp eye: your answers made this confident."); changing the answers back takes it away.
 - [x] **Name it first** (optional setting, **off by default**; aimed at adults getting into biology, not just kids). Before the result appears, you can guess the group or the name. A correct guess earns a "Called it" stamp; fun with kids. Needs a settings toggle.
   - [x] Done 2026-09-28: with the setting on, the first result of a session waits behind "What do you think it is?" (group chips and/or a typed name, "Just show me" to skip). Common or scientific name, case- and accent-insensitive; the genus, another species in it, or the head word ("maple") counts as close. Saved on the observation (`guess`); "Called It" (first correct guess on a confident find) and "Keen Namer" (10) stamps, shown only with the setting on or once a guess exists. A miss gets no comment. Not offered for live results, whose name was already shown over the camera.
 
@@ -135,9 +135,11 @@ Builds on the Field Journal and naturalist rank (done 2026-09-28). No rarity sco
 - [ ] Delete the Hugging Face write token (`HF_DEPLOY_TOKEN` in `.env.local`, “fieldlens-setup” on huggingface.co) when not actively changing `hf-space/`.
 - [ ] Bird sound ID with BirdNET running in the browser (check licence before any public launch).
   - [x] Researched: [docs/research/birdnet-browser.md](docs/research/birdnet-browser.md). Licence: v2.4 weights are non-commercial (CC BY-NC-SA), so a free public app with attribution is fine but any commercial launch isn't. V3.0 is CC BY-SA but still a preview. Plan: opt-in, about 58 MB TF.js model in a worker, with the Space as fallback.
-  - [x] Audio windowing and ranking prototype (`src/features/listen/birdnet/`, not wired in yet).
+  - [x] Audio windowing and ranking prototype (`src/features/listen/birdnet/`).
   - [x] Fix `microphone=()` in `vercel.json`: it blocked Bird calls on the deployed site (now `microphone=(self)`).
-  - [ ] Worker + model hosting + check against the Space on the 40-clip set (plan steps 2–8).
+  - [x] Opt-in on-device mode (owner OK'd the non-commercial licence, 2026-09-28): Settings toggle with download/progress/remove and BirdNET credit; TF.js worker (WebGL, WASM fallback); model from the BirdNET team's files on jsDelivr (pinned, SHA-256 checked) in its own cache with the licence file; only the result is sent for enrichment; Space fallback. Matches the Space on 4 real clips (scores within 0.0001). See §7 of the research doc.
+  - [ ] Check against the Space on the 40-clip set (same top-1 on ≥ 39/40).
+  - [ ] Measure on a real mid-range Android and an iPhone (load, warm ID time, memory; does Safari's worker WebGL pass or fall back to WASM?).
 - [ ] Fix the TypeScript warnings in Vercel's build log.
   - [x] Local build is clean: `api/tsconfig.json` type-checks with no errors, and the >500 kB chunk warning is fixed (screens off the photo path load lazily; React/zod/idb in a `vendor` chunk).
   - [ ] Confirm on the next Vercel deploy's build log; if warnings remain, paste them here.

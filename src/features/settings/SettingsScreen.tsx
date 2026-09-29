@@ -5,6 +5,7 @@ import { Button, Card, Chip, Notice, SectionTitle } from '../../components/ui';
 import { BRAND } from '../../config/brand';
 import { setSetting, useSettings, type CameraMode, type Units } from '../../lib/settings';
 import { clearAllLocalData } from '../history/historyStore';
+import { OnDeviceModel } from '../listen/birdnet/OnDeviceModel';
 
 async function fetchUsage(): Promise<UsageResponse | undefined> {
   try {
@@ -251,6 +252,16 @@ export function SettingsScreen() {
             checked={settings.nameItFirst}
             onChange={(v) => setSetting('nameItFirst', v)}
           />
+          <div className="space-y-3">
+            <Toggle
+              id="on-device-calls"
+              label="Identify bird calls on this device"
+              description="Runs BirdNET on your phone, so recordings aren’t uploaded. Needs a one-time download of about 60 MB. Names and details still come from FieldLens."
+              checked={settings.onDeviceCalls}
+              onChange={(v) => setSetting('onDeviceCalls', v)}
+            />
+            <OnDeviceModel enabled={settings.onDeviceCalls} />
+          </div>
         </div>
       </Card>
 
