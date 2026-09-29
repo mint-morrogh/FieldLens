@@ -68,6 +68,30 @@ test('tapping identifies what is under the finger straight away', async ({ page 
   await expect(card).toContainText('Very likely');
 });
 
+test('a tap focuses there, the match can be saved, and stays in the session strip', async ({
+  page,
+}) => {
+  await page.goto('/?mock=high');
+  await page.getByRole('button', { name: 'Live identify' }).click();
+  await expect(page.getByTestId('live-box')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('live-video').click({ position: { x: 120, y: 200 } });
+  await expect(page.getByTestId('live-focus-ring')).toBeVisible();
+  const card = page.getByTestId('live-result');
+  await expect(card).toBeVisible({ timeout: 10_000 });
+
+  // Save without leaving live mode.
+  await card.getByTestId('live-save').click();
+  await expect(card.getByTestId('live-save')).toHaveText('Saved');
+
+  // Cleared, the match waits in the strip and can be brought back.
+  await card.getByRole('button', { name: 'Clear' }).click();
+  const strip = page.getByTestId('live-finds');
+  await expect(strip.getByRole('button', { name: 'Show Red Maple again' })).toBeVisible();
+  await strip.getByRole('button', { name: 'Show Red Maple again' }).click();
+  await expect(page.getByTestId('live-result')).toContainText('Red Maple');
+  await expect(page.getByTestId('live-save')).toHaveText('Saved');
+});
+
 test('uncertain matches are shown as possible, not hidden', async ({ page }) => {
   await page.goto('/?mock=low');
   await page.getByRole('button', { name: 'Live identify' }).click();

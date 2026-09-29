@@ -15,7 +15,7 @@ import { ClientError, identify } from '../../lib/api';
 import { displayName } from '../../lib/format';
 import { currentTilt, startTiltTracking } from '../../lib/tilt';
 import { useSetting } from '../../lib/settings';
-import { useSession } from '../identification/SessionContext';
+import { saveToHistory, useSession } from '../identification/SessionContext';
 import { useLocationState } from '../location/LocationContext';
 import { mergeImages } from '../results/Gallery';
 import {
@@ -25,6 +25,7 @@ import {
   watchBattery,
   type FramePolicy,
 } from './framePolicy';
+import { checkRegion } from './frameQuality';
 import {
   closeSubjectLift,
   cropAround,
@@ -102,6 +103,38 @@ const PREDICT_MAX_MS = 200;
 const TRACK_FOR_MS = 12_000;
 const TRACK_MISSES = 3;
 
+/** Thumbnails kept in the session strip. */
+const SESSION_FINDS = 8;
+
+/** How long a tap waits for the camera to refocus before taking the frame. */
+const FOCUS_SETTLE_MS = 400;
+
+/**
+ * Tap to focus: asks the camera to focus and meter at `point` (0–1 in the frame). Chrome on
+ * Android supports this; elsewhere it resolves false and nothing changes.
+ */
+async function focusAt(
+  track: MediaStreamTrack | undefined,
+  point: { x: number; y: number },
+): Promise<boolean> {
+  const caps = (track?.getCapabilities?.() ?? {}) as {
+    pointsOfInterest?: unknown;
+    focusMode?: string[];
+    exposureMode?: string[];
+  };
+  if (!track || !('pointsOfInterest' in caps)) return false;
+  const set: Record<string, unknown> = { pointsOfInterest: [point] };
+  if (caps.focusMode?.includes('single-shot')) set.focusMode = 'single-shot';
+  else if (caps.focusMode?.includes('continuous')) set.focusMode = 'continuous';
+  if (caps.exposureMode?.includes('continuous')) set.exposureMode = 'continuous';
+  try {
+    await track.applyConstraints({ advanced: [set as MediaTrackConstraintSet] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** A subject box touching the edge of the view (and not simply filling it). */
 function touchesEdge(b: Rect, v: Rect): boolean {
   const mx = v.w * 0.03;
@@ -153,7 +186,7 @@ type Join = {
   view: DecidingView;
 };
 type Focus = Rect & { hint?: Hint };
-type Tip = 'several' | 'closer' | 'unsure' | undefined;
+type Tip = 'several' | 'closer' | 'unsure' | 'dark' | 'blurry' | undefined;
 
 function newId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -308,10 +341,15 @@ function FoundCard({
   onClear,
   onDetails,
   onDecide,
+  onSave,
+  saveState,
 }: {
   found: Found;
   onClear: () => void;
   onDetails: () => void;
+  /** Save to the Field Journal and stay in live mode. */
+  onSave: () => void;
+  saveState?: 'saving' | 'saved' | 'failed';
   /** Shoot the deciding angle next (offered when the result names one). */
   onDecide?: (view: DecidingView) => void;
 }) {
@@ -363,13 +401,32 @@ function FoundCard({
           </button>
         </div>
       )}
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="mt-4 grid grid-cols-3 gap-2">
         <button
           type="button"
           onClick={onClear}
           className="min-h-12 rounded-2xl bg-white/15 font-semibold text-white active:bg-white/25"
         >
           Clear
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saveState === 'saving' || saveState === 'saved'}
+          className="flex min-h-12 items-center justify-center gap-1.5 rounded-2xl bg-white/15 font-semibold text-white active:bg-white/25 disabled:opacity-100"
+          data-testid="live-save"
+        >
+          {saveState === 'saved' ? (
+            <>
+              <Icon name="check" className="h-4 w-4" /> Saved
+            </>
+          ) : saveState === 'saving' ? (
+            'Saving…'
+          ) : saveState === 'failed' ? (
+            'Try again'
+          ) : (
+            'Save'
+          )}
         </button>
         <button
           type="button"
@@ -418,6 +475,12 @@ export function LiveScreen() {
     }
   >();
   const liftMoveRef = useRef<HTMLDivElement>(null);
+  /** This session's matches, newest first, one per species: the strip along the bottom. */
+  const [finds, setFinds] = useState<{ name: string; found: Found; thumb: string }[]>([]);
+  /** Matches saved to the journal from the card (by result id). */
+  const [saved, setSaved] = useState<Record<string, 'saving' | 'saved' | 'failed'>>({});
+  /** Where the last tap was, for the focus ring (px within the screen). */
+  const [ring, setRing] = useState<{ x: number; y: number; id: number }>();
   /** The followed subject is at the edge of the view. */
   const [atEdge, setAtEdge] = useState(false);
   /** Zoom shown to the person (camera zoom, or on-screen magnification), and on-screen scale. */
@@ -464,6 +527,9 @@ export function LiveScreen() {
     downAt: undefined as { x: number; y: number } | undefined,
     zoomPending: undefined as number | undefined,
     liftId: 0,
+    ringId: 0,
+    /** Object URLs made for the session strip, released on leaving. */
+    thumbs: [] as string[],
     /** The tapped subject being followed: its last cut-out, missed updates, and when it began. */
     follow: undefined as
       | { last: Lift; at: number; v: { x: number; y: number }; misses: number; since: number }
@@ -525,8 +591,12 @@ export function LiveScreen() {
     setLift((current) => current && { ...current, leaving: true });
   }, []);
 
+  /**
+   * Show a match. `fresh` is a new result (not one reopened from the session strip or "See
+   * best match"): it gets a short, silent buzz and joins the strip.
+   */
   const show = useCallback(
-    (f: Found) => {
+    (f: Found, fresh = true) => {
       const l = loop.current;
       stopTracking();
       l.vote = undefined;
@@ -534,9 +604,44 @@ export function LiveScreen() {
       setFound(f);
       setKind(getCategory(f.result.category).label);
       setStatus('found');
+      if (!fresh) return;
+      try {
+        navigator.vibrate?.(30);
+      } catch {
+        /* not supported (iOS) */
+      }
+      const name = f.result.candidates[0]?.scientificName.toLowerCase();
+      if (!name) return;
+      const thumb = URL.createObjectURL(f.crops?.[0]?.blob ?? f.crop);
+      l.thumbs.push(thumb);
+      setFinds((list) =>
+        [{ name, found: f, thumb }, ...list.filter((x) => x.name !== name)].slice(0, SESSION_FINDS),
+      );
     },
     [stopTracking],
   );
+
+  // The strip's thumbnails are object URLs: release them when leaving live mode.
+  useEffect(() => {
+    const l = loop.current;
+    return () => {
+      for (const url of l.thumbs) URL.revokeObjectURL(url);
+      l.thumbs = [];
+    };
+  }, []);
+
+  /** Save the shown match to the Field Journal without leaving live mode. */
+  const save = useCallback(async (f: Found) => {
+    const id = f.result.requestId;
+    setSaved((m) => ({ ...m, [id]: 'saving' }));
+    const ok = await saveToHistory(
+      id,
+      f.result,
+      { blob: f.crops?.[0]?.blob ?? f.crop, original: { blob: f.frame } },
+      new Date(),
+    );
+    setSaved((m) => ({ ...m, [id]: ok ? 'saved' : 'failed' }));
+  }, []);
 
   const clear = useCallback(() => {
     const l = loop.current;
@@ -574,12 +679,68 @@ export function LiveScreen() {
     setDeciding(undefined);
   }, []);
 
+  /**
+   * Cut out the subject at `point` (0–1 in the frame) from the live view and start following
+   * it. Returns the cut-out, or undefined when the model isn't loaded or nothing clear is there.
+   */
+  const liftAt = useCallback(
+    (video: HTMLVideoElement, point: { x: number; y: number }, maxArea = 1): Lift | undefined => {
+      const l = loop.current;
+      const segmenter = subjectLiftReady();
+      if (!segmenter) return undefined;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const scale = Math.min(1, LIFT_EDGE / Math.max(vw, vh));
+      const snapshot = document.createElement('canvas');
+      snapshot.width = Math.round(vw * scale);
+      snapshot.height = Math.round(vh * scale);
+      snapshot.getContext('2d')?.drawImage(video, 0, 0, snapshot.width, snapshot.height);
+      const lifted = liftSubject(segmenter, snapshot, point, vw);
+      if (!lifted || lifted.area > maxArea || l.done || l.paused) return undefined;
+      l.liftId += 1;
+      const at = performance.now();
+      const v = { x: 0, y: 0 };
+      setLift({ ...lifted, id: l.liftId, at, v });
+      l.follow = { last: lifted, at, v, misses: 0, since: at };
+      return lifted;
+    },
+    [],
+  );
+
   const analyse = useCallback(
     async (manual = false) => {
       const video = videoRef.current;
       const l = loop.current;
       const f = manual ? l.tapped : l.focus;
       if (!video || !f || l.busy || l.done || l.paused) return;
+      const pad = 0.15;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const x = Math.max(0, f.x - f.w * pad);
+      const y = Math.max(0, f.y - f.h * pad);
+      const region = {
+        x,
+        y,
+        w: Math.min(vw - x, f.w * (1 + 2 * pad)),
+        h: Math.min(vh - y, f.h * (1 + 2 * pad)),
+      };
+      // Don't spend an identification on a frame that's too dark or blurred. A scan waits for
+      // a better one; a tap gives the camera a moment to focus, then goes with the best it got.
+      const probe = document.createElement('canvas');
+      let q = checkRegion(video, region, probe);
+      if (manual) {
+        for (let i = 0; i < 3 && q?.problem === 'blurry'; i++) {
+          await new Promise((r) => setTimeout(r, 250));
+          q = checkRegion(video, region, probe);
+        }
+      }
+      if (q?.problem === 'dark' || (q?.problem === 'blurry' && !manual)) {
+        setTip(q.problem);
+        if (manual) stopTracking();
+        l.stillSince = 0;
+        l.nextAttemptAt = performance.now() + 700;
+        return;
+      }
       l.busy = true;
       l.attempts += 1;
       setStatus('analysing');
@@ -587,18 +748,11 @@ export function LiveScreen() {
       setGuess(undefined);
       // The detector's hint shows straight away; automatic detection may refine it below.
       setKind(f.hint?.label);
+      // Automatic scans get the same outline as taps, on whatever is in the middle of the box.
+      if (!manual && !l.follow) {
+        liftAt(video, { x: (f.x + f.w / 2) / vw, y: (f.y + f.h / 2) / vh }, 0.6);
+      }
       try {
-        const pad = 0.15;
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        const x = Math.max(0, f.x - f.w * pad);
-        const y = Math.max(0, f.y - f.h * pad);
-        const region = {
-          x,
-          y,
-          w: Math.min(vw - x, f.w * (1 + 2 * pad)),
-          h: Math.min(vh - y, f.h * (1 + 2 * pad)),
-        };
         const { cropMaxEdge, frameMaxEdge, quality } = l.policy;
         const frame = await grab(video, { x: 0, y: 0, w: vw, h: vh }, frameMaxEdge, quality);
         const crop =
@@ -684,7 +838,7 @@ export function LiveScreen() {
         l.stillSince = 0;
       }
     },
-    [current, show],
+    [current, show, liftAt, stopTracking],
   );
 
   /** Zoom to `z`: the camera's own zoom where it has one, else magnify the view. */
@@ -737,12 +891,11 @@ export function LiveScreen() {
         .filter((b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h)
         .sort((a, b) => a.w * a.h - b.w * b.h)[0];
 
-      // A snapshot of the tapped frame (not shown) for the cut-out.
-      const scale = Math.min(1, LIFT_EDGE / Math.max(vw, vh));
-      const snapshot = document.createElement('canvas');
-      snapshot.width = Math.round(vw * scale);
-      snapshot.height = Math.round(vh * scale);
-      snapshot.getContext('2d')?.drawImage(video, 0, 0, snapshot.width, snapshot.height);
+      // Tap to focus: point the camera's focus and exposure here where it can (Android).
+      const focusing = focusAt(l.track, { x: p.x / vw, y: p.y / vh });
+      const root = video.closest('[data-testid=live-screen]')?.getBoundingClientRect();
+      l.ringId += 1;
+      setRing({ x: clientX - (root?.left ?? 0), y: clientY - (root?.top ?? 0), id: l.ringId });
 
       const side = Math.min(visible.w, visible.h) * TAP_BOX;
       const hint = hit && hit.hint?.label !== 'Person' ? hit.hint : undefined;
@@ -761,24 +914,15 @@ export function LiveScreen() {
       // Let the tap register on screen, then cut out the subject under the finger (when the
       // segmenter has loaded; taps never wait for it) and identify a crop around it.
       requestAnimationFrame(() =>
-        setTimeout(() => {
-          const segmenter = subjectLiftReady();
-          let lifted: Lift | undefined;
-          if (segmenter) {
-            lifted = liftSubject(segmenter, snapshot, { x: p.x / vw, y: p.y / vh }, vw);
-          } else {
-            void loadSubjectLift(WASM_URL);
-          }
-          if (lifted && !l.done && !l.paused) {
-            l.liftId += 1;
-            const at = performance.now();
-            const v = { x: 0, y: 0 };
-            setLift({ ...lifted, id: l.liftId, at, v });
-            // Follow it from here on (see the tracking effect).
-            l.follow = { last: lifted, at, v, misses: 0, since: at };
+        setTimeout(async () => {
+          if (!subjectLiftReady()) void loadSubjectLift(WASM_URL);
+          const lifted = liftAt(video, { x: p.x / vw, y: p.y / vh });
+          if (lifted) {
             l.tapped = target(cropAround(lifted.box, 1, vw, vh, { margin: 0, minShare: 0.15 }));
             setBox(toDisplay(video, l.tapped, l.digitalZoom));
           }
+          // Give the camera a moment to refocus on the new point before the frame is taken.
+          if (await focusing) await new Promise((r) => setTimeout(r, FOCUS_SETTLE_MS));
           l.busy = false;
           if (l.done || l.paused) {
             l.follow = undefined;
@@ -789,7 +933,7 @@ export function LiveScreen() {
         }, 0),
       );
     },
-    [analyse],
+    [analyse, liftAt],
   );
 
   // Follow the tapped subject: re-cut it from the live view a few times a second, starting
@@ -1076,7 +1220,7 @@ export function LiveScreen() {
             ? 'several'
             : best && (best.w * best.h) / (visible.w * visible.h) < TOO_SMALL
               ? 'closer'
-              : current === 'unsure'
+              : current === 'unsure' || current === 'dark' || current === 'blurry'
                 ? current
                 : undefined,
         );
@@ -1154,6 +1298,8 @@ export function LiveScreen() {
   };
   const tips: Record<NonNullable<Tip>, string> = {
     several: 'Several things in view: tap the one you mean',
+    dark: 'Too dark to identify. Find more light',
+    blurry: 'Too blurry. Hold steady or tap to focus',
     closer: 'Move closer, or tap it',
     unsure: 'Not sure yet. Move closer, or tap one flower, leaf or animal',
   };
@@ -1215,6 +1361,16 @@ export function LiveScreen() {
         </div>
       </div>
 
+      {ring && !found && (
+        <span
+          key={ring.id}
+          className="live-focus-ring pointer-events-none absolute"
+          style={{ left: ring.x, top: ring.y }}
+          aria-hidden
+          data-testid="live-focus-ring"
+          onAnimationEnd={() => setRing((r) => (r?.id === ring.id ? undefined : r))}
+        />
+      )}
       {box && status !== 'error' && !found && (
         <div
           className={`live-focus pointer-events-none absolute ${scanning ? 'live-focus-scanning' : ''}`}
@@ -1283,6 +1439,8 @@ export function LiveScreen() {
             found={found}
             onClear={clear}
             onDetails={() => openDetails(found)}
+            onSave={() => void save(found)}
+            saveState={saved[found.result.requestId]}
             onDecide={
               // With the session's frames used up, clear() shows the scan limit instead.
               (found.crops?.length ?? 1) < UPLOAD.maxImages
@@ -1292,6 +1450,30 @@ export function LiveScreen() {
           />
         ) : (
           <div className="flex flex-col items-center gap-3 pb-2">
+            {finds.length > 0 && (
+              <ul
+                className="flex max-w-full gap-2 overflow-x-auto px-1 py-1 [scrollbar-width:none]"
+                aria-label="Found this session"
+                data-testid="live-finds"
+              >
+                {finds.map((x) => {
+                  const name = displayName(x.found.result.candidates[0]);
+                  return (
+                    <li key={x.name} className="shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => show(x.found, false)}
+                        className="block h-11 w-11 overflow-hidden rounded-full border-2 border-white/80 shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
+                        aria-label={`Show ${name} again`}
+                        title={name}
+                      >
+                        <img src={x.thumb} alt="" className="h-full w-full object-cover" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             {deciding && status !== 'error' && status !== 'exhausted' && (
               <div
                 className={`fade-up flex max-w-sm items-center gap-3 rounded-2xl px-4 py-2.5 ${GLASS}`}
@@ -1352,7 +1534,7 @@ export function LiveScreen() {
             {bestGuess && !scanning && status !== 'error' && (
               <button
                 type="button"
-                onClick={() => show(bestGuess)}
+                onClick={() => show(bestGuess, false)}
                 className={`min-h-11 rounded-full px-4 text-sm font-semibold ${GLASS}`}
                 data-testid="live-best"
               >

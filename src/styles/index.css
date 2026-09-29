@@ -652,3 +652,45 @@
     background: rgba(255, 255, 255, 0.35);
   }
 }
+
+/* Live identify: tap to focus, camera-app style — a ring that settles where you tapped. */
+.live-focus-ring {
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  border-radius: 9999px;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+  animation: live-focus-ring 0.8s ease-out both;
+}
+@keyframes live-focus-ring {
+  0% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+  25% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-focus-ring {
+    animation: live-focus-ring-still 0.8s linear both;
+  }
+}
+@keyframes live-focus-ring-still {
+  0%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
