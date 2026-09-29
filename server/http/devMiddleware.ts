@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { handleHealth, handleIdentify, handleUsage } from './handlers.js';
+import { handleGeocode } from './geocodeHandlers.js';
 import { handleNearbyFamilies, handleWhatsOut } from './nearbyHandlers.js';
 
 /**
@@ -19,6 +20,8 @@ export function apiMiddleware() {
       response = await handleUsage();
     } else if (url.pathname === '/api/whats-out') {
       response = await handleWhatsOut(await toRequest(req, url));
+    } else if (url.pathname === '/api/geocode') {
+      response = await handleGeocode(await toRequest(req, url));
     } else if (url.pathname === '/api/nearby-families') {
       response = await handleNearbyFamilies(await toRequest(req, url));
     } else if (url.pathname === '/api/identify') {

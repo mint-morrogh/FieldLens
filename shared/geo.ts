@@ -52,3 +52,18 @@ export function coarseLocationLabel(location: ApproxLocation): string {
   const ew = location.longitude >= 0 ? 'E' : 'W';
   return `${lat}°${ns}, ${lng}°${ew}`;
 }
+
+/**
+ * The ~11 km cell that `coarseLocationLabel` names for a point, as numbers. It follows the
+ * same path a find takes (request grid first, then the label's rounding of the absolute
+ * value), so a place chosen by address lands in exactly the cell finds made there get.
+ */
+export function labelCell(location: ApproxLocation): ApproxLocation {
+  const approx = toApproxLocation(location.latitude, location.longitude);
+  const d = GEO.labelPrecision;
+  const snap = (v: number) => {
+    const r = roundCoordinate(Math.abs(v), d);
+    return v < 0 && r !== 0 ? -r : r;
+  };
+  return { latitude: snap(approx.latitude), longitude: snap(approx.longitude) };
+}

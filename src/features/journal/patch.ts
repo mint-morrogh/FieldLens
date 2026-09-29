@@ -1,3 +1,4 @@
+import { labelCell } from '../../../shared/geo';
 import type { ObservationRecord } from '../history/historyStore';
 import { areaKey, formatArea, recordAreaKey } from './areas';
 import {
@@ -10,9 +11,10 @@ import {
 } from './journal';
 
 /**
- * Home patch: one of your own ~11 km areas (home, a cottage, a favourite trail) chosen from
- * the places already in your journal, so no new location is ever requested. Saved in
- * localStorage; clearAllLocalData() removes it with every other fieldlens.* key.
+ * Home patch: one ~11 km area (home, a cottage, a favourite trail), chosen from the places
+ * already in your journal, found by address or place name, or taken from your current
+ * approximate location. Only the cell is kept (never the typed address or a precise point).
+ * Saved in localStorage; clearAllLocalData() removes it with every other fieldlens.* key.
  */
 
 export const HOME_PATCH_KEY = 'fieldlens.homePatch';
@@ -48,14 +50,22 @@ export function loadHomePatch(): HomePatch | undefined {
   }
 }
 
-/** Saves the patch; returns false if storage isn't available. */
+/**
+ * The journal cell (as in a find's "46.2°N, 63.1°W" label) a point falls in, so a patch set
+ * by address or current location matches finds made there exactly.
+ */
+export function patchCell(point: { latitude: number; longitude: number }): {
+  latitude: number;
+  longitude: number;
+} {
+  return labelCell(point);
+}
+
+/** Saves the patch, snapped to its ~11 km cell; returns false if storage isn't available. */
 export function saveHomePatch(patch: HomePatch): boolean {
   const name = patch.name?.trim().slice(0, PATCH_NAME_MAX) || undefined;
   try {
-    localStorage.setItem(
-      HOME_PATCH_KEY,
-      JSON.stringify({ latitude: patch.latitude, longitude: patch.longitude, name }),
-    );
+    localStorage.setItem(HOME_PATCH_KEY, JSON.stringify({ ...patchCell(patch), name }));
     return true;
   } catch {
     return false;

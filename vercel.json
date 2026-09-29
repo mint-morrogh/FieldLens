@@ -8,7 +8,8 @@
     "api/health.ts": { "maxDuration": 5 },
     "api/usage.ts": { "maxDuration": 10 },
     "api/nearby-families.ts": { "maxDuration": 15 },
-    "api/whats-out.ts": { "maxDuration": 15 }
+    "api/whats-out.ts": { "maxDuration": 15 },
+    "api/geocode.ts": { "maxDuration": 15 }
   },
   "headers": [
     {

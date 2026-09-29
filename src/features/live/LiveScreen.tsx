@@ -25,6 +25,25 @@ import {
   watchBattery,
   type FramePolicy,
 } from './framePolicy';
+import {
+  closeSubjectLift,
+  cropAround,
+  liftSubject,
+  loadSubjectLift,
+  subjectLiftReady,
+  LIFT_EDGE,
+  type Lift,
+} from './subjectLift';
+import {
+  MAX_DIGITAL_ZOOM,
+  cameraZoomRange,
+  clampInto,
+  formatZoom,
+  pinchZoom,
+  visibleRect,
+  zoomDisplay,
+  type CameraZoom,
+} from './zoom';
 
 /**
  * Live identify: an on-device detector (MediaPipe EfficientDet-Lite0, COCO classes) boxes
@@ -120,10 +139,50 @@ function newId() {
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-/** Centre square covering 60% of the shorter side of the frame. */
-function centreBox(vw: number, vh: number): Rect {
-  const side = Math.min(vw, vh) * 0.6;
-  return { x: (vw - side) / 2, y: (vh - side) / 2, w: side, h: side };
+/**
+ * Crops are at least this many video pixels across (or the whole frame, if smaller), so a
+ * zoomed-in or low-resolution view never sends a crop too small to identify.
+ */
+const MIN_CROP_PX = 128;
+
+/** A crop kept on screen where it fits, otherwise (a tiny view) just inside the frame. */
+function fitCrop(r: Rect, visible: Rect, vw: number, vh: number): Rect {
+  const min = Math.min(MIN_CROP_PX, vw, vh);
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  const w = Math.max(r.w, min);
+  const h = Math.max(r.h, min);
+  const grown = { x: cx - w / 2, y: cy - h / 2, w, h };
+  return w <= visible.w && h <= visible.h
+    ? clampInto(grown, visible)
+    : clampInto(grown, { x: 0, y: 0, w: vw, h: vh });
+}
+
+/** Centre square covering 60% of the shorter side of the visible part of the frame. */
+function centreBox(visible: Rect, vw: number, vh: number): Rect {
+  const side = Math.min(visible.w, visible.h) * 0.6;
+  return fitCrop(
+    {
+      x: visible.x + (visible.w - side) / 2,
+      y: visible.y + (visible.h - side) / 2,
+      w: side,
+      h: side,
+    },
+    visible,
+    vw,
+    vh,
+  );
+}
+
+/** The part of the video frame on screen, allowing for digital zoom. */
+function onScreen(video: HTMLVideoElement, zoom: number): Rect {
+  return visibleRect(
+    video.videoWidth,
+    video.videoHeight,
+    video.clientWidth || video.videoWidth,
+    video.clientHeight || video.videoHeight,
+    zoom,
+  );
 }
 
 function toBlob(canvas: HTMLCanvasElement, quality = 0.88): Promise<Blob> {
@@ -147,19 +206,25 @@ async function grab(
   return toBlob(canvas, quality);
 }
 
-/** Where a video rectangle appears on screen, as fractions of the element (object-fit: cover). */
-function toDisplay(video: HTMLVideoElement, r: Rect): Rect {
+/**
+ * Where a video rectangle appears on screen, as fractions of the element (object-fit: cover),
+ * after any digital zoom.
+ */
+function toDisplay(video: HTMLVideoElement, r: Rect, zoom = 1): Rect {
   const cw = video.clientWidth || 1;
   const ch = video.clientHeight || 1;
   const scale = Math.max(cw / video.videoWidth, ch / video.videoHeight);
   const ox = (cw - video.videoWidth * scale) / 2;
   const oy = (ch - video.videoHeight * scale) / 2;
-  return {
-    x: (r.x * scale + ox) / cw,
-    y: (r.y * scale + oy) / ch,
-    w: (r.w * scale) / cw,
-    h: (r.h * scale) / ch,
-  };
+  return zoomDisplay(
+    {
+      x: (r.x * scale + ox) / cw,
+      y: (r.y * scale + oy) / ch,
+      w: (r.w * scale) / cw,
+      h: (r.h * scale) / ch,
+    },
+    zoom,
+  );
 }
 
 /** The video pixel under a screen point. */
@@ -316,6 +381,14 @@ export function LiveScreen() {
   /** Why live mode is running light ("Low battery · Data saver"), shown quietly in the top bar. */
   const [light, setLight] = useState<string>();
   const dataSaver = useSetting('dataSaver');
+  /** The tapped subject, cut out and washed in white while it's identified. */
+  const [lift, setLift] = useState<Lift & { id: number }>();
+  /** The tapped frame, held on screen while it's identified (so the cut-out stays aligned). */
+  const [frozen, setFrozen] = useState(false);
+  const frozenRef = useRef<HTMLCanvasElement>(null);
+  /** Zoom shown to the person (camera zoom, or on-screen magnification), and on-screen scale. */
+  const [zoom, setZoom] = useState(1);
+  const [digitalZoom, setDigitalZoom] = useState(1);
 
   // Mutable loop state (read inside the interval without re-subscribing).
   const loop = useRef({
@@ -345,6 +418,18 @@ export function LiveScreen() {
     /** Smoothed time the loop's work takes per tick (detector and stillness check). */
     workMs: undefined as number | undefined,
     dataSaver,
+    /** The camera's own zoom range, when it has one; otherwise zoom is on screen. */
+    cameraZoom: undefined as CameraZoom | undefined,
+    zoom: 1,
+    digitalZoom: 1,
+    /** Fingers on the view, for pinch and tap. */
+    pointers: new Map<number, { x: number; y: number }>(),
+    pinch: undefined as { distance: number; zoom: number } | undefined,
+    /** The current touch became a pinch (or moved), so lifting the finger isn't a tap. */
+    gesture: false,
+    downAt: undefined as { x: number; y: number } | undefined,
+    zoomPending: undefined as number | undefined,
+    liftId: 0,
   });
 
   /** Re-decide the frame rate and upload size; updates the indicator when it changes. */
@@ -413,6 +498,8 @@ export function LiveScreen() {
     l.paused = false;
     l.vote = undefined;
     l.tapped = undefined;
+    setLift(undefined);
+    setFrozen(false);
     l.stillSince = 0;
     l.nextAttemptAt = performance.now() + 800;
     setStatus(l.attempts >= l.policy.maxAttempts ? 'exhausted' : 'aim');
@@ -544,6 +631,10 @@ export function LiveScreen() {
       } finally {
         l.busy = false;
         l.tapped = undefined;
+        if (manual) {
+          setLift(undefined);
+          setFrozen(false);
+        }
         l.nextAttemptAt = performance.now() + (l.vote ? CONFIRM_COOLDOWN_MS : l.policy.cooldownMs);
         l.stillSince = 0;
       }
@@ -551,36 +642,170 @@ export function LiveScreen() {
     [current, show],
   );
 
-  /** Tap to identify: the detected box under the finger, else a square around the tap. */
-  const onTap = useCallback(
-    (e: React.PointerEvent) => {
+  /** Zoom to `z`: the camera's own zoom where it has one, else magnify the view. */
+  const applyZoom = useCallback((z: number) => {
+    const l = loop.current;
+    const range = l.cameraZoom;
+    if (range) {
+      const clamped = Math.min(range.max, Math.max(range.min, z));
+      l.zoom = clamped;
+      setZoom(clamped / range.min);
+      // Coalesce: pinch events arrive faster than the camera applies a zoom.
+      if (l.zoomPending === undefined) {
+        l.zoomPending = clamped;
+        requestAnimationFrame(() => {
+          const target = l.zoomPending!;
+          l.zoomPending = undefined;
+          void l.track
+            ?.applyConstraints({ advanced: [{ zoom: target } as MediaTrackConstraintSet] })
+            .catch(() => undefined);
+        });
+      } else l.zoomPending = clamped;
+    } else {
+      const clamped = Math.min(MAX_DIGITAL_ZOOM, Math.max(1, z));
+      l.zoom = clamped;
+      l.digitalZoom = clamped;
+      setZoom(clamped);
+      setDigitalZoom(clamped);
+    }
+    // A new view: whatever was being confirmed may be off screen now.
+    l.vote = undefined;
+    l.stillSince = 0;
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    applyZoom(loop.current.cameraZoom?.min ?? 1);
+  }, [applyZoom]);
+
+  /** Tap to identify: the thing under the finger, cut out where the segmenter can. */
+  const tapAt = useCallback(
+    (clientX: number, clientY: number) => {
       const video = videoRef.current;
       const l = loop.current;
       if (!video || !video.videoWidth || l.busy || l.paused || l.done) return;
       if (l.attempts >= l.policy.maxAttempts) return;
-      const p = toVideo(video, e.clientX, e.clientY);
+      const p = toVideo(video, clientX, clientY);
       const vw = video.videoWidth;
       const vh = video.videoHeight;
+      const visible = onScreen(video, l.digitalZoom);
       const hit = l.boxes
         .filter((b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h)
         .sort((a, b) => a.w * a.h - b.w * b.h)[0];
-      const side = Math.min(vw, vh) * TAP_BOX;
-      const focus: Focus =
-        hit && hit.hint?.label !== 'Person'
-          ? hit
-          : {
-              x: Math.min(Math.max(0, p.x - side / 2), vw - side),
-              y: Math.min(Math.max(0, p.y - side / 2), vh - side),
-              w: side,
-              h: side,
-            };
-      l.tapped = focus;
+
+      // Hold the tapped frame on screen: it's what gets identified, and the cut-out lines up.
+      const still = frozenRef.current;
+      if (still) {
+        still.width = vw;
+        still.height = vh;
+        still.getContext('2d')?.drawImage(video, 0, 0, vw, vh);
+        setFrozen(true);
+      }
+
+      const side = Math.min(visible.w, visible.h) * TAP_BOX;
+      const hint = hit && hit.hint?.label !== 'Person' ? hit.hint : undefined;
+      const square: Rect =
+        hit && hint ? hit : { x: p.x - side / 2, y: p.y - side / 2, w: side, h: side };
+      const target = (region: Rect): Focus => ({ ...fitCrop(region, visible, vw, vh), hint });
+      l.tapped = target(square);
       l.vote = undefined;
-      setBox(toDisplay(video, focus));
-      void analyse(true);
+      // Claim the tap now, so the scan loop and other taps wait for it.
+      l.busy = true;
+      setLift(undefined);
+      setBox(toDisplay(video, l.tapped, l.digitalZoom));
+
+      // Let the frozen frame paint, then cut out the subject under the finger (when the
+      // segmenter has loaded; taps never wait for it) and identify a crop around it.
+      requestAnimationFrame(() =>
+        setTimeout(() => {
+          const segmenter = subjectLiftReady();
+          let lifted: Lift | undefined;
+          if (segmenter && still) {
+            const scale = Math.min(1, LIFT_EDGE / Math.max(vw, vh));
+            const small = document.createElement('canvas');
+            small.width = Math.round(vw * scale);
+            small.height = Math.round(vh * scale);
+            small.getContext('2d')?.drawImage(still, 0, 0, small.width, small.height);
+            lifted = liftSubject(segmenter, small, { x: p.x / vw, y: p.y / vh }, vw);
+          } else if (!segmenter) {
+            void loadSubjectLift(WASM_URL);
+          }
+          if (lifted && !l.done && !l.paused) {
+            l.liftId += 1;
+            setLift({ ...lifted, id: l.liftId });
+            l.tapped = target(cropAround(lifted.box, 1, vw, vh, { margin: 0, minShare: 0.15 }));
+            setBox(toDisplay(video, l.tapped, l.digitalZoom));
+          }
+          l.busy = false;
+          if (l.done || l.paused) {
+            setFrozen(false);
+            setLift(undefined);
+            return;
+          }
+          void analyse(true);
+        }, 0),
+      );
     },
     [analyse],
   );
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    const l = loop.current;
+    l.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (l.pointers.size === 1) {
+      l.gesture = false;
+      l.downAt = { x: e.clientX, y: e.clientY };
+    }
+    if (l.pointers.size === 2) {
+      const [a, b] = [...l.pointers.values()];
+      l.pinch = { distance: Math.hypot(a.x - b.x, a.y - b.y), zoom: l.zoom };
+      l.gesture = true;
+    }
+  }, []);
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const l = loop.current;
+      if (!l.pointers.has(e.pointerId)) return;
+      l.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (l.downAt && Math.hypot(e.clientX - l.downAt.x, e.clientY - l.downAt.y) > 12)
+        l.gesture = true;
+      if (l.pinch && l.pointers.size >= 2) {
+        const [a, b] = [...l.pointers.values()];
+        const range = l.cameraZoom;
+        applyZoom(
+          pinchZoom(
+            l.pinch.zoom,
+            l.pinch.distance,
+            Math.hypot(a.x - b.x, a.y - b.y),
+            range?.min ?? 1,
+            range?.max ?? MAX_DIGITAL_ZOOM,
+          ),
+        );
+      }
+    },
+    [applyZoom],
+  );
+
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const l = loop.current;
+      const wasTap = l.pointers.size === 1 && !l.gesture && e.type === 'pointerup';
+      l.pointers.delete(e.pointerId);
+      if (l.pointers.size < 2) l.pinch = undefined;
+      if (wasTap) tapAt(e.clientX, e.clientY);
+    },
+    [tapAt],
+  );
+
+  // iOS Safari zooms the whole page on a pinch unless its gesture events are cancelled.
+  useEffect(() => {
+    const stop = (e: Event) => e.preventDefault();
+    const events = ['gesturestart', 'gesturechange', 'gestureend'];
+    for (const name of events) document.addEventListener(name, stop, { passive: false });
+    return () => {
+      for (const name of events) document.removeEventListener(name, stop);
+    };
+  }, []);
 
   // Camera + detector setup.
   useEffect(() => {
@@ -601,6 +826,12 @@ export function LiveScreen() {
         });
         if (cancelled) return;
         l.track = stream.getVideoTracks()[0];
+        l.cameraZoom = cameraZoomRange(l.track);
+        if (l.cameraZoom) {
+          const now = (l.track.getSettings() as { zoom?: number }).zoom;
+          l.zoom = now ?? l.cameraZoom.min;
+          setZoom(l.zoom / l.cameraZoom.min);
+        }
         const video = videoRef.current!;
         video.srcObject = stream;
         await video.play();
@@ -632,6 +863,9 @@ export function LiveScreen() {
       } catch {
         /* keep the centre box */
       }
+      // Load the tap cut-out model (~6 MB) in the background, so the first tap gets it. With
+      // data saver on it waits for the first tap instead.
+      if (!cancelled && !l.dataSaver) void loadSubjectLift(WASM_URL);
     })();
     return () => {
       cancelled = true;
@@ -639,6 +873,7 @@ export function LiveScreen() {
       l.detector?.close();
       l.detector = undefined;
       l.track = undefined;
+      closeSubjectLift();
     };
   }, []);
 
@@ -661,8 +896,6 @@ export function LiveScreen() {
       )
         return false;
       const now = performance.now();
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
 
       // 1. Where to look: the most prominent living thing (or bouquet), else the centre.
       let detections: ReturnType<ObjectDetector['detectForVideo']>['detections'] = [];
@@ -676,6 +909,17 @@ export function LiveScreen() {
           l.detector = undefined;
         }
       }
+      const visible = onScreen(video, l.digitalZoom);
+      const inView = (b: Rect) => {
+        const cx = b.x + b.w / 2;
+        const cy = b.y + b.h / 2;
+        return (
+          cx >= visible.x &&
+          cx <= visible.x + visible.w &&
+          cy >= visible.y &&
+          cy <= visible.y + visible.h
+        );
+      };
       l.boxes = detections
         .map((d) => ({ b: d.boundingBox, c: d.categories[0] }))
         .filter(({ b, c }) => b && c && HINTS[c.categoryName])
@@ -687,20 +931,24 @@ export function LiveScreen() {
           hint: HINTS[c!.categoryName],
           score: c!.score,
         }))
+        // Zoomed in on screen: only what's visible counts.
+        .filter(inView)
+        .map((b) => ({ ...b, ...fitCrop(b, visible, video.videoWidth, video.videoHeight) }))
         .sort((a, b) => b.w * b.h * b.score - a.w * a.h * a.score);
       const best = l.boxes[0];
-      const focus: Focus = l.tapped ?? best ?? centreBox(vw, vh);
+      const focus: Focus =
+        l.tapped ?? best ?? centreBox(visible, video.videoWidth, video.videoHeight);
       l.focus = focus;
       l.focusIsPerson = focus.hint?.label === 'Person';
       if (!l.busy) {
-        setBox(toDisplay(video, focus));
+        setBox(toDisplay(video, focus, l.digitalZoom));
         // While a match is being confirmed, keep the group the server found (e.g. "Fungus").
         if (!l.vote) setKind(focus.hint?.label);
         const subjects = l.boxes.filter((b) => b.hint?.label !== 'Person').length;
         setTip((current) =>
           subjects > 1 || focus.hint?.label === 'Flowers'
             ? 'several'
-            : best && (best.w * best.h) / (vw * vh) < TOO_SMALL
+            : best && (best.w * best.h) / (visible.w * visible.h) < TOO_SMALL
               ? 'closer'
               : current === 'unsure'
                 ? current
@@ -794,15 +1042,45 @@ export function LiveScreen() {
       aria-label="Live identify"
       data-testid="live-screen"
     >
-      <video
-        ref={videoRef}
-        className="absolute inset-0 h-full w-full object-cover"
-        playsInline
-        muted
-        aria-label="Camera view. Tap something to identify it."
-        onPointerUp={onTap}
-        data-testid="live-video"
-      />
+      {/* The camera view: tap to identify, pinch to zoom (never the page). */}
+      <div
+        className="absolute inset-0 touch-none select-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        data-testid="live-view"
+      >
+        <div
+          className="absolute inset-0"
+          style={digitalZoom > 1 ? { transform: `scale(${digitalZoom})` } : undefined}
+        >
+          <video
+            ref={videoRef}
+            className="absolute inset-0 h-full w-full object-cover"
+            playsInline
+            muted
+            aria-label="Camera view. Tap something to identify it, pinch to zoom."
+            data-testid="live-video"
+          />
+          <canvas
+            ref={frozenRef}
+            className={`absolute inset-0 h-full w-full object-cover ${frozen ? '' : 'hidden'}`}
+            aria-hidden
+            data-testid="live-frozen"
+          />
+          {lift && frozen && (
+            <div key={lift.id} className="subject-lift" aria-hidden data-testid="live-lift">
+              <div
+                style={{
+                  maskImage: `url(${lift.maskUrl})`,
+                  WebkitMaskImage: `url(${lift.maskUrl})`,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
 
       {box && status !== 'error' && !found && (
         <div
@@ -816,9 +1094,11 @@ export function LiveScreen() {
           data-testid="live-box"
           aria-hidden
         >
-          {(['tl', 'tr', 'bl', 'br'] as const).map((c) => (
-            <span key={c} className={`live-corner live-corner-${c}`} />
-          ))}
+          {/* The white cut-out already shows what's being identified. */}
+          {!(lift && frozen) &&
+            (['tl', 'tr', 'bl', 'br'] as const).map((c) => (
+              <span key={c} className={`live-corner live-corner-${c}`} />
+            ))}
           {kind && (
             <span
               className={`fade-up absolute -top-9 left-1/2 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-semibold ${GLASS}`}
@@ -906,6 +1186,17 @@ export function LiveScreen() {
               >
                 {tips[tip]}
               </p>
+            )}
+            {zoom > 1.05 && (
+              <button
+                type="button"
+                onClick={resetZoom}
+                className={`readout min-h-9 rounded-full px-3 text-xs font-semibold ${GLASS}`}
+                aria-label={`Zoomed ${formatZoom(zoom)}. Tap to zoom out`}
+                data-testid="live-zoom"
+              >
+                {formatZoom(zoom)}
+              </button>
             )}
             <p
               className={`flex items-center gap-2 rounded-full px-4 py-2.5 text-[0.95rem] font-medium ${GLASS}`}

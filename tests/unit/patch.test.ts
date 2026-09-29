@@ -4,11 +4,13 @@ import {
   HOME_PATCH_KEY,
   clearHomePatch,
   loadHomePatch,
+  patchCell,
   patchLabel,
   patchSummary,
   saveHomePatch,
   seasonOf,
 } from '../../src/features/journal/patch';
+import { coarseLocationLabel } from '../../shared/geo';
 import { find } from './journalRecord';
 
 const HOME = '46.2°N, 63.1°W';
@@ -132,5 +134,47 @@ describe('patch summary', () => {
     const s = patchSummary(records, { latitude: 1, longitude: 1 });
     expect(s).toMatchObject({ finds: 0, species: [], firstVisit: undefined });
     expect(s.months.every((m) => m === 0)).toBe(true);
+  });
+});
+
+describe('patch set by address or current location', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('stores only the ~11 km cell, never the precise point', () => {
+    saveHomePatch({ latitude: 46.23526, longitude: -63.12654, name: 'Home' });
+    expect(loadHomePatch()).toEqual({ ...patch, name: 'Home' });
+    expect(localStorage.getItem(HOME_PATCH_KEY)).not.toMatch(/235|126/);
+  });
+
+  it('lines up with the cells finds are labelled with', () => {
+    const records = [
+      find('Acer rubrum', new Date(2026, 3, 1, 12), { locationLabel: HOME }),
+      find('Picea glauca', new Date(2026, 5, 1, 12), { locationLabel: AWAY }),
+    ];
+    // A geocoded address in Charlottetown, and a 2-decimal "current location" there.
+    for (const point of [
+      { latitude: 46.23526, longitude: -63.12654 },
+      { latitude: 46.2, longitude: -63.1 },
+      { latitude: 46.24, longitude: -63.13 },
+    ]) {
+      saveHomePatch(point);
+      const s = patchSummary(records, loadHomePatch()!);
+      expect(s.species.map((x) => x.scientificName)).toEqual(['Acer rubrum']);
+    }
+  });
+
+  it('rounds halfway points the way find labels do (west and south too)', () => {
+    for (const point of [
+      { latitude: 46.25, longitude: -63.15 },
+      { latitude: -33.85, longitude: 151.25 },
+      { latitude: -0.04, longitude: -0.05 },
+      { latitude: 45.95, longitude: -64.05 },
+    ]) {
+      const label = coarseLocationLabel(point);
+      const records = [find('Acer rubrum', new Date(2026, 3, 1, 12), { locationLabel: label })];
+      expect(patchSummary(records, patchCell(point)).finds).toBe(1);
+      saveHomePatch(point);
+      expect(patchSummary(records, loadHomePatch()!).finds).toBe(1);
+    }
   });
 });

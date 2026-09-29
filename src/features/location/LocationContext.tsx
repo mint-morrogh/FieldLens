@@ -147,3 +147,8 @@ export function useLocationState(): LocationState {
   if (!ctx) throw new Error('useLocationState must be used inside LocationProvider');
   return ctx;
 }
+
+/** The location state when inside a LocationProvider, otherwise undefined. */
+export function useOptionalLocationState(): LocationState | undefined {
+  return useContext(LocationContext) ?? undefined;
+}

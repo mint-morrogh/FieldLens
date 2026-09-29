@@ -23,9 +23,10 @@ export function PrivacyScreen() {
             first.
           </li>
           <li>
-            Live identify analyses the camera view on your device (Google’s MediaPipe detector,
-            downloaded when you first open it). Video never leaves your phone: only a few still
-            frames, cropped to the box, are sent for identification, the same way as photos.
+            Live identify analyses the camera view on your device (Google’s MediaPipe detector, and
+            its Magic Touch model for outlining what you tap, both downloaded when you first open
+            it). Video never leaves your phone: only a few still frames, cropped to the subject, are
+            sent for identification, the same way as photos.
           </li>
           <li>
             Bird calls are recorded only while you’re listening. The clip is converted on your
@@ -39,6 +40,11 @@ export function PrivacyScreen() {
             is used to check which species are recorded nearby on GBIF, iNaturalist and eBird, and
             which are expected there from iNaturalist’s range maps. A coarser position (about{' '}
             {coarse}) is sent to Open-Meteo to look up the ground elevation.
+          </li>
+          <li>
+            If you search for a home patch by address or place, what you type is sent once through
+            FieldLens to OpenStreetMap’s place search (Nominatim). Only a rounded position (about{' '}
+            {coarse}) is kept; the address isn’t stored.
           </li>
           <li>
             With each identification, FieldLens also sends the local hour the photo was taken and,
@@ -190,6 +196,16 @@ export function PrivacyScreen() {
               Plants of the World Online (Kew)
             </ExternalLink>{' '}
             — reference links
+          </li>
+          <li>
+            <ExternalLink href="https://www.openstreetmap.org/copyright">
+              © OpenStreetMap contributors
+            </ExternalLink>{' '}
+            (ODbL) — home patch place search, with{' '}
+            <ExternalLink href="https://open-meteo.com/en/docs/geocoding-api">
+              Open-Meteo
+            </ExternalLink>{' '}
+            place names as a fallback
           </li>
         </ul>
         <p className="mt-3 text-sm text-ink-muted">

@@ -71,6 +71,8 @@ Extra signals that nudge ranking. Like the range maps, each is a capped adjustme
   - Settings live in `src/lib/settings.ts` (`useSettings()`, `useSetting(key)`, `getSetting(key)`, `setSetting(key, value)`). Units default from the device locale (imperial for the US).
   - [x] Units now also cover the weekly-goal text and the ~1 km / ~10 km notes on the privacy and location screens.
 - [x] **Install prompt.** A gentle "Add FieldLens to your home screen" nudge after the second use, so it opens full-screen like a native app (beforeinstallprompt on Android/Chrome; short instructions on iOS Safari).
+- [x] **Live identify: tapped subject lifts in white.** Tapping freezes the frame and MediaPipe's interactive segmenter (Magic Touch, ~6 MB, loaded in the background and warmed up) cuts out the thing under the finger; it's washed in white with a sweeping band of light (iOS subject-lift style) while it's identified, and the crop is fitted to the cut-out. Falls back to the box when the model isn't loaded or the cut-out is a miss. `src/features/live/subjectLift.ts`.
+- [x] **Live identify: pinch to zoom the camera, not the page.** Uses the camera's own zoom where it has one (most Android phones in Chrome), else magnifies the view on screen (iOS) and crops scans and taps from what's visible, never below 128 px. A "2.0×" badge resets it. `src/features/live/zoom.ts`.
 - [x] **Live identify button: one green play circle.** The viewfinder shutter shows the black play icon inside the green shutter circle, a circle within a circle. Make the play icon itself the green button: a single green circle with the play triangle cut out, keeping the focus arc and ripple around it.
 - [x] **Journal link: icon only.** In the top bar, show just the journal (book) icon instead of icon + "Journal", like the info and settings icons beside it. Keep an accessible label ("Field Journal") and the active state.
 - [x] **Seasonality, stronger and visible.** Out-of-season matches (a plant flowering in January, a summer migrant in winter) should count for more in ranking and show on the result. Applies to plants, trees, birds, insects and more. Build on the eBird/range work once it's committed.
@@ -94,6 +96,7 @@ Builds on the Field Journal and naturalist rank (done 2026-09-28). No rarity sco
 - [x] **Explored areas on the globe.** Each ~10 km area where you've found something lights up on the journal globe. Milestones like "5 areas explored" and "a new province".
   - [x] Province/state milestones: Natural Earth admin-1 outlines (public domain, ~1.4 MB, fetched only by the explored-areas card; built by `scripts/build-admin1.mjs`).
 - [x] **Home patch.** Set an area (home, cottage, a favourite trail) and track "species found at your patch" over time, to see seasonal change on places you return to.
+  - [x] Set it by address or place name (`GET /api/geocode`: OpenStreetMap Nominatim, Open-Meteo place names as fallback; throttled to 1 req/s, cached a week, query never logged) or from your current approximate location. Only the ~11 km cell is kept; the typed address isn't stored.
 - [x] **Seasonal wheel.** A 12-month ring per group that fills as you log finds in each month. "Fall fungi" and "spring flowers" become visual goals without time-limited events.
 
 ## Gamification: skill
