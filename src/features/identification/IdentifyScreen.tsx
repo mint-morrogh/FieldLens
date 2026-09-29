@@ -210,19 +210,24 @@ export function IdentifyScreen() {
         {!result.location.used &&
           result.candidates.length > 0 &&
           (state.locationChoice === 'none' ? (
-            <p
+            <div
               className="mb-4 rounded-2xl bg-paper-deep px-4 py-3 text-[0.95rem] text-ink-soft"
               data-testid="location-skipped"
             >
-              Location wasn’t used because you said this photo was taken somewhere else.{' '}
-              <button
-                type="button"
-                className="font-semibold text-moss underline underline-offset-4"
+              <p>
+                Your location wasn’t used, because you said this photo was taken somewhere else. If
+                it was taken near where you are now, your location can show which of these species
+                are actually recorded nearby.
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-2"
                 onClick={() => void session.submit(undefined, { locationChoice: 'here' })}
               >
-                It was taken near here
-              </button>
-            </p>
+                <Icon name="pin" className="h-4 w-4" /> Recheck using my location
+              </Button>
+            </div>
           ) : (
             <div className="mb-4">
               <LocationFixCard

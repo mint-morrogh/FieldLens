@@ -436,6 +436,10 @@ test('photos without location data default to "Somewhere else" when old', async 
   await question.getByRole('button', { name: 'Somewhere else' }).click();
   await identifySelection(page);
   await expect(page.getByTestId('result-headline')).toContainText('Location not used');
+  // The way back says what it does: re-check the result with the current location.
+  const skipped = page.getByTestId('location-skipped');
+  await expect(skipped).toContainText('recorded nearby');
+  await expect(skipped.getByRole('button', { name: 'Recheck using my location' })).toBeVisible();
 });
 
 test.describe('with location permission', () => {
