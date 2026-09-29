@@ -256,7 +256,7 @@ export function SettingsScreen() {
             <Toggle
               id="on-device-calls"
               label="Identify bird calls on this device"
-              description="Runs BirdNET on your phone, so recordings aren’t uploaded. Needs a one-time download of about 60 MB. Names and details still come from FieldLens."
+              description="Runs BirdNET on your phone, so recordings aren’t uploaded. Needs a one-time download of about 82 MB. Names and details still come from FieldLens."
               checked={settings.onDeviceCalls}
               onChange={(v) => setSetting('onDeviceCalls', v)}
             />

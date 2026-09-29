@@ -2,13 +2,17 @@
  * The BirdNET v2.4 TF.js files for identifying calls on the device, and where they come from.
  * See docs/research/birdnet-browser.md.
  *
- * Source: the BirdNET team's own browser build of v2.4 (the files BirdNET Live ships), served
- * by jsDelivr from a pinned commit of github.com/birdnet-team/real-time-pwa. jsDelivr sends
- * CORS headers and immutable caching, so nothing has to be hosted by FieldLens. Every file is
- * checked against the SHA-256 below before it's cached, so a changed upstream file is refused
- * rather than silently used. To serve a mirror instead (e.g. a Hugging Face model repo made
- * with scripts/mirror-birdnet-model.mjs), set VITE_BIRDNET_MODEL_URL to its base URL, with
- * the same layout and files.
+ * Sources:
+ * - Acoustic model and labels: the BirdNET team's own browser build of v2.4 (the files BirdNET
+ *   Live ships), served by jsDelivr from a pinned commit of github.com/birdnet-team/real-time-pwa.
+ *   To serve a mirror instead (scripts/mirror-birdnet-model.mjs), set VITE_BIRDNET_MODEL_URL.
+ * - Location model: v2.4's official TF.js metadata model (`model/mdata` in the Zenodo release),
+ *   the same model the Space uses. BirdNET Live ships an older location model that drops more
+ *   species (docs/research/birdnet-browser.md §8), and the official one is only published
+ *   inside the Zenodo zip, so it's mirrored unmodified to a public Hugging Face repo, pinned by
+ *   commit (scripts/upload-birdnet-location-model.mjs). Override with VITE_BIRDNET_LOCATION_URL.
+ * Both hosts send CORS headers. Every file is checked against the SHA-256 below before it's
+ * cached, so a changed upstream file is refused rather than silently used.
  *
  * The files are kept in their own Cache Storage bucket (not the service worker's precache), so
  * only people who turn the feature on download them.
@@ -24,10 +28,27 @@ function withSlash(url: string): string {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
-/** Where the files are downloaded from. */
+/** Where the acoustic model and labels are downloaded from. */
 export const BIRDNET_SOURCE_URL = withSlash(
   (import.meta.env?.VITE_BIRDNET_MODEL_URL as string | undefined) || DEFAULT_SOURCE,
 );
+
+/** Pinned: huggingface.co/mintmundane/fieldlens-birdnet-v2.4 at 2926531 (2026-09-29). */
+const DEFAULT_LOCATION_SOURCE =
+  'https://huggingface.co/mintmundane/fieldlens-birdnet-v2.4/resolve/2926531e3fe9ac06f0a28bb1b112c5225e65e41a/';
+
+/** Where the location model (the files under `LOCATION_DIR`) is downloaded from. */
+export const BIRDNET_LOCATION_URL = withSlash(
+  (import.meta.env?.VITE_BIRDNET_LOCATION_URL as string | undefined) || DEFAULT_LOCATION_SOURCE,
+);
+
+export const LOCATION_DIR = 'mdata/';
+
+/**
+ * Bumped when the file set changes. A download made for an older revision isn't used; the
+ * next download reuses its unchanged files and fetches only what's new.
+ */
+export const BIRDNET_MODEL_REVISION = 2;
 
 /** The dedicated Cache Storage bucket. A new model version gets a new bucket. */
 export const BIRDNET_CACHE = `fieldlens-birdnet-${BIRDNET_MODEL_VERSION}`;
@@ -44,7 +65,7 @@ export const BIRDNET_CACHE_PATH = `/models/birdnet-${BIRDNET_MODEL_VERSION}/`;
 
 export type ModelFile = { path: string; bytes: number; sha256: string };
 
-/** Acoustic model (`model.json` + 13 shards), location model, English labels. */
+/** Acoustic model (`model.json` + 13 shards), location model (`mdata/`), English labels. */
 export const BIRDNET_FILES: readonly ModelFile[] = (
   [
     ['model.json', 893632, 'cbc10d46bb3c5cac268e55ec3e1314cf520dfc0b15b626025cee941876d5e67a'],
@@ -113,20 +134,46 @@ export const BIRDNET_FILES: readonly ModelFile[] = (
       990032,
       'cd39bf5e5520b2b5d52b27d8d19b313d78d6333d829afeb023b7308cb33e52fb',
     ],
+    ['mdata/model.json', 29245, '5b356b2da4dbe658c553f70391dc15b57f6bcaa8693543abbec006fca26eb0a1'],
     [
-      'area-model/model.json',
-      27328,
-      '01872657918ff815cdd8b4477a8ef9990f7586346959fac2f2bf23feab28e32c',
-    ],
-    [
-      'area-model/group1-shard1of2.bin',
+      'mdata/group1-shard1of8.bin',
       4194304,
-      '6f4d51a0f0d37b334d683adb3f9ce428351878a65346b9dc70d769bf18590d4a',
+      '34c757742e89526e95849596ffcaf266da5628682daf450eb50759381bb29d87',
     ],
     [
-      'area-model/group1-shard2of2.bin',
-      2864028,
-      '938af90ceff896d8bd885061430916cf54900ff6b6d0de8c3e86d2dd3360abf2',
+      'mdata/group1-shard2of8.bin',
+      4194304,
+      'd725e6e2aa99be957446d6ada346f902359c4bbc8222c91a9df0d1ad478c2902',
+    ],
+    [
+      'mdata/group1-shard3of8.bin',
+      4194304,
+      '319af99a0196f7cd332027929bb31baa4c25c42e46bc0667addca90c177ff836',
+    ],
+    [
+      'mdata/group1-shard4of8.bin',
+      4194304,
+      'd3f67e8348663faa9d8a5600ae3a30f8581438a3c8d021986bacd256e7ce2407',
+    ],
+    [
+      'mdata/group1-shard5of8.bin',
+      4194304,
+      '5d7ffaf81c8bf0d8c62c47416515b31398f3df5f5cd41933b1fb3a467c0ef4b7',
+    ],
+    [
+      'mdata/group1-shard6of8.bin',
+      4194304,
+      'd0400b12b1709d6b0dc66a95d0203aa58f9825fd890d5237d6bfeba117bcaade',
+    ],
+    [
+      'mdata/group1-shard7of8.bin',
+      4194304,
+      '1f0cacb5af0b2e0cef4b600589ec718b3077dd81bc49416436b3fa4e7b2704f8',
+    ],
+    [
+      'mdata/group1-shard8of8.bin',
+      156924,
+      'fab4681220f19f2481454ad18b711a96e001e2d50b46fb8cf952dcee02e326cf',
     ],
     [
       'labels/en_us.txt',
@@ -136,11 +183,11 @@ export const BIRDNET_FILES: readonly ModelFile[] = (
   ] as const
 ).map(([path, bytes, sha256]) => ({ path, bytes, sha256 }));
 
-/** 59.6 MB in all. */
+/** 82.0 MB in all. */
 export const BIRDNET_TOTAL_BYTES = BIRDNET_FILES.reduce((n, f) => n + f.bytes, 0);
 
 export const ACOUSTIC_MODEL = 'model.json';
-export const LOCATION_MODEL = 'area-model/model.json';
+export const LOCATION_MODEL = `${LOCATION_DIR}model.json`;
 export const LABELS_FILE = 'labels/en_us.txt';
 /** Written last, so its presence means every file above is cached and verified. */
 export const COMPLETE_MARKER = 'complete.json';
@@ -168,8 +215,10 @@ The Zenodo record (${BIRDNET_LICENSE.modelRecordUrl}) lists CC BY-NC 4.0; the st
 BY-NC-SA terms are followed here. Non-commercial use only.
 
 Project: ${BIRDNET_LICENSE.projectUrl}
-Files as published by the BirdNET team in BirdNET Live (github.com/birdnet-team/real-time-pwa,
-commit 6ab67ac), downloaded from ${BIRDNET_SOURCE_URL}
+Acoustic model and labels as published by the BirdNET team in BirdNET Live
+(github.com/birdnet-team/real-time-pwa, commit 6ab67ac), downloaded from ${BIRDNET_SOURCE_URL}
+Location model: model/mdata from BirdNET_v2.4_tfjs.zip (${BIRDNET_LICENSE.modelRecordUrl}),
+downloaded from ${BIRDNET_LOCATION_URL}
 
 Changes: none. The weights are used unmodified. FieldLens computes the model's spectrogram
 layer (MelSpecLayerSimple) with its own code, which reads the layer's published parameters.
@@ -181,4 +230,13 @@ export function cacheKey(
   origin: string = globalThis.location?.origin ?? 'http://localhost',
 ): string {
   return new URL(BIRDNET_CACHE_PATH + path, origin).href;
+}
+
+/** Download URL for a model file. */
+export function fileUrl(
+  path: string,
+  source = BIRDNET_SOURCE_URL,
+  location = BIRDNET_LOCATION_URL,
+) {
+  return (path.startsWith(LOCATION_DIR) ? location : source) + path;
 }

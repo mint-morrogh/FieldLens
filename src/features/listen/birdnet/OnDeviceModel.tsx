@@ -49,7 +49,18 @@ export function OnDeviceModel({ enabled }: { enabled: boolean }) {
           This browser can’t run the model, so calls will keep being identified online.
         </Notice>
       )}
-      {model.status === 'absent' && (
+      {model.status === 'absent' && model.update && (
+        <>
+          <p className="text-sm text-ink-soft" data-testid="birdnet-update">
+            An improved location model for BirdNET is available ({mb(model.update.bytes)}; the rest
+            is already on this device). Until it’s updated, calls are identified online.
+          </p>
+          <Button size="sm" onClick={() => void downloadModel()} data-testid="birdnet-download">
+            Update Model ({mb(model.update.bytes)})
+          </Button>
+        </>
+      )}
+      {model.status === 'absent' && !model.update && (
         <>
           <p className="text-sm text-ink-soft">
             One-time download of {mb(BIRDNET_TOTAL_BYTES)}, kept on this device. Best on Wi-Fi.

@@ -2,7 +2,11 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const files = { 'model.json': '{"m":1}', 'group1-shard1of1.bin': 'weights' };
+const files = {
+  'model.json': '{"m":1}',
+  'group1-shard1of1.bin': 'weights',
+  'mdata/model.json': '{"g":1}',
+};
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 
 vi.mock('../../src/features/listen/birdnet/manifest', async (importOriginal) => {
@@ -15,6 +19,7 @@ vi.mock('../../src/features/listen/birdnet/manifest', async (importOriginal) => 
   return {
     ...real,
     BIRDNET_SOURCE_URL: 'https://models.example/birdnet/',
+    BIRDNET_LOCATION_URL: 'https://location.example/v2.4/',
     BIRDNET_FILES: list,
     BIRDNET_TOTAL_BYTES: list.reduce((n, f) => n + f.bytes, 0),
   };
@@ -31,6 +36,8 @@ function fakeCaches() {
       return {
         match: async (key: string) => bucket.get(key)?.clone(),
         put: async (key: string, res: Response) => void bucket.set(key, res),
+        keys: async () => [...bucket.keys()].map((url) => new Request(url)),
+        delete: async (req: Request) => bucket.delete(req.url),
       };
     },
     delete: async (name: string) => buckets.delete(name),
@@ -65,7 +72,13 @@ beforeEach(async () => {
 
 const serve = (overrides: Record<string, string> = {}) =>
   vi.fn(async (url: string | URL | Request) => {
-    const path = String(url).replace('https://models.example/birdnet/', '');
+    // The location model comes from its own host; everything else from the main source.
+    const u = String(url);
+    const path = u.startsWith('https://location.example/v2.4/mdata/')
+      ? u.replace('https://location.example/v2.4/', '')
+      : u.startsWith('https://models.example/birdnet/') && !u.includes('/mdata/')
+        ? u.replace('https://models.example/birdnet/', '')
+        : 'wrong-host';
     const body = overrides[path] ?? files[path as keyof typeof files];
     return body === undefined ? new Response('', { status: 404 }) : new Response(body);
   }) as unknown as typeof fetch;
@@ -75,12 +88,13 @@ describe('on-device model store', () => {
     expect((await store.refreshModelState()).status).toBe('absent');
     const fetchImpl = serve();
     await store.downloadModel(fetchImpl);
-    expect(store.getModelState()).toMatchObject({ status: 'ready', loaded: 14, total: 14 });
+    expect(store.getModelState()).toMatchObject({ status: 'ready', loaded: 21, total: 21 });
     const bucket = caches.buckets.get(manifest.BIRDNET_CACHE)!;
     const keys = [...bucket.keys()].map((k) => new URL(k).pathname);
     expect(keys).toEqual([
       '/models/birdnet-v2.4/model.json',
       '/models/birdnet-v2.4/group1-shard1of1.bin',
+      '/models/birdnet-v2.4/mdata/model.json',
       '/models/birdnet-v2.4/LICENSE.txt',
       '/models/birdnet-v2.4/complete.json',
     ]);
@@ -105,7 +119,44 @@ describe('on-device model store', () => {
     const fetchImpl = serve();
     await store.downloadModel(fetchImpl);
     expect(store.getModelState().status).toBe('ready');
-    // model.json was already verified and cached: only the shard is fetched again.
+    // model.json was already verified and cached: only the shard (then the location model,
+    // which the failed attempt never reached) is fetched.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(String(vi.mocked(fetchImpl).mock.calls[0][0])).toContain('group1-shard1of1.bin');
+  });
+
+  it('updates an older download by fetching only the new files, then drops the old ones', async () => {
+    // A download from before revisions: its marker has no revision, and it holds the old
+    // location model instead of mdata/.
+    const bucket = await caches.open(manifest.BIRDNET_CACHE);
+    for (const path of ['model.json', 'group1-shard1of1.bin'] as const)
+      await bucket.put(manifest.cacheKey(path), new Response(files[path]));
+    await bucket.put(manifest.cacheKey('area-model/model.json'), new Response('old'));
+    await bucket.put(manifest.cacheKey('complete.json'), Response.json({ version: 'v2.4' }));
+
+    expect(await store.isModelReady()).toBe(false);
+    expect(await store.refreshModelState()).toMatchObject({
+      status: 'absent',
+      update: { bytes: files['mdata/model.json'].length },
+    });
+
+    const fetchImpl = serve();
+    await store.downloadModel(fetchImpl);
+    expect(store.getModelState()).toMatchObject({ status: 'ready', update: undefined });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(fetchImpl).mock.calls[0][0])).toBe(
+      'https://location.example/v2.4/mdata/model.json',
+    );
+    const keys = [...caches.buckets.get(manifest.BIRDNET_CACHE)!.keys()].map(
+      (k) => new URL(k).pathname,
+    );
+    expect(keys).not.toContain('/models/birdnet-v2.4/area-model/model.json');
+    const marker = await caches.buckets
+      .get(manifest.BIRDNET_CACHE)!
+      .get(manifest.cacheKey('complete.json'))!
+      .clone()
+      .json();
+    expect(marker.revision).toBe(manifest.BIRDNET_MODEL_REVISION);
+    expect(await store.isModelReady()).toBe(true);
   });
 });

@@ -48,7 +48,7 @@ export type BirdnetClient = {
   terminate(): void;
 };
 
-/** First load reads ~60 MB from the cache and compiles shaders; phones can take a while. */
+/** First load reads ~82 MB from the cache and compiles shaders; phones can take a while. */
 const LOAD_TIMEOUT_MS = 60_000;
 const IDENTIFY_TIMEOUT_MS = 90_000;
 

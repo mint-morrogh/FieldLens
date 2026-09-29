@@ -22,7 +22,7 @@ export interface Settings {
   dataSaver: boolean;
   /** The home screen's main camera action. */
   defaultCameraMode: CameraMode;
-  /** Identify bird calls with BirdNET on this device (needs a ~60 MB download). Off by default. */
+  /** Identify bird calls with BirdNET on this device (needs a ~82 MB download). Off by default. */
   onDeviceCalls: boolean;
 }
 

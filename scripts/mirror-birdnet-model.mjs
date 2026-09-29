@@ -14,8 +14,8 @@ import { createRepo, uploadFiles } from '@huggingface/hub';
 import {
   BIRDNET_FILES,
   BIRDNET_LICENSE,
-  BIRDNET_SOURCE_URL,
   LICENSE_TEXT,
+  fileUrl,
 } from '../src/features/listen/birdnet/manifest.ts';
 
 function loadEnvFile(path) {
@@ -36,7 +36,7 @@ if (!token) {
 
 const files = [];
 for (const file of BIRDNET_FILES) {
-  const res = await fetch(BIRDNET_SOURCE_URL + file.path);
+  const res = await fetch(fileUrl(file.path));
   if (!res.ok) throw new Error(`${file.path}: HTTP ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   const sha = createHash('sha256').update(bytes).digest('hex');
@@ -53,9 +53,10 @@ tags: [audio-classification, birds, birdnet, tfjs]
 
 ${BIRDNET_LICENSE.credit}.
 
-Unmodified copy of the TF.js files published by the BirdNET team in BirdNET Live
-(github.com/birdnet-team/real-time-pwa, commit 6ab67ac): acoustic model, location model and
-English labels. Original model record: ${BIRDNET_LICENSE.modelRecordUrl}
+Unmodified copy of the TF.js files FieldLens uses: the acoustic model and English labels
+published by the BirdNET team in BirdNET Live (github.com/birdnet-team/real-time-pwa, commit
+6ab67ac), and v2.4's official location model (model/mdata from the Zenodo TF.js release).
+Original model record: ${BIRDNET_LICENSE.modelRecordUrl}
 
 Licensed under ${BIRDNET_LICENSE.name} (${BIRDNET_LICENSE.url}). Non-commercial use only.
 See LICENSE.txt.

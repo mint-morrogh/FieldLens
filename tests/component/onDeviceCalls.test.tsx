@@ -30,7 +30,7 @@ describe('Identify bird calls on this device', () => {
     fireEvent.click(toggle);
     expect(getSetting('onDeviceCalls')).toBe(true);
     expect(
-      await screen.findByRole('button', { name: 'Download Model (60 MB)' }),
+      await screen.findByRole('button', { name: 'Download Model (82 MB)' }),
     ).toBeInTheDocument();
     const credit = screen.getByTestId('birdnet-credit');
     expect(credit).toHaveTextContent(/Cornell Lab of Ornithology/);

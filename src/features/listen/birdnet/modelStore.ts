@@ -8,6 +8,8 @@ import { birdnetClient, stopBirdnet } from './client';
 import {
   BIRDNET_CACHE,
   BIRDNET_FILES,
+  BIRDNET_LOCATION_URL,
+  BIRDNET_MODEL_REVISION,
   BIRDNET_MODEL_VERSION,
   BIRDNET_RUNTIME_CACHE,
   BIRDNET_SOURCE_URL,
@@ -16,6 +18,7 @@ import {
   LICENSE_FILE,
   LICENSE_TEXT,
   cacheKey,
+  fileUrl,
   type ModelFile,
 } from './manifest';
 
@@ -27,6 +30,11 @@ export type ModelState = {
   loaded: number;
   total: number;
   error?: string;
+  /**
+   * Set while `absent` when an older download is on the device: how much the update needs.
+   * Its unchanged files are reused, so only the new ones are fetched.
+   */
+  update?: { bytes: number };
 };
 
 let state: ModelState = { status: 'checking', loaded: 0, total: BIRDNET_TOTAL_BYTES };
@@ -53,12 +61,24 @@ export function onDeviceSupported(): boolean {
   );
 }
 
-/** Whether the complete, verified model is in the cache. */
+/** The "download complete" marker's revision, or undefined when there's no marker. */
+async function markerRevision(cache: Cache): Promise<number | undefined> {
+  const marker = await cache.match(cacheKey(COMPLETE_MARKER));
+  if (!marker) return undefined;
+  try {
+    const { revision } = (await marker.json()) as { revision?: number };
+    return revision ?? 1; // markers from before revisions were added
+  } catch {
+    return 1;
+  }
+}
+
+/** Whether the complete, verified model for this app version is in the cache. */
 export async function isModelReady(): Promise<boolean> {
   if (!onDeviceSupported()) return false;
   try {
     const cache = await caches.open(BIRDNET_CACHE);
-    return !!(await cache.match(cacheKey(COMPLETE_MARKER)));
+    return (await markerRevision(cache)) === BIRDNET_MODEL_REVISION;
   } catch {
     return false;
   }
@@ -70,7 +90,23 @@ export async function refreshModelState(): Promise<ModelState> {
     set({ status: 'unsupported' });
     return state;
   }
-  set({ status: (await isModelReady()) ? 'ready' : 'absent', error: undefined });
+  try {
+    const cache = await caches.open(BIRDNET_CACHE);
+    const revision = await markerRevision(cache);
+    if (revision === BIRDNET_MODEL_REVISION) {
+      set({ status: 'ready', error: undefined, update: undefined });
+    } else if (revision !== undefined) {
+      let bytes = 0;
+      for (const file of BIRDNET_FILES) {
+        if (!(await cache.match(cacheKey(file.path)))) bytes += file.bytes;
+      }
+      set({ status: 'absent', error: undefined, update: { bytes } });
+    } else {
+      set({ status: 'absent', error: undefined, update: undefined });
+    }
+  } catch {
+    set({ status: 'absent', error: undefined, update: undefined });
+  }
   return state;
 }
 
@@ -84,7 +120,8 @@ async function fetchFile(
   onBytes: (n: number) => void,
   fetchImpl: typeof fetch,
 ): Promise<ArrayBuffer> {
-  const res = await fetchImpl(BIRDNET_SOURCE_URL + file.path, { signal, cache: 'no-store' });
+  const url = fileUrl(file.path, BIRDNET_SOURCE_URL, BIRDNET_LOCATION_URL);
+  const res = await fetchImpl(url, { signal, cache: 'no-store' });
   if (!res.ok) throw new Error(`Download failed (${res.status}).`);
   let buffer: ArrayBuffer;
   if (res.body) {
@@ -175,12 +212,27 @@ export async function downloadModel(fetchImpl: typeof fetch = fetch): Promise<vo
       cacheKey(COMPLETE_MARKER),
       Response.json({
         version: BIRDNET_MODEL_VERSION,
+        revision: BIRDNET_MODEL_REVISION,
         source: BIRDNET_SOURCE_URL,
+        locationSource: BIRDNET_LOCATION_URL,
         files: BIRDNET_FILES.map((f) => f.path),
         downloadedAt: new Date().toISOString(),
       }),
     );
-    set({ status: 'ready', loaded: BIRDNET_TOTAL_BYTES });
+    // Drop files an older revision needed that this one doesn't (e.g. the old location model).
+    try {
+      const keep = new Set(
+        [...BIRDNET_FILES.map((f) => f.path), LICENSE_FILE, COMPLETE_MARKER].map((p) =>
+          cacheKey(p),
+        ),
+      );
+      for (const request of (await cache.keys?.()) ?? []) {
+        if (!keep.has(request.url)) await cache.delete(request);
+      }
+    } catch {
+      /* leftovers only cost space; Remove Model clears everything */
+    }
+    set({ status: 'ready', loaded: BIRDNET_TOTAL_BYTES, update: undefined });
     // Start the worker once while online, so the service worker caches its script (and the
     // WASM runtime, if that's the backend used) for offline use. Failures here are harmless:
     // identification falls back to the Space.

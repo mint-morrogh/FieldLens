@@ -16,6 +16,7 @@ import { BIRDNET_V24 } from './audioWindows';
 import {
   ACOUSTIC_MODEL,
   BIRDNET_CACHE,
+  BIRDNET_MODEL_REVISION,
   COMPLETE_MARKER,
   LABELS_FILE,
   LOCATION_MODEL,
@@ -145,7 +146,12 @@ async function pickBackend(): Promise<string> {
 /** Reads model files from the dedicated cache only; the worker never downloads anything. */
 async function cachedFetch(): Promise<(input: RequestInfo | URL) => Promise<Response>> {
   const cache = await caches.open(BIRDNET_CACHE);
-  if (!(await cache.match(cacheKey(COMPLETE_MARKER)))) throw new ModelNotDownloadedError();
+  const marker = await cache.match(cacheKey(COMPLETE_MARKER));
+  // A download made for an older file set (e.g. the previous location model) isn't used.
+  const revision = marker
+    ? (((await marker.json().catch(() => ({}))) as { revision?: number }).revision ?? 1)
+    : 0;
+  if (revision !== BIRDNET_MODEL_REVISION) throw new ModelNotDownloadedError();
   return async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const hit = await cache.match(url);
