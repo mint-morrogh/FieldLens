@@ -26,6 +26,11 @@ export type LiftMask = {
   box: Rect;
   /** Share of the frame the subject covers. */
   area: number;
+  /**
+   * A point inside the subject (0–1), as near its middle as the shape allows: where the next
+   * cut-out starts when following it.
+   */
+  inside: { x: number; y: number };
 };
 
 /**
@@ -64,7 +69,36 @@ export function maskFromValues(
   }
   const area = count / (width * height);
   if (area < MIN_AREA || area > MAX_AREA) return undefined;
-  return { alpha, width, height, box: { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }, area };
+  // The centroid, or (for a C- or ring-shaped subject) the subject pixel nearest it.
+  let sx = 0;
+  let sy = 0;
+  for (let i = 0; i < alpha.length; i++) {
+    if (!alpha[i]) continue;
+    sx += i % width;
+    sy += Math.floor(i / width);
+  }
+  let cx = sx / count;
+  let cy = sy / count;
+  if (!alpha[Math.round(cy) * width + Math.round(cx)]) {
+    let best = Infinity;
+    for (let i = 0; i < alpha.length; i++) {
+      if (!alpha[i]) continue;
+      const d = ((i % width) - cx) ** 2 + (Math.floor(i / width) - cy) ** 2;
+      if (d < best) {
+        best = d;
+        cx = i % width;
+        cy = Math.floor(i / width);
+      }
+    }
+  }
+  return {
+    alpha,
+    width,
+    height,
+    box: { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 },
+    area,
+    inside: { x: (cx + 0.5) / width, y: (cy + 0.5) / height },
+  };
 }
 
 /**
@@ -145,7 +179,25 @@ export type Lift = {
   maskUrl: string;
   /** Subject bounds in video pixels. */
   box: Rect;
+  /** Share of the frame the subject covers. */
+  area: number;
+  /** A point inside the subject (0–1 in the frame), for following it. */
+  inside: { x: number; y: number };
 };
+
+/**
+ * Whether a new cut-out is plausibly the same subject as the last one: similar size, and not
+ * jumped across the frame. Otherwise it's taken as lost (it left the view, or the cut-out
+ * grabbed the background).
+ */
+export function sameSubject(
+  prev: Pick<Lift, 'area' | 'inside'>,
+  next: Pick<Lift, 'area' | 'inside'>,
+): boolean {
+  const ratio = next.area / prev.area;
+  const moved = Math.hypot(next.inside.x - prev.inside.x, next.inside.y - prev.inside.y);
+  return ratio > 0.4 && ratio < 2.5 && moved < 0.3;
+}
 
 /**
  * Cuts out the subject at `tap` (0–1 in the frame) from a still of the video. Synchronous and
@@ -194,5 +246,7 @@ export function liftSubject(
       w: mask.box.w * scale,
       h: mask.box.h * scale,
     },
+    area: mask.area,
+    inside: mask.inside,
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cropAround, maskFromValues } from '../../src/features/live/subjectLift';
+import { cropAround, maskFromValues, sameSubject } from '../../src/features/live/subjectLift';
 import {
   clampInto,
   formatZoom,
@@ -82,5 +82,26 @@ describe('subject lift', () => {
     expect(r.h).toBe(100);
     expect(r.x).toBe(0); // centred on (40, 30) but kept inside the frame
     expect(r.y).toBe(0);
+  });
+
+  it('keeps a point inside the subject to follow it from, even for a ring shape', () => {
+    const m = maskFromValues(square(), 10, 10, { x: 0.45, y: 0.45 })!;
+    expect(m.inside.x).toBeCloseTo(0.5, 1);
+    expect(m.inside.y).toBeCloseTo(0.5, 1);
+    // A ring: its centroid is a hole, so the nearest subject pixel is used instead.
+    const ring = new Float32Array(400).fill(0.1);
+    for (let y = 4; y < 16; y++)
+      for (let x = 4; x < 16; x++) if (x < 7 || x > 12 || y < 7 || y > 12) ring[y * 20 + x] = 0.9;
+    const r = maskFromValues(ring, 20, 20, { x: 0.25, y: 0.25 })!;
+    const px = Math.floor(r.inside.x * 20);
+    const py = Math.floor(r.inside.y * 20);
+    expect(r.alpha[py * 20 + px]).toBe(255);
+  });
+
+  it('treats a similar-sized cut-out nearby as the same subject, and a jump as lost', () => {
+    const a = { area: 0.1, inside: { x: 0.5, y: 0.5 } };
+    expect(sameSubject(a, { area: 0.12, inside: { x: 0.55, y: 0.5 } })).toBe(true);
+    expect(sameSubject(a, { area: 0.6, inside: { x: 0.5, y: 0.5 } })).toBe(false);
+    expect(sameSubject(a, { area: 0.1, inside: { x: 0.9, y: 0.5 } })).toBe(false);
   });
 });

@@ -30,6 +30,7 @@ import {
   cropAround,
   liftSubject,
   loadSubjectLift,
+  sameSubject,
   subjectLiftReady,
   LIFT_EDGE,
   type Lift,
@@ -94,6 +95,27 @@ const MOTION_THRESHOLD = 7;
  */
 const VOTES_NEEDED = 2;
 const CONFIRM_COOLDOWN_MS = 500;
+/** How often the tapped subject is re-cut to follow it, how long at most, and misses allowed. */
+const TRACK_MS = 100;
+/** How far ahead the wash is slid along the subject's motion between cut-outs. */
+const PREDICT_MAX_MS = 200;
+const TRACK_FOR_MS = 12_000;
+const TRACK_MISSES = 3;
+
+/** A subject box touching the edge of the view (and not simply filling it). */
+function touchesEdge(b: Rect, v: Rect): boolean {
+  const mx = v.w * 0.03;
+  const my = v.h * 0.03;
+  const left = b.x <= v.x + mx;
+  const right = b.x + b.w >= v.x + v.w - mx;
+  const top = b.y <= v.y + my;
+  const bottom = b.y + b.h >= v.y + v.h - my;
+  return (
+    ((left || right) && b.w < v.w * 0.8 && !(left && right)) ||
+    ((top || bottom) && b.h < v.h * 0.8 && !(top && bottom))
+  );
+}
+
 /** A tap with no detector box around it identifies a square this share of the shorter side. */
 const TAP_BOX = 0.45;
 /** A boxed subject smaller than this share of the frame is too far away to identify well. */
@@ -381,11 +403,23 @@ export function LiveScreen() {
   /** Why live mode is running light ("Low battery · Data saver"), shown quietly in the top bar. */
   const [light, setLight] = useState<string>();
   const dataSaver = useSetting('dataSaver');
-  /** The tapped subject, cut out and washed in white while it's identified. */
-  const [lift, setLift] = useState<Lift & { id: number }>();
-  /** The tapped frame, held on screen while it's identified (so the cut-out stays aligned). */
-  const [frozen, setFrozen] = useState(false);
-  const frozenRef = useRef<HTMLCanvasElement>(null);
+  /**
+   * The tapped subject, cut out and washed in white over the live view. It's followed as the
+   * subject or the phone moves (re-cut a few times a second), and fades out (`leaving`) once
+   * the result shows or the subject is lost.
+   */
+  const [lift, setLift] = useState<
+    Lift & {
+      id: number;
+      leaving?: boolean;
+      /** When its frame was captured, and the subject's velocity (frame fractions per ms). */
+      at: number;
+      v: { x: number; y: number };
+    }
+  >();
+  const liftMoveRef = useRef<HTMLDivElement>(null);
+  /** The followed subject is at the edge of the view. */
+  const [atEdge, setAtEdge] = useState(false);
   /** Zoom shown to the person (camera zoom, or on-screen magnification), and on-screen scale. */
   const [zoom, setZoom] = useState(1);
   const [digitalZoom, setDigitalZoom] = useState(1);
@@ -430,6 +464,10 @@ export function LiveScreen() {
     downAt: undefined as { x: number; y: number } | undefined,
     zoomPending: undefined as number | undefined,
     liftId: 0,
+    /** The tapped subject being followed: its last cut-out, missed updates, and when it began. */
+    follow: undefined as
+      | { last: Lift; at: number; v: { x: number; y: number }; misses: number; since: number }
+      | undefined,
   });
 
   /** Re-decide the frame rate and upload size; updates the indicator when it changes. */
@@ -480,14 +518,25 @@ export function LiveScreen() {
     [session],
   );
 
-  const show = useCallback((f: Found) => {
-    const l = loop.current;
-    l.vote = undefined;
-    l.paused = true;
-    setFound(f);
-    setKind(getCategory(f.result.category).label);
-    setStatus('found');
+  /** Stop following the tapped subject; its wash fades out. */
+  const stopTracking = useCallback(() => {
+    loop.current.follow = undefined;
+    setAtEdge(false);
+    setLift((current) => current && { ...current, leaving: true });
   }, []);
+
+  const show = useCallback(
+    (f: Found) => {
+      const l = loop.current;
+      stopTracking();
+      l.vote = undefined;
+      l.paused = true;
+      setFound(f);
+      setKind(getCategory(f.result.category).label);
+      setStatus('found');
+    },
+    [stopTracking],
+  );
 
   const clear = useCallback(() => {
     const l = loop.current;
@@ -498,12 +547,11 @@ export function LiveScreen() {
     l.paused = false;
     l.vote = undefined;
     l.tapped = undefined;
-    setLift(undefined);
-    setFrozen(false);
+    stopTracking();
     l.stillSince = 0;
     l.nextAttemptAt = performance.now() + 800;
     setStatus(l.attempts >= l.policy.maxAttempts ? 'exhausted' : 'aim');
-  }, []);
+  }, [stopTracking]);
 
   /** Ask for the deciding angle: clear the card, and send the next frame with this one. */
   const decide = useCallback(
@@ -631,10 +679,7 @@ export function LiveScreen() {
       } finally {
         l.busy = false;
         l.tapped = undefined;
-        if (manual) {
-          setLift(undefined);
-          setFrozen(false);
-        }
+        // Keep following the tapped subject until the result shows (or it's lost).
         l.nextAttemptAt = performance.now() + (l.vote ? CONFIRM_COOLDOWN_MS : l.policy.cooldownMs);
         l.stillSince = 0;
       }
@@ -692,14 +737,12 @@ export function LiveScreen() {
         .filter((b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h)
         .sort((a, b) => a.w * a.h - b.w * b.h)[0];
 
-      // Hold the tapped frame on screen: it's what gets identified, and the cut-out lines up.
-      const still = frozenRef.current;
-      if (still) {
-        still.width = vw;
-        still.height = vh;
-        still.getContext('2d')?.drawImage(video, 0, 0, vw, vh);
-        setFrozen(true);
-      }
+      // A snapshot of the tapped frame (not shown) for the cut-out.
+      const scale = Math.min(1, LIFT_EDGE / Math.max(vw, vh));
+      const snapshot = document.createElement('canvas');
+      snapshot.width = Math.round(vw * scale);
+      snapshot.height = Math.round(vh * scale);
+      snapshot.getContext('2d')?.drawImage(video, 0, 0, snapshot.width, snapshot.height);
 
       const side = Math.min(visible.w, visible.h) * TAP_BOX;
       const hint = hit && hit.hint?.label !== 'Person' ? hit.hint : undefined;
@@ -710,34 +753,35 @@ export function LiveScreen() {
       l.vote = undefined;
       // Claim the tap now, so the scan loop and other taps wait for it.
       l.busy = true;
+      l.follow = undefined;
       setLift(undefined);
+      setAtEdge(false);
       setBox(toDisplay(video, l.tapped, l.digitalZoom));
 
-      // Let the frozen frame paint, then cut out the subject under the finger (when the
+      // Let the tap register on screen, then cut out the subject under the finger (when the
       // segmenter has loaded; taps never wait for it) and identify a crop around it.
       requestAnimationFrame(() =>
         setTimeout(() => {
           const segmenter = subjectLiftReady();
           let lifted: Lift | undefined;
-          if (segmenter && still) {
-            const scale = Math.min(1, LIFT_EDGE / Math.max(vw, vh));
-            const small = document.createElement('canvas');
-            small.width = Math.round(vw * scale);
-            small.height = Math.round(vh * scale);
-            small.getContext('2d')?.drawImage(still, 0, 0, small.width, small.height);
-            lifted = liftSubject(segmenter, small, { x: p.x / vw, y: p.y / vh }, vw);
-          } else if (!segmenter) {
+          if (segmenter) {
+            lifted = liftSubject(segmenter, snapshot, { x: p.x / vw, y: p.y / vh }, vw);
+          } else {
             void loadSubjectLift(WASM_URL);
           }
           if (lifted && !l.done && !l.paused) {
             l.liftId += 1;
-            setLift({ ...lifted, id: l.liftId });
+            const at = performance.now();
+            const v = { x: 0, y: 0 };
+            setLift({ ...lifted, id: l.liftId, at, v });
+            // Follow it from here on (see the tracking effect).
+            l.follow = { last: lifted, at, v, misses: 0, since: at };
             l.tapped = target(cropAround(lifted.box, 1, vw, vh, { margin: 0, minShare: 0.15 }));
             setBox(toDisplay(video, l.tapped, l.digitalZoom));
           }
           l.busy = false;
           if (l.done || l.paused) {
-            setFrozen(false);
+            l.follow = undefined;
             setLift(undefined);
             return;
           }
@@ -747,6 +791,88 @@ export function LiveScreen() {
     },
     [analyse],
   );
+
+  // Follow the tapped subject: re-cut it from the live view a few times a second, starting
+  // inside where it last was, so the wash stays on it as it (or the phone) moves. A cut-out
+  // that isn't plausibly the same thing counts as a miss; a few misses in a row and it's lost.
+  useEffect(() => {
+    const snapshot = document.createElement('canvas');
+    const step = () => {
+      const l = loop.current;
+      const video = videoRef.current;
+      const segmenter = subjectLiftReady();
+      const track = l.follow;
+      if (!track || !segmenter || !video?.videoWidth || document.visibilityState !== 'visible')
+        return;
+      if (performance.now() - track.since > TRACK_FOR_MS) {
+        stopTracking();
+        return;
+      }
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const at = performance.now();
+      const scale = Math.min(1, LIFT_EDGE / Math.max(vw, vh));
+      snapshot.width = Math.round(vw * scale);
+      snapshot.height = Math.round(vh * scale);
+      snapshot.getContext('2d')?.drawImage(video, 0, 0, snapshot.width, snapshot.height);
+      const next = liftSubject(segmenter, snapshot, track.last.inside, vw);
+      if (l.follow !== track) return; // stopped (or re-tapped) meanwhile
+      if (next && sameSubject(track.last, next)) {
+        // Velocity from the last two cut-outs (smoothed), to slide the wash between updates.
+        const dt = Math.max(1, at - track.at);
+        const v = {
+          x: 0.5 * track.v.x + (0.5 * (next.inside.x - track.last.inside.x)) / dt,
+          y: 0.5 * track.v.y + (0.5 * (next.inside.y - track.last.inside.y)) / dt,
+        };
+        track.last = next;
+        track.at = at;
+        track.v = v;
+        track.misses = 0;
+        setLift((current) =>
+          current && !current.leaving ? { ...next, id: current.id, at, v } : current,
+        );
+        const visible = onScreen(video, l.digitalZoom);
+        setAtEdge(touchesEdge(next.box, visible));
+      } else if (++track.misses >= TRACK_MISSES) {
+        stopTracking();
+      }
+    };
+    let t: ReturnType<typeof setTimeout>;
+    const run = () => {
+      step();
+      // Lighter when live mode is saving battery, heat or data.
+      // The cut-out runs on the phone (no data); only a low battery slows it.
+      t = setTimeout(
+        run,
+        loop.current.policy.reasons.includes('battery') ? TRACK_MS * 2 : TRACK_MS,
+      );
+    };
+    t = setTimeout(run, TRACK_MS);
+    return () => clearTimeout(t);
+  }, [stopTracking]);
+
+  // Between cut-outs, slide the wash along the subject's motion so it doesn't trail behind.
+  useEffect(() => {
+    if (!lift || lift.leaving) return;
+    let raf = 0;
+    const frame = () => {
+      const el = liftMoveRef.current;
+      const video = videoRef.current;
+      if (el && video?.videoWidth) {
+        const dt = Math.min(PREDICT_MAX_MS, performance.now() - lift.at);
+        const scale = Math.max(
+          (video.clientWidth || 1) / video.videoWidth,
+          (video.clientHeight || 1) / video.videoHeight,
+        );
+        const dx = lift.v.x * dt * video.videoWidth * scale;
+        const dy = lift.v.y * dt * video.videoHeight * scale;
+        el.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+      }
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [lift]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     const l = loop.current;
@@ -1063,20 +1189,27 @@ export function LiveScreen() {
             aria-label="Camera view. Tap something to identify it, pinch to zoom."
             data-testid="live-video"
           />
-          <canvas
-            ref={frozenRef}
-            className={`absolute inset-0 h-full w-full object-cover ${frozen ? '' : 'hidden'}`}
-            aria-hidden
-            data-testid="live-frozen"
-          />
-          {lift && frozen && (
-            <div key={lift.id} className="subject-lift" aria-hidden data-testid="live-lift">
-              <div
-                style={{
-                  maskImage: `url(${lift.maskUrl})`,
-                  WebkitMaskImage: `url(${lift.maskUrl})`,
-                }}
-              />
+          {lift && (
+            <div
+              key={lift.id}
+              className={`subject-lift ${lift.leaving ? 'subject-lift-leaving' : ''}`}
+              aria-hidden
+              data-testid="live-lift"
+              onAnimationEnd={(e) => {
+                // Removed once its fade-out ends (not on the flash or the inner sweep).
+                if (e.target === e.currentTarget && lift.leaving)
+                  setLift((l) => (l?.id === lift.id ? undefined : l));
+              }}
+            >
+              <div ref={liftMoveRef} className="absolute inset-0">
+                <div
+                  className="subject-lift-mask"
+                  style={{
+                    maskImage: `url(${lift.maskUrl})`,
+                    WebkitMaskImage: `url(${lift.maskUrl})`,
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -1095,7 +1228,7 @@ export function LiveScreen() {
           aria-hidden
         >
           {/* The white cut-out already shows what's being identified. */}
-          {!(lift && frozen) &&
+          {(!lift || lift.leaving) &&
             (['tl', 'tr', 'bl', 'br'] as const).map((c) => (
               <span key={c} className={`live-corner live-corner-${c}`} />
             ))}
@@ -1185,6 +1318,14 @@ export function LiveScreen() {
                 data-testid="live-tip"
               >
                 {tips[tip]}
+              </p>
+            )}
+            {atEdge && !found && (
+              <p
+                className="fade-up text-center text-sm font-medium text-white [text-shadow:0_1px_6px_rgba(0,0,0,0.7)]"
+                data-testid="live-edge"
+              >
+                Keep it in frame
               </p>
             )}
             {zoom > 1.05 && (
