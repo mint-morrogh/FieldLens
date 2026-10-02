@@ -9,7 +9,7 @@ import {
 import { AUTO_FEATURE, getTarget } from '../../../shared/categories';
 import type { FeatureId, IdentifyTarget } from '../../../shared/types';
 import { Icon } from '../../components/Icon';
-import { CategoryIcon } from '../../components/CategoryIcon';
+import { CategoryPicker } from './CategoryPicker';
 import { Button } from '../../components/ui';
 import {
   DEFAULT_BOX,
@@ -33,8 +33,6 @@ const CORNER_POS: Record<Corner, string> = {
   sw: 'left-0 bottom-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize',
   se: 'right-0 bottom-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize',
 };
-
-export type CategoryOption = { id: IdentifyTarget; label: string; available: boolean };
 
 /** A pill on the dark sheet; optional leading icon. */
 function SheetChip({
@@ -107,10 +105,10 @@ export function CropEditor({
 }: {
   imageUrl: string;
   category: IdentifyTarget;
-  /** "What is it?" — offered for the first photo; Auto lets FieldLens work it out. */
+  /** "What is it?" — offered for the first photo; "Not sure" lets FieldLens work it out. */
   categoryChoice?: {
     value: IdentifyTarget;
-    options: CategoryOption[];
+    isAvailable: (id: IdentifyTarget) => boolean;
     onChange: (id: IdentifyTarget) => void;
   };
   initialFeature?: FeatureId;
@@ -319,31 +317,16 @@ export function CropEditor({
 
       <div className="safe-bottom space-y-4 rounded-t-3xl border-t border-white/10 bg-[#1a1e17] px-4 pt-4 shadow-[0_-12px_30px_rgba(0,0,0,0.35)]">
         {categoryChoice && (
-          <SheetRow
-            title="What is it?"
-            hint={categoryChoice.value === 'auto' ? 'Auto works it out' : 'Optional'}
-            testId="crop-category"
-          >
-            {categoryChoice.options.map((o) => (
-              <SheetChip
-                key={o.id}
-                selected={categoryChoice.value === o.id}
-                disabled={!o.available}
-                onClick={() => {
-                  if (!o.available) {
-                    setNotice(`${o.label} identification is coming soon.`);
-                    return;
-                  }
-                  setNotice(undefined);
-                  setFeature('auto');
-                  categoryChoice.onChange(o.id);
-                }}
-                icon={<CategoryIcon id={o.id} className="h-4.5 w-4.5" />}
-              >
-                {o.label}
-              </SheetChip>
-            ))}
-          </SheetRow>
+          <CategoryPicker
+            value={categoryChoice.value}
+            isAvailable={categoryChoice.isAvailable}
+            onUnavailable={(label) => setNotice(`${label} identification is coming soon.`)}
+            onChange={(id) => {
+              setNotice(undefined);
+              setFeature('auto');
+              categoryChoice.onChange(id);
+            }}
+          />
         )}
         {notice && (
           <p className="-mt-2 text-xs text-white/60" role="status">

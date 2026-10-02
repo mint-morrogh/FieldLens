@@ -13,10 +13,41 @@ export type OrganismCategory =
   | 'insect'
   | 'arachnid'
   | 'fungus'
+  | 'moss'
+  | 'seaweed'
+  | 'crustacean'
+  | 'mollusc'
+  | 'echinoderm'
+  | 'cnidarian'
+  | 'worm'
+  | 'sponge'
   | 'other';
 
 /** Broader picker choices that the server narrows to a specific category. */
-export type CategoryGroupId = 'tree' | 'bug' | 'herp' | 'animal' | 'auto';
+export type CategoryGroupId =
+  | 'tree'
+  | 'lichen'
+  | 'bug'
+  | 'butterfly'
+  | 'beetle'
+  | 'bee'
+  | 'fly'
+  | 'dragonfly'
+  | 'grasshopper'
+  | 'truebug'
+  | 'crawly'
+  | 'herp'
+  | 'snake'
+  | 'lizard'
+  | 'turtle'
+  | 'frog'
+  | 'salamander'
+  | 'snail'
+  | 'clam'
+  | 'octopus'
+  | 'shore'
+  | 'animal'
+  | 'auto';
 
 /** What the user asked to identify: a specific category or a broader group. */
 export type IdentifyTarget = OrganismCategory | CategoryGroupId;

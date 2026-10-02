@@ -72,6 +72,7 @@ const KINGDOM_FOR_GROUP: Record<string, string> = {
   mammal: 'Animalia',
   herp: 'Animalia',
   fish: 'Animalia',
+  sea: 'Animalia',
 };
 
 /** Snap to the ~11 km cell, whatever precision the client sent. */

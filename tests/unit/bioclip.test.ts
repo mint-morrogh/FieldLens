@@ -82,7 +82,8 @@ describe('BioCLIP provider', () => {
     expect(categoryForTaxon('Animalia', 'Arachnida')).toBe('arachnid');
     expect(categoryForTaxon('Animalia', 'Aves')).toBe('bird');
     expect(categoryForTaxon('Animalia', 'Squamata')).toBe('reptile');
-    expect(categoryForTaxon('Animalia', 'Gastropoda')).toBe('other');
+    expect(categoryForTaxon('Animalia', 'Gastropoda')).toBe('mollusc');
+    expect(categoryForTaxon('Animalia', 'Rotifera')).toBe('other');
   });
 
   it('caps only mushroom confidence and folds in how much the photo looks like the group', () => {
@@ -254,15 +255,16 @@ describe('groups and category detection', () => {
     const provider = new BioclipIdentificationProvider(
       'https://s',
       't',
-      ['insect', 'arachnid'],
+      ['insect', 'arachnid', 'crustacean', 'worm', 'mollusc'],
       fetchImpl,
     );
     expect(provider.supports('bug')).toBe(true);
     expect(provider.supports('animal')).toBe(false);
     expect(provider.supports('auto')).toBe(false);
     const result = await provider.identify(input('bug'));
-    expect((payloads[0] as { within: { class: string[] } }).within.class).toEqual(
-      expect.arrayContaining(['Insecta', 'Arachnida']),
+    const within = (payloads[0] as { within: { class?: string[] }[] }).within;
+    expect(within.flatMap((f) => f.class ?? [])).toEqual(
+      expect.arrayContaining(['Insecta', 'Arachnida', 'Malacostraca']),
     );
     expect(result.detectedCategory).toBe('arachnid');
     expect(result.candidates.map((c) => c.category)).toEqual(['arachnid', 'arachnid', 'insect']);

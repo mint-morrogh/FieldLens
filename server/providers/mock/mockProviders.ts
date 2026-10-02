@@ -1,3 +1,4 @@
+import { isOrganismCategory, targetMembers } from '../../../shared/categories.js';
 import type {
   ApproxLocation,
   CommunityObservationSummary,
@@ -29,6 +30,7 @@ import {
   FIXTURES,
   AMPHIBIAN_FIXTURES,
   BIRD_FIXTURES,
+  CRAB_FIXTURES,
   FUNGUS_FIXTURES,
   INSECT_FIXTURES,
   LOOKALIKE_FIXTURES,
@@ -153,6 +155,7 @@ export class MockIdentificationProvider implements IdentificationProvider {
       };
     }
     const t = input.category;
+    const members = targetMembers(t);
     const [fixtures, category]: [typeof INSECT_FIXTURES, OrganismCategory] =
       t === 'fungus'
         ? [FUNGUS_FIXTURES, 'fungus']
@@ -160,16 +163,13 @@ export class MockIdentificationProvider implements IdentificationProvider {
           ? [BIRD_FIXTURES, 'bird']
           : t === 'arachnid'
             ? [INSECT_FIXTURES, 'arachnid']
-            : t === 'bug' || t === 'insect'
+            : members.includes('insect')
               ? [INSECT_FIXTURES, 'insect']
               : t === 'mammal'
                 ? [MAMMAL_FIXTURES, 'mammal']
-                : [
-                    AMPHIBIAN_FIXTURES,
-                    t === 'animal' || t === 'herp' || t === 'auto' || t === 'tree'
-                      ? 'amphibian'
-                      : t,
-                  ];
+                : members.includes('crustacean') || t === 'shore'
+                  ? [CRAB_FIXTURES, 'crustacean']
+                  : [AMPHIBIAN_FIXTURES, isOrganismCategory(t) ? t : 'amphibian'];
     const candidates = fixtures.map((s) => ({
       id: slugId('mock', s.scientificName),
       category,

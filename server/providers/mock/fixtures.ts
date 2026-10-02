@@ -413,6 +413,60 @@ export const AMPHIBIAN_FIXTURES: FixtureSpecies[] = [
   },
 ];
 
+const CRAB = {
+  kingdom: 'Animalia',
+  phylum: 'Arthropoda',
+  className: 'Malacostraca',
+  order: 'Decapoda',
+};
+const CRAB_SEASON = [2, 2, 5, 15, 40, 70, 90, 95, 70, 35, 10, 3];
+
+/** Returned for beach and water picks in mock mode. */
+export const CRAB_FIXTURES: FixtureSpecies[] = [
+  {
+    scientificName: 'Carcinus maenas',
+    authorship: '(Linnaeus, 1758)',
+    commonNames: ['European green crab'],
+    score: 0.68,
+    gbifKey: 5178595,
+    genus: 'Carcinus',
+    genusKey: 2225691,
+    family: 'Carcinidae',
+    familyKey: 3254253,
+    ...CRAB,
+    radiusCounts: [6, 80, 520],
+    monthCounts: CRAB_SEASON,
+  },
+  {
+    scientificName: 'Hemigrapsus sanguineus',
+    authorship: '(De Haan, 1835)',
+    commonNames: ['Asian shore crab'],
+    score: 0.17,
+    gbifKey: 2225772,
+    genus: 'Hemigrapsus',
+    genusKey: 2225769,
+    family: 'Varunidae',
+    familyKey: 4567,
+    ...CRAB,
+    radiusCounts: [3, 45, 300],
+    monthCounts: CRAB_SEASON,
+  },
+  {
+    scientificName: 'Cancer irroratus',
+    authorship: 'Say, 1817',
+    commonNames: ['Atlantic rock crab'],
+    score: 0.06,
+    gbifKey: 2222075,
+    genus: 'Cancer',
+    genusKey: 2204488,
+    family: 'Cancridae',
+    familyKey: 3856,
+    ...CRAB,
+    radiusCounts: [1, 20, 210],
+    monthCounts: CRAB_SEASON,
+  },
+];
+
 const MAMMAL = { kingdom: 'Animalia', phylum: 'Chordata', className: 'Mammalia' };
 const MAMMAL_SEASON = [20, 18, 30, 45, 60, 70, 75, 72, 65, 50, 30, 22];
 
@@ -474,6 +528,7 @@ export const ALL_FIXTURE_SPECIES = [
   ...BIRD_FIXTURES,
   ...AMPHIBIAN_FIXTURES,
   ...MAMMAL_FIXTURES,
+  ...CRAB_FIXTURES,
   ...LOOKALIKE_FIXTURES,
 ];
 

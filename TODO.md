@@ -43,6 +43,10 @@ Live: private Space `mintmundane/fieldlens-bioclip` (ZeroGPU), source in `hf-spa
 - [x] "Auto" category detection (“Not sure”).
 - [x] Real-phone testing by the owner (2026-09-27): everything right except some mushrooms. Experimental tag removed; confidence cap kept only for mushrooms.
 
+- [x] **Sea life, seaweed, moss; sectioned "What is it?" sheet** (2026-10-02, [stage doc](docs/stages/stage-1-sea-life-and-picker.md)): crustaceans, molluscs, echinoderms, cnidarians, sponges & sea squirts, worms, seaweed and moss on BioCLIP; kid-friendly narrow picks with look-alike crossovers; wrong narrow picks widen; marine safety notes.
+  - [ ] Owner's beach photos: record results in the stage doc.
+  - [ ] Seaweed has no edibility section yet (no sourced data); mosses and seaweed get no safety notes.
+
 ## Identification context from the phone
 
 Extra signals that nudge ranking. Like the range maps, each is a capped adjustment, never a hard rule.

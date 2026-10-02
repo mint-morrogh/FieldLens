@@ -1,5 +1,3 @@
-import { CATEGORY_PICKER_ORDER, getTarget } from '../../../shared/categories';
-import type { IdentifyTarget } from '../../../shared/types';
 import { useEffect } from 'react';
 import { isTargetAvailable, useHealth } from '../../app/health';
 import { navigate } from '../../app/router';
@@ -157,11 +155,7 @@ export function IdentifyScreen() {
             ? {
                 value: state.category,
                 onChange: session.setCategory,
-                options: (['auto', ...CATEGORY_PICKER_ORDER] as IdentifyTarget[]).map((id) => ({
-                  id,
-                  label: id === 'auto' ? 'Auto' : getTarget(id).label,
-                  available: isTargetAvailable(id, health),
-                })),
+                isAvailable: (id) => isTargetAvailable(id, health),
               }
             : undefined
         }

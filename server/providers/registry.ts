@@ -102,6 +102,14 @@ export function supportedCategories(env: ServerEnv): OrganismCategory[] {
     'insect',
     'arachnid',
     'fungus',
+    'moss',
+    'seaweed',
+    'crustacean',
+    'mollusc',
+    'echinoderm',
+    'cnidarian',
+    'worm',
+    'sponge',
     'other',
   ];
   const providers = env.useMockApi

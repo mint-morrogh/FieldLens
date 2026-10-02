@@ -267,3 +267,55 @@ Changes:
   - "Move closer, or tap it" (subject under 4% of the frame).
   - "Not sure yet. Move closer, or tap one flower, leaf or animal" (after an uncertain result).
 - The scan limit rose from 12 to 15 frames per session, taps included.
+
+## Sea life, seaweed, moss and a sectioned "What is it?" sheet (2026-10-02)
+
+Crabs photographed at the beach got no answer. BioCLIP 2 already knows them; FieldLens just had no category for them, so they were filed as "other". Groups added, each checked against BioCLIP's own label list (number of species in brackets):
+
+- crustaceans (14k, horseshoe crabs included)
+- molluscs (58k, octopus and squid included)
+- sea stars and urchins (4.9k)
+- jellyfish, anemones and corals (6.8k)
+- sponges and sea squirts
+- worms
+- seaweed (brown, red and green)
+- mosses and liverworts
+
+Microscopic groups (plankton, copepods, diatoms) are left out: you can't photograph them with a phone, and BioCLIP scores 1–6% on them.
+
+**Routing.**
+
+- Red and green seaweeds are Plantae in the labels, so they are checked before the "plants go to Pl@ntNet" rule.
+- Sea squirts are chordates with a class of their own, so they no longer fall into fish.
+- Mosses go to BioCLIP, not Pl@ntNet.
+
+**Picks named for people, not biologists.** The chip row became one "What is it?" button that opens a sheet with search, jump links and four sections: Plants & fungi, Bugs & creepy-crawlies, Animals, Beach & water. Each section except plants can be picked whole ("Any bug", "Anything from the beach"), so a rough idea still narrows the search. Narrower picks, all on BioCLIP:
+
+- insects: butterfly & moth, beetle, bee/wasp/ant, fly, dragonfly, grasshopper & cricket, stink bug & cicada, centipede & roly-poly
+- reptiles and amphibians: snake, lizard & alligator, turtle, frog & toad, salamander & newt
+- molluscs: snail & slug, clam & mussel, octopus & squid
+- lichen
+
+Reptiles have no order in BioCLIP's labels, so snakes and lizards are split by family.
+
+**Look-alikes count in both places.** Each pick's scope takes in what people mistake for it:
+
+- legless lizards under Snake
+- newts under Lizard and skinks under Salamander
+- roly-polies with the centipedes and with the crabs
+- earthworms and garden slugs under Any bug
+
+The result still names the true group: a newt picked as a lizard says "Amphibian". Search knows everyday words ("roly-poly", "starfish", "kelp").
+
+**Wrong picks.** When a photo doesn't look like the pick, the top-20 species vote decides as before. It now asks whether the pick's own taxa outweigh every other group, not whether the top group is a member. If they don't, a narrow pick widens to its section (a butterfly picked as "Beetle" is searched as "Any bug"), and a broad pick suggests the right group. The Space accepts a list of taxon filters (any of), which these mixed scopes need; one filter works as before.
+
+**Safety.** All animal groups now get wildlife notes. New sourced notes (healthdirect, MedlinePlus, DAN, NOAA, NPS, NHS inform, CFIA; `server/safety/marine.ts`) cover:
+
+- box jellyfish, Irukandji, man o' war, sea nettles, lion's mane and fire coral
+- blue-ringed octopus and cone snails
+- crown-of-thorns starfish and sea urchins
+- stingrays, stonefish, lionfish, scorpionfish and weever fish
+- sea snakes and fireworms
+- paralytic shellfish poisoning, for mussels, clams, oysters and scallops
+
+Crustaceans and molluscs carry a standing "never eat wild shellfish based on an app" notice.

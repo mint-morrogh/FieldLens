@@ -757,7 +757,8 @@ export async function runIdentification(
     });
   }
   const safety =
-    categoryId === 'mammal' || categoryId === 'reptile' || categoryId === 'amphibian'
+    // Plants, mosses, seaweed and fungi get edibility notes; every animal gets wildlife notes.
+    !['plant', 'fungus', 'moss', 'seaweed', 'other'].includes(categoryId)
       ? buildWildlifeSafety({ band, candidates: ranked, feature: sign ?? features[0] })
       : attachLookalikePhotos(
           buildSafety({

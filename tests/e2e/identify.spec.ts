@@ -15,9 +15,12 @@ async function wherePhotoTaken(page: Page, answer: 'Near here' | 'Somewhere else
   await page.getByTestId('photo-location-question').getByRole('button', { name: answer }).click();
 }
 
-/** "What is it?" on the crop screen (optional; Auto is the default). */
+/** "What is it?" on the crop screen (optional; "Not sure" is the default). */
 async function pickCategory(page: Page, name: string) {
-  await page.getByTestId('crop-category').getByRole('button', { name, exact: true }).click();
+  await page.getByTestId('category-trigger').click();
+  const sheet = page.getByRole('dialog', { name: 'What did you photograph?' });
+  await sheet.getByRole('button', { name, exact: true }).first().click();
+  await expect(sheet).toHaveCount(0);
 }
 
 async function identifySelection(page: Page) {
@@ -200,7 +203,7 @@ test('granting location later re-checks the result with location', async ({ page
   await expect(page.getByTestId('location-fix')).toHaveCount(0);
 });
 
-test('photo first: "What is it?" is optional on the crop screen and starts on Auto', async ({
+test('photo first: "What is it?" is optional on the crop screen and starts on Not sure', async ({
   page,
 }) => {
   await page.goto('/?mock=high');
@@ -208,34 +211,41 @@ test('photo first: "What is it?" is optional on the crop screen and starts on Au
   await expect(page.getByRole('button', { name: 'Take a photo' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Upload photo' })).toBeVisible();
   await choosePhoto(page);
-  const row = page.getByTestId('crop-category');
-  await expect(row.getByRole('button', { name: 'Auto', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  for (const name of [
-    'Plant',
-    'Tree',
-    'Fungus',
-    'Bug',
-    'Bird',
-    'Mammal',
-    'Reptile & amphibian',
-    'Fish',
-  ]) {
-    await expect(row.getByRole('button', { name, exact: true })).toBeVisible();
+  const trigger = page.getByTestId('category-trigger');
+  await expect(trigger).toHaveAccessibleName('What is it? Not sure');
+  await trigger.click();
+  const sheet = page.getByRole('dialog', { name: 'What did you photograph?' });
+  for (const section of ['Plants & fungi', 'Bugs & creepy-crawlies', 'Animals', 'Beach & water']) {
+    await expect(sheet.getByRole('heading', { name: section })).toBeAttached();
   }
-  // Picking a plant shows plant parts; Auto hides them again.
-  await pickCategory(page, 'Plant');
+  for (const name of [
+    'Flower & plant',
+    'Seaweed',
+    'Any bug',
+    'Beetle',
+    'Frog & toad',
+    'Crab, lobster & shrimp',
+    'Octopus & squid',
+    'Starfish & sea urchin',
+  ]) {
+    await expect(sheet.getByRole('button', { name, exact: true }).first()).toBeAttached();
+  }
+  // Search by everyday words, including look-alikes listed in two places.
+  await sheet.getByRole('searchbox').fill('roly poly');
+  const results = sheet.getByTestId('pick-results');
+  await expect(results.getByRole('button', { name: 'Centipede & roly-poly' })).toBeVisible();
+  await expect(results.getByRole('button', { name: 'Crab, lobster & shrimp' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByTestId('crop-stage')).toBeVisible();
+  // Picking a plant shows plant parts; Not sure hides them again.
+  await pickCategory(page, 'Flower & plant');
   await expect(page.getByRole('button', { name: 'Flower', exact: true })).toBeVisible();
-  await pickCategory(page, 'Auto');
+  await pickCategory(page, 'Not sure');
   await expect(page.getByRole('button', { name: 'Flower', exact: true })).toHaveCount(0);
-  // Every chip is reachable on a phone-width screen (the row scrolls).
-  await pickCategory(page, 'Fish');
-  await expect(row.getByRole('button', { name: 'Fish', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  // The last section is reachable on a phone-width screen (the sheet scrolls).
+  await pickCategory(page, 'Starfish & sea urchin');
+  await expect(trigger).toHaveAccessibleName('What is it? Starfish & sea urchin');
 });
 
 test('recent identifications can be deleted from the home screen and restored', async ({
@@ -275,7 +285,7 @@ test('recent identifications can be deleted from the home screen and restored', 
 test('insects are identified with an experimental label', async ({ page }) => {
   await page.goto('/?mock=high');
   await choosePhoto(page);
-  await pickCategory(page, 'Bug');
+  await pickCategory(page, 'Any bug');
   await identifySelection(page);
   await expect(page.getByTestId('result-headline')).toContainText('Danaus plexippus');
 });
@@ -283,7 +293,7 @@ test('insects are identified with an experimental label', async ({ page }) => {
 test('an off-target insect photo can be re-identified as a plant', async ({ page }) => {
   await page.goto('/?mock=wrong-category');
   await choosePhoto(page);
-  await pickCategory(page, 'Bug');
+  await pickCategory(page, 'Any bug');
   await identifySelection(page);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('doesn’t look like a bug');
   await page.getByRole('button', { name: 'Identify as plant' }).click();
@@ -295,7 +305,7 @@ test('an off-target insect photo can be re-identified as a plant', async ({ page
 test('mushrooms get the safety package', async ({ page }) => {
   await page.goto('/?mock=high');
   await choosePhoto(page);
-  await pickCategory(page, 'Fungus');
+  await pickCategory(page, 'Mushroom');
   await identifySelection(page);
   await expect(page.getByTestId('fungus-warning')).toContainText(
     'Mushroom identification is difficult',
@@ -315,7 +325,7 @@ test('demo look-alikes show reference photos next to the warnings', async ({ pag
   );
   await page.goto('/?mock=lookalike');
   await choosePhoto(page);
-  await pickCategory(page, 'Plant');
+  await pickCategory(page, 'Flower & plant');
   await identifySelection(page);
   await expect(page.getByTestId('result-headline')).toContainText('Allium tricoccum');
   const safety = page.getByTestId('safety');
@@ -345,10 +355,19 @@ test('gallery thumbnails keep their size and scroll sideways', async ({ page }) 
   expect(Math.round(box.width)).toBeGreaterThanOrEqual(100);
 });
 
-test('reptiles and amphibians share a tile and the result says which', async ({ page }) => {
+test('a crab picked under Beach & water is identified as a crustacean', async ({ page }) => {
   await page.goto('/?mock=high');
   await choosePhoto(page);
-  await pickCategory(page, 'Reptile & amphibian');
+  await pickCategory(page, 'Crab, lobster & shrimp');
+  await identifySelection(page);
+  await expect(page.getByTestId('result-headline')).toContainText('European Green Crab');
+  await expect(page.getByTestId('detected-category')).toHaveCount(0);
+});
+
+test('a narrow animal pick still says which group it found', async ({ page }) => {
+  await page.goto('/?mock=high');
+  await choosePhoto(page);
+  await pickCategory(page, 'Frog & toad');
   await identifySelection(page);
   await expect(page.getByTestId('result-headline')).toContainText('Wood Frog');
   await expect(page.getByTestId('detected-category')).toHaveText('Amphibian');
@@ -363,7 +382,7 @@ test('parts only appear once a type is chosen, and Mammal offers tracks', async 
   await pickCategory(page, 'Tree');
   await expect(parts).toContainText('Bark');
   await expect(parts).toContainText('Cones, nuts & fruit');
-  await pickCategory(page, 'Bug');
+  await pickCategory(page, 'Any bug');
   await expect(parts).toContainText('Wings');
   await pickCategory(page, 'Fish');
   await expect(parts).toContainText('Fins & tail');

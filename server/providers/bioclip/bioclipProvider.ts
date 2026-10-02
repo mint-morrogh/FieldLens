@@ -1,4 +1,19 @@
-import { getTarget, targetMembers } from '../../../shared/categories.js';
+import {
+  BUG_CLASSES,
+  CNIDARIAN_PHYLA,
+  CRUSTACEAN_CLASSES,
+  FISH_CLASSES,
+  MOSS_PHYLA,
+  REPTILE_CLASSES,
+  SEA_SQUIRT_CLASSES,
+  SEAWEED_CLASSES,
+  SPONGE_PHYLA,
+  WORM_PHYLA,
+  getTarget,
+  taxonInScope,
+  targetMembers,
+  type TaxonScope,
+} from '../../../shared/categories.js';
 import { CANDIDATES } from '../../../shared/config.js';
 import type { CategoryCheck, IdentifyTarget, OrganismCategory } from '../../../shared/types.js';
 import { ApiError, UpstreamError } from '../../lib/errors.js';
@@ -72,30 +87,58 @@ type BioclipPayload = {
   rank?: string;
   k?: number;
   taxa?: string[];
-  within?: Partial<Record<string, string[]>>;
+  within?: TaxonScope;
   /** Tracks or droppings: rank `candidates` with sign prompts (see hf-space/app.py). */
   sign?: string;
   candidates?: { name: string; common?: string }[];
 };
 
-const FISH_CLASSES = new Set([
-  'Actinopterygii',
-  'Elasmobranchii',
-  'Holocephali',
-  'Chondrichthyes',
-  'Petromyzonti',
-  'Myxini',
-  'Coelacanthi',
-  'Dipneusti',
+const FISH = new Set(FISH_CLASSES);
+const REPTILES = new Set(['Reptilia', ...REPTILE_CLASSES]);
+const BUGS = new Set(BUG_CLASSES);
+const MOLLUSC_CLASSES = new Set([
+  'Gastropoda',
+  'Bivalvia',
+  'Cephalopoda',
+  'Polyplacophora',
+  'Scaphopoda',
 ]);
-const REPTILE_CLASSES = new Set([
-  'Reptilia',
-  'Squamata',
-  'Testudines',
-  'Crocodylia',
-  'Sphenodontia',
+const ECHINODERM_CLASSES = new Set([
+  'Asteroidea',
+  'Echinoidea',
+  'Holothuroidea',
+  'Ophiuroidea',
+  'Crinoidea',
 ]);
-const BUG_CLASSES = new Set(['Insecta', 'Chilopoda', 'Diplopoda', 'Collembola']);
+const CNIDARIAN_CLASSES = new Set(['Anthozoa', 'Hydrozoa', 'Scyphozoa', 'Cubozoa', 'Staurozoa']);
+const WORM_CLASSES = new Set(['Clitellata', 'Polychaeta']);
+const has = (list: readonly string[], value?: string) => !!value && list.includes(value);
+
+/**
+ * Plankton, protists and other things too small to photograph with a phone. They're in
+ * BioCLIP's label list and look like any translucent blob (a moon jelly's top 8 included
+ * three of them), so they don't get a vote.
+ */
+const MICROSCOPIC_KINGDOMS = new Set(['Bacteria', 'Archaea', 'Protozoa']);
+const MICROSCOPIC_PHYLA = new Set([
+  'Haptophyta',
+  'Myzozoa',
+  'Foraminifera',
+  'Ciliophora',
+  'Cyanobacteria',
+  'Euglenozoa',
+  'Rotifera',
+  'Tardigrada',
+  'Gastrotricha',
+]);
+const MICROSCOPIC_CLASSES = new Set(['Copepoda', 'Ostracoda', 'Bacillariophyceae']);
+export function isMicroscopic(r: Pick<BioclipResult, 'kingdom' | 'phylum' | 'class'>): boolean {
+  return (
+    MICROSCOPIC_KINGDOMS.has(r.kingdom ?? '') ||
+    MICROSCOPIC_PHYLA.has(r.phylum ?? '') ||
+    MICROSCOPIC_CLASSES.has(r.class ?? '')
+  );
+}
 
 /** Map a BioCLIP kingdom/phylum/class to the FieldLens category that covers it. */
 export function categoryForTaxon(
@@ -103,17 +146,27 @@ export function categoryForTaxon(
   className?: string,
   phylum?: string,
 ): OrganismCategory {
-  if (kingdom === 'Plantae') return 'plant';
-  if (kingdom === 'Fungi') return 'fungus';
   const cls = className ?? '';
+  // Red and green seaweeds are Plantae in the labels, brown ones Chromista.
+  if (has(SEAWEED_CLASSES, cls)) return 'seaweed';
+  if (kingdom === 'Plantae') return has(MOSS_PHYLA, phylum) ? 'moss' : 'plant';
+  if (kingdom === 'Fungi') return 'fungus';
   if (cls === 'Aves') return 'bird';
   if (cls === 'Mammalia') return 'mammal';
   if (cls === 'Amphibia') return 'amphibian';
-  if (REPTILE_CLASSES.has(cls)) return 'reptile';
+  if (REPTILES.has(cls)) return 'reptile';
   if (cls === 'Arachnida') return 'arachnid';
-  if (BUG_CLASSES.has(cls)) return 'insect';
+  if (BUGS.has(cls)) return 'insect';
+  if (has(CRUSTACEAN_CLASSES, cls)) return 'crustacean';
+  // Sea squirts are chordates, so check them before the fish rule below.
+  if (has(SEA_SQUIRT_CLASSES, cls)) return 'sponge';
+  if (phylum === 'Mollusca' || MOLLUSC_CLASSES.has(cls)) return 'mollusc';
+  if (phylum === 'Echinodermata' || ECHINODERM_CLASSES.has(cls)) return 'echinoderm';
+  if (has(CNIDARIAN_PHYLA, phylum) || CNIDARIAN_CLASSES.has(cls)) return 'cnidarian';
+  if (has(SPONGE_PHYLA, phylum)) return 'sponge';
+  if (has(WORM_PHYLA, phylum) || WORM_CLASSES.has(cls)) return 'worm';
   // Tree of Life labels leave most ray-finned fish without a class.
-  if (FISH_CLASSES.has(cls) || (phylum === 'Chordata' && (!cls || cls.endsWith('(unranked)')))) {
+  if (FISH.has(cls) || (phylum === 'Chordata' && (!cls || cls.endsWith('(unranked)')))) {
     return 'fish';
   }
   return 'other';
@@ -281,7 +334,20 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
 
   async identify(input: IdentificationInput): Promise<IdentificationResult> {
     if (input.sign && input.signCandidates?.length) return this.identifySign(input);
-    const scope = getTarget(input.category).taxonScope;
+    return this.identifyWithin(input);
+  }
+
+  /**
+   * Identify within the pick's scope. A photo that doesn't look like the pick gets a second
+   * opinion from the top-species vote; narrow picks ("Beetle") then widen to their broader
+   * group ("Bug") instead of forcing an answer from the wrong part of the tree.
+   */
+  private async identifyWithin(
+    input: IdentificationInput,
+    earlierVote?: Vote,
+  ): Promise<IdentificationResult> {
+    const target = getTarget(input.category);
+    const scope = target.taxonScope;
     const images = input.images.map((img) => Buffer.from(img.data).toString('base64'));
     const started = Date.now();
     const response = await this.call({
@@ -295,10 +361,14 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
     if (likelihood < GROUP_MISMATCH_THRESHOLD) {
       // Looks off-target. Get a second opinion from the top-species vote, which handles
       // camouflaged subjects better (e.g. a frog in leaf litter). If the vote agrees with
-      // the chosen group, carry on; otherwise suggest the category it points to.
-      const vote = await this.detectCategory(input).catch(() => undefined);
-      const members = targetMembers(input.category);
-      if (!vote || !members.includes(vote.category)) {
+      // the pick, carry on; otherwise widen or suggest the category it points to.
+      const vote = earlierVote ?? (await this.vote(images).catch(() => undefined));
+      if (!vote || !scope || !vote.favours(scope)) {
+        if (target.widenTo) {
+          logger.info('bioclip.widen', { from: input.category, to: target.widenTo });
+          return this.identifyWithin({ ...input, category: target.widenTo }, vote);
+        }
+        const members = targetMembers(input.category);
         categoryCheck = {
           matchesCategory: false,
           likelihood,
@@ -361,16 +431,47 @@ export class BioclipIdentificationProvider implements IdentificationProvider {
    * (e.g. a camouflaged frog came out as "fungus" by class sums).
    */
   async detectCategory(input: IdentificationInput): Promise<CategoryDetectionResult> {
-    const images = input.images.map((img) => Buffer.from(img.data).toString('base64'));
+    const vote = await this.vote(
+      input.images.map((img) => Buffer.from(img.data).toString('base64')),
+    );
+    if (vote.person) return { category: 'mammal', likelihood: 1, person: true };
+    return { category: vote.category, likelihood: vote.likelihood };
+  }
+
+  private async vote(images: string[]): Promise<Vote> {
     const response = await this.call({ images, k: 20 });
-    if (isPerson(response)) return { category: 'mammal', likelihood: 1, person: true };
+    const voters = response.results.filter((r) => !isMicroscopic(r));
     const votes = new Map<OrganismCategory, number>();
-    for (const r of response.results) {
+    for (const r of voters) {
       const c = categoryForTaxon(r.kingdom, r.class, r.phylum);
       votes.set(c, (votes.get(c) ?? 0) + r.score);
     }
     const total = [...votes.values()].reduce((a, b) => a + b, 0) || 1;
     const [category, weight] = [...votes.entries()].sort((a, b) => b[1] - a[1])[0] ?? ['other', 0];
-    return { category, likelihood: Math.min(1, weight / total) };
+    return {
+      category,
+      likelihood: Math.min(1, weight / total),
+      person: isPerson(response),
+      // The pick's taxa, pooled, outweigh every other category on its own.
+      favours: (scope) => {
+        let inside = 0;
+        const outside = new Map<OrganismCategory, number>();
+        for (const r of voters) {
+          if (taxonInScope(r, scope)) inside += r.score;
+          else {
+            const c = categoryForTaxon(r.kingdom, r.class, r.phylum);
+            outside.set(c, (outside.get(c) ?? 0) + r.score);
+          }
+        }
+        return inside > 0 && [...outside.values()].every((w) => inside > w);
+      },
+    };
   }
 }
+
+type Vote = {
+  category: OrganismCategory;
+  likelihood: number;
+  person: boolean;
+  favours: (scope: TaxonScope) => boolean;
+};

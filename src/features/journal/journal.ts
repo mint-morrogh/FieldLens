@@ -8,7 +8,7 @@ import type { ObservationRecord } from '../history/historyStore';
  * from local history; nothing new is stored.
  */
 
-export type JournalGroup = 'plant' | 'fungus' | 'bug' | 'bird' | 'mammal' | 'herp' | 'fish';
+export type JournalGroup = 'plant' | 'fungus' | 'bug' | 'bird' | 'mammal' | 'herp' | 'fish' | 'sea';
 
 export const JOURNAL_GROUPS: { id: JournalGroup; label: string }[] = [
   { id: 'plant', label: 'Plants' },
@@ -18,13 +18,24 @@ export const JOURNAL_GROUPS: { id: JournalGroup; label: string }[] = [
   { id: 'mammal', label: 'Mammals' },
   { id: 'herp', label: 'Reptiles & amphibians' },
   { id: 'fish', label: 'Fish' },
+  { id: 'sea', label: 'Shells & sea life' },
 ];
 
 export function groupOf(category: OrganismCategory): JournalGroup | undefined {
   switch (category) {
     case 'insect':
     case 'arachnid':
+    case 'worm':
       return 'bug';
+    case 'moss':
+      return 'plant';
+    case 'crustacean':
+    case 'mollusc':
+    case 'echinoderm':
+    case 'cnidarian':
+    case 'sponge':
+    case 'seaweed':
+      return 'sea';
     case 'reptile':
     case 'amphibian':
       return 'herp';

@@ -12,6 +12,14 @@ const categorySchema = z.enum([
   'insect',
   'arachnid',
   'fungus',
+  'moss',
+  'seaweed',
+  'crustacean',
+  'mollusc',
+  'echinoderm',
+  'cnidarian',
+  'worm',
+  'sponge',
   'other',
 ]);
 

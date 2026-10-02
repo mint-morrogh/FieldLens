@@ -98,7 +98,7 @@ describe('weekly field goals', () => {
   });
 
   it('asks for a group you haven’t logged in 30 days once you’ve tried them all', () => {
-    const categories = ['insect', 'bird', 'mammal', 'reptile', 'fish'] as const;
+    const categories = ['insect', 'bird', 'mammal', 'reptile', 'fish', 'crustacean'] as const;
     const records = [
       find('Amanita muscaria', at(-60), { category: 'fungus' }),
       ...Array.from({ length: 10 }, (_, i) =>

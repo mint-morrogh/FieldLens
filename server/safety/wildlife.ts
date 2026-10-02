@@ -1,7 +1,7 @@
 /**
  * Hand-curated wildlife safety notes, worldwide: mainly mammals, plus some
- * dangerous reptiles and amphibians (those only show up where the caller asks
- * for wildlife safety for that category).
+ * dangerous reptiles and amphibians, and beach and sea life (marine.ts, checked
+ * 2026-10-02). They show for every animal category.
  *
  * Rules for editing this file:
  * - Each note must be supported by the linked page (checked 2026-09-27/28).
@@ -14,6 +14,7 @@ import type {
   SafetyInfo,
   SafetyStatement,
 } from '../../shared/types.js';
+import { MARINE_NOTES } from './marine.js';
 
 type Rank = 'order' | 'family' | 'genus' | 'species';
 
@@ -461,6 +462,7 @@ export const WILDLIFE_NOTES: WildlifeNote[] = [
     sourceUrl:
       'https://blogs.ifas.ufl.edu/news/2019/03/28/uf-expert-help-prevent-cane-toads-from-poisoning-your-pet',
   },
+  ...MARINE_NOTES,
 ];
 
 /** Shown for every droppings photo. */

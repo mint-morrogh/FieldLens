@@ -19,7 +19,7 @@ export const WHATS_OUT_GROUPS = ['plant', 'fungus', 'bird', 'bug', 'mammal'] as 
 export type WhatsOutGroup = (typeof WHATS_OUT_GROUPS)[number];
 
 const taxonRank = z.enum(['family', 'genus']);
-const group = z.enum(['plant', 'fungus', 'bug', 'bird', 'mammal', 'herp', 'fish']);
+const group = z.enum(['plant', 'fungus', 'bug', 'bird', 'mammal', 'herp', 'fish', 'sea']);
 
 export const nearbyFamiliesRequestSchema = z.object({
   latitude: z.number().min(-90).max(90),

@@ -45,6 +45,16 @@ DEVICE = "cuda" if (ON_ZEROGPU or torch.cuda.is_available()) else "cpu"
 clf = TreeOfLifeClassifier(model_str=MODEL, device=DEVICE)
 clf.model.eval()
 labels = clf.get_label_data().fillna("")
+# Plankton, protists and other taxa too small to photograph with a phone. They look like any
+# translucent blob (a moon jelly's top matches included dinoflagellates), so they're left out
+# of every search. Must match isMicroscopic() in the FieldLens server.
+MICROSCOPIC = (
+    labels["kingdom"].isin(["Bacteria", "Archaea", "Protozoa"])
+    | labels["phylum"].isin(["Haptophyta", "Myzozoa", "Foraminifera", "Ciliophora", "Cyanobacteria",
+                             "Euglenozoa", "Rotifera", "Tardigrada", "Gastrotricha"])
+    | labels["class"].isin(["Copepoda", "Ostracoda", "Bacillariophyceae"])
+)
+HIDDEN = torch.tensor(MICROSCOPIC.to_numpy(), dtype=torch.bool)
 EMB = clf.txt_embeddings  # (dim, n_taxa), already on DEVICE
 LOGIT_SCALE = float(clf.model.logit_scale.exp())
 
@@ -127,22 +137,30 @@ def _candidate_indices(taxa: list[str]) -> tuple[list[int], list[str]]:
     return sorted(idx), unmatched
 
 
-def _within_indices(within: dict) -> set[int] | None:
-    """Columns whose taxonomy matches e.g. {"class": ["Insecta", "Arachnida"]}."""
+def _within_indices(within) -> set[int] | None:
+    """Columns whose taxonomy matches e.g. {"class": ["Insecta", "Arachnida"]}.
+
+    Ranks inside one filter must all match; a list of filters matches any of them, e.g.
+    [{"class": ["Phaeophyceae"]}, {"phylum": ["Rhodophyta"]}].
+    """
     if not within:
         return None
-    if not isinstance(within, dict):
-        raise gr.Error("within must be an object like {\"class\": [\"Insecta\"]}.")
-    mask = None
-    for rank, values in within.items():
-        if rank not in RANKS or not isinstance(values, list):
-            raise gr.Error(f"Unsupported within rank: {rank}")
-        # An explicit "" matches taxa with no value at that rank (e.g. most ray-finned fish
-        # have no class in the Tree of Life labels).
-        wanted = {str(v).strip().lower() for v in values}
-        m = labels[rank].str.lower().isin(wanted)
-        mask = m if mask is None else (mask & m)
-    return set(labels.index[mask].tolist()) if mask is not None else None
+    filters = within if isinstance(within, list) else [within]
+    union = None
+    for f in filters:
+        if not isinstance(f, dict) or not f:
+            raise gr.Error("within must be an object like {\"class\": [\"Insecta\"]} or a list of them.")
+        mask = None
+        for rank, values in f.items():
+            if rank not in RANKS or not isinstance(values, list):
+                raise gr.Error(f"Unsupported within rank: {rank}")
+            # An explicit "" matches taxa with no value at that rank (e.g. most ray-finned fish
+            # have no class in the Tree of Life labels).
+            wanted = {str(v).strip().lower() for v in values}
+            m = labels[rank].str.lower().isin(wanted)
+            mask = m if mask is None else (mask & m)
+        union = mask if union is None else (union | mask)
+    return set(labels.index[union].tolist())
 
 
 def _prompt_embeddings(prompts: list[str]) -> torch.Tensor:
@@ -253,13 +271,18 @@ def _run(payload: dict) -> dict:
         if within is not None and not taxa:
             # Softmax over every taxon, then keep the requested group: the group's share of the
             # total ("how much does this look like an insect at all?") flags off-target photos.
-            full = torch.softmax(temperature * LOGIT_SCALE * (feat @ EMB), dim=0).float().cpu()
+            logits = temperature * LOGIT_SCALE * (feat @ EMB)
+            logits[HIDDEN.to(logits.device)] = float("-inf")
+            full = torch.softmax(logits, dim=0).float().cpu()
             sub = full[columns]
             group_probability = float(sub.sum())
             probs = sub / max(group_probability, 1e-12)
         else:
             emb = EMB[:, columns] if restricted else EMB
-            probs = torch.softmax(temperature * LOGIT_SCALE * (feat @ emb), dim=0).float().cpu()
+            logits = temperature * LOGIT_SCALE * (feat @ emb)
+            if not restricted:
+                logits[HIDDEN.to(logits.device)] = float("-inf")
+            probs = torch.softmax(logits, dim=0).float().cpu()
 
     col_ids = columns if restricted else list(range(EMB.shape[1]))
     if rank == "species":
